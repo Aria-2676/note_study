@@ -23,7 +23,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -93,6 +93,16 @@ class DatabaseService {
         // 列可能已存在
       }
     }
+    if (oldVersion < 6) {
+      // 版本5升级到版本6：为tasks表添加priority字段
+      try {
+        await db.execute(
+          'ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT "white"',
+        );
+      } catch (e) {
+        // 列可能已存在
+      }
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -108,7 +118,8 @@ class DatabaseService {
         completedAt TEXT,
         rewardPoints INTEGER NOT NULL DEFAULT 0,
         isDeducted INTEGER NOT NULL DEFAULT 0,
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'white'
       )
     ''');
 
@@ -177,7 +188,8 @@ class DatabaseService {
       'tasks',
       where: 'cplTime >= ? AND cplTime < ?',
       whereArgs: [start.toIso8601String(), end.toIso8601String()],
-      orderBy: 'isOK ASC, cplTime ASC, id DESC',
+      orderBy:
+          'CASE priority WHEN \'red\' THEN 0 WHEN \'orange\' THEN 1 WHEN \'yellow\' THEN 2 WHEN \'blue\' THEN 3 WHEN \'white\' THEN 4 END, isOK ASC, cplTime ASC, id DESC',
     );
     return result.map((m) => Task.fromMap(m)).toList();
   }

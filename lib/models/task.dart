@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class Task {
   final int? id;
   final String title;
@@ -10,6 +12,7 @@ class Task {
   final int rewardPoints; // 完成奖励积分
   final bool isDeducted; // 是否已扣除积分（用于未完成时只扣一次）
   final DateTime createdAt; // 任务创建时间
+  final String priority; // 优先级：red/orange/yellow/blue/white
 
   Task({
     this.id,
@@ -23,6 +26,7 @@ class Task {
     this.rewardPoints = 0, // 默认0积分
     this.isDeducted = false,
     DateTime? createdAt,
+    this.priority = 'white', // 默认普通优先级
   }) : createdAt = createdAt ?? DateTime.now();
 
   Task copyWith({
@@ -37,6 +41,7 @@ class Task {
     int? rewardPoints,
     bool? isDeducted,
     DateTime? createdAt,
+    String? priority,
   }) {
     return Task(
       id: id ?? this.id,
@@ -50,6 +55,7 @@ class Task {
       rewardPoints: rewardPoints ?? this.rewardPoints,
       isDeducted: isDeducted ?? this.isDeducted,
       createdAt: createdAt ?? this.createdAt,
+      priority: priority ?? this.priority,
     );
   }
 
@@ -66,6 +72,7 @@ class Task {
       'rewardPoints': rewardPoints,
       'isDeducted': isDeducted ? 1 : 0,
       'createdAt': createdAt.toIso8601String(),
+      'priority': priority,
     };
   }
 
@@ -86,6 +93,41 @@ class Task {
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'] as String)
           : DateTime.now(),
+      priority: map['priority'] as String? ?? 'white',
     );
+  }
+
+  // 获取优先级颜色
+  Color get priorityColor {
+    switch (priority) {
+      case 'red':
+        return Colors.red;
+      case 'orange':
+        return Colors.orange;
+      case 'yellow':
+        return Colors.yellow;
+      case 'blue':
+        return Colors.blue;
+      case 'white':
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // 获取优先级顺序值（用于排序）
+  int get priorityOrder {
+    switch (priority) {
+      case 'red':
+        return 0;
+      case 'orange':
+        return 1;
+      case 'yellow':
+        return 2;
+      case 'blue':
+        return 3;
+      case 'white':
+      default:
+        return 4;
+    }
   }
 }

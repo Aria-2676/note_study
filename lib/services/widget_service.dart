@@ -42,7 +42,7 @@ class WidgetService {
         name: widgetName,
         androidName: 'TaskWidgetProvider',
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       // 静默处理错误，避免污染日志
     }
   }
