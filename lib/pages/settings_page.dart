@@ -12,7 +12,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _version = '4.0.0';
+  String _version = '5.0.0';
 
   @override
   void initState() {
@@ -21,7 +21,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _loadVersion() async {
-    setState(() => _version = '4.0.0');
+    setState(() => _version = '5.0.0');
   }
 
   Future<void> _clearCache(BuildContext context) async {
@@ -62,17 +62,29 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('设置', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+          const Text(
+            '设置',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 20),
           Card(
             child: ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.blue),
               title: const Text('版本号'),
-              subtitle: Text('任务管家 V4 $_version'),
+              subtitle: Text('任务管家 V5 $_version'),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.blue.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-                child: const Text('V4', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'V5',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ),
@@ -83,7 +95,9 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('桌面小组件'),
               subtitle: const Text('添加小组件到桌面，快速查看任务'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WidgetGuidePage())),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -103,7 +117,9 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('使用说明'),
               subtitle: const Text('了解如何使用任务管家'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
             ),
           ),
           const SizedBox(height: 10),
@@ -111,7 +127,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListTile(
               leading: const Icon(Icons.app_shortcut, color: Colors.green),
               title: const Text('关于应用'),
-              subtitle: const Text('任务管家 V4 - 带积分系统的任务管理应用'),
+              subtitle: const Text('任务管家 V5 - 带积分系统的任务管理应用'),
             ),
           ),
         ],

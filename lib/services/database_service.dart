@@ -13,7 +13,7 @@ class DatabaseService {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('v4_tasks.db');
+    _database = await _initDB('v5_tasks.db');
     return _database!;
   }
 
@@ -46,22 +46,30 @@ class DatabaseService {
     if (oldVersion < 3) {
       // 版本2升级到版本3：为shop_items和purchased_items添加外观字段
       try {
-        await db.execute('ALTER TABLE shop_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"');
+        await db.execute(
+          'ALTER TABLE shop_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"',
+        );
       } catch (e) {
         // 列可能已存在
       }
       try {
-        await db.execute('ALTER TABLE shop_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}');
+        await db.execute(
+          'ALTER TABLE shop_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}',
+        );
       } catch (e) {
         // 列可能已存在
       }
       try {
-        await db.execute('ALTER TABLE purchased_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"');
+        await db.execute(
+          'ALTER TABLE purchased_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"',
+        );
       } catch (e) {
         // 列可能已存在
       }
       try {
-        await db.execute('ALTER TABLE purchased_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}');
+        await db.execute(
+          'ALTER TABLE purchased_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}',
+        );
       } catch (e) {
         // 列可能已存在
       }
@@ -78,7 +86,9 @@ class DatabaseService {
     if (oldVersion < 5) {
       // 版本4升级到版本5：为tasks表添加createdAt字段
       try {
-        await db.execute('ALTER TABLE tasks ADD COLUMN createdAt TEXT DEFAULT NULL');
+        await db.execute(
+          'ALTER TABLE tasks ADD COLUMN createdAt TEXT DEFAULT NULL',
+        );
       } catch (e) {
         // 列可能已存在
       }
@@ -182,7 +192,11 @@ class DatabaseService {
     return result.map((m) => Task.fromMap(m)).toList();
   }
 
-  Future<bool> existsTaskOnDate(String title, String? description, DateTime date) async {
+  Future<bool> existsTaskOnDate(
+    String title,
+    String? description,
+    DateTime date,
+  ) async {
     final db = await database;
     final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
@@ -302,7 +316,10 @@ class DatabaseService {
 
   Future<List<PurchasedItem>> getAllPurchasedItems() async {
     final db = await database;
-    final result = await db.query('purchased_items', orderBy: 'purchasedAt DESC');
+    final result = await db.query(
+      'purchased_items',
+      orderBy: 'purchasedAt DESC',
+    );
     return result.map((m) => PurchasedItem.fromMap(m)).toList();
   }
 
@@ -315,7 +332,11 @@ class DatabaseService {
 
   Future<UserPoints> getUserPoints() async {
     final db = await database;
-    final result = await db.query('user_points', where: 'id = ?', whereArgs: [1]);
+    final result = await db.query(
+      'user_points',
+      where: 'id = ?',
+      whereArgs: [1],
+    );
     if (result.isEmpty) {
       final newPoints = UserPoints();
       await db.insert('user_points', newPoints.toMap());
@@ -328,10 +349,7 @@ class DatabaseService {
     final db = await database;
     await db.update(
       'user_points',
-      {
-        'points': points,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
+      {'points': points, 'updatedAt': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [1],
     );
@@ -359,10 +377,7 @@ class DatabaseService {
     await db.delete('purchased_items');
     await db.update(
       'user_points',
-      {
-        'points': 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
+      {'points': 0, 'updatedAt': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [1],
     );
@@ -383,11 +398,10 @@ class DatabaseService {
   Future<void> saveSettings(Map<String, String> settings) async {
     final db = await database;
     for (final entry in settings.entries) {
-      await db.insert(
-        'settings',
-        {'key': entry.key, 'value': entry.value},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('settings', {
+        'key': entry.key,
+        'value': entry.value,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 }

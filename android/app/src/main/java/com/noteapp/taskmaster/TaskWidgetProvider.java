@@ -1,4 +1,4 @@
-package com.example.v4_app;
+package com.noteapp.taskmaster;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -9,7 +9,7 @@ import android.content.SharedPreferences;
 import android.widget.RemoteViews;
 import android.util.Log;
 
-import com.example.v4_app.MainActivity;
+import com.noteapp.taskmaster.MainActivity;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -26,7 +26,7 @@ public class TaskWidgetProvider extends AppWidgetProvider {
     private static final String DATE_KEY = "widget_date";
     
     // 广播 Action
-    public static final String ACTION_TOGGLE_TASK = "com.example.v4_app.TOGGLE_TASK";
+    public static final String ACTION_TOGGLE_TASK = "com.noteapp.taskmaster.TOGGLE_TASK";
     public static final String EXTRA_TASK_INDEX = "task_index";
 
     @Override

@@ -10,7 +10,7 @@ class WidgetService {
   static const String pointsKey = 'widget_points';
   static const String dateKey = 'widget_date';
 
-  static const MethodChannel _channel = MethodChannel('com.example.v4_app/widget');
+  static const MethodChannel _channel = MethodChannel('com.noteapp.taskmaster/widget');
 
   // 初始化小组件
   static Future<void> init() async {
