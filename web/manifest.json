@@ -1,11 +1,11 @@
 {
-    "name": "v3_app",
-    "short_name": "v3_app",
+    "name": "任务管家",
+    "short_name": "任务管家",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "一个带积分系统的任务管理应用",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

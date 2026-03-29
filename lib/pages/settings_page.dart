@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import 'help_page.dart';
 import 'widget_guide_page.dart';
+import '../utils/version_utils.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -12,7 +13,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _version = '5.0.0';
+  String _version = '5.0.1';
 
   @override
   void initState() {
@@ -21,7 +22,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _loadVersion() async {
-    setState(() => _version = '5.0.0');
+    try {
+      final version = await VersionUtils.version;
+      setState(() => _version = version);
+    } catch (e) {
+      print('Error loading version: $e');
+    }
   }
 
   Future<void> _clearCache(BuildContext context) async {

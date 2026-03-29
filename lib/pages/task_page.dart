@@ -20,7 +20,8 @@ class TaskPage extends StatefulWidget {
   State<TaskPage> createState() => _TaskPageState();
 }
 
-class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin {
+class _TaskPageState extends State<TaskPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final List<String> _tabs = ['全部', '普通', '循环'];
   DateTime? _lastWarningTime;
@@ -214,145 +215,28 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
     return _buildSimpleView(context, task, provider);
   }
 
-  Widget _buildSimpleView(BuildContext context, Task task, AppProvider provider) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
-    return InkWell(
-      onTap: () => _showAddTaskDialog(context, task: task),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: task.isOK 
-              ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
-              : colorScheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: task.isOK 
-                ? colorScheme.outline.withOpacity(0.2)
-                : colorScheme.outline.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // 完成状态指示器（小圆点）
-            Container(
-              width: 10,
-              height: 10,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: task.isOK 
-                    ? Colors.green 
-                    : (task.isWord ? Colors.orange : Colors.blue),
-              ),
-            ),
-            // 任务内容
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          task.title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            decoration: task.isOK ? TextDecoration.lineThrough : null,
-                            color: task.isOK
-                                ? colorScheme.onSurface.withOpacity(0.5)
-                                : colorScheme.onSurface,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // 积分标识（如果有）
-                      if (task.rewardPoints > 0)
-                        Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '+${task.rewardPoints}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.amber,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  // 描述（单行，更紧凑）
-                  if (task.description != null && task.description!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        task.description!,
-                        style: TextStyle(
-                          color: colorScheme.onSurface.withOpacity(0.5),
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // 操作按钮（更紧凑）
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 完成/取消完成按钮
-                InkWell(
-                  onTap: () => _onTaskCheckChanged(!task.isOK, task, provider),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    child: Icon(
-                      task.isOK ? Icons.check_circle : Icons.radio_button_unchecked,
-                      size: 20,
-                      color: task.isOK ? Colors.green : colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                  ),
-                ),
-                // 删除按钮
-                InkWell(
-                  onTap: () => provider.deleteTask(task.id!),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.close,
-                      size: 18,
-                      color: colorScheme.onSurface.withOpacity(0.4),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _buildSimpleView(
+    BuildContext context,
+    Task task,
+    AppProvider provider,
+  ) {
+    return _SimpleTaskCard(
+      task: task,
+      provider: provider,
+      onTaskCheckChanged: (v) => _onTaskCheckChanged(v, task, provider),
+      onEdit: () => _showAddTaskDialog(context, task: task),
+      onDelete: () => provider.deleteTask(task.id!),
     );
   }
 
   Widget _buildRichView(BuildContext context, Task task, AppProvider provider) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     // 根据任务类型选择主题色
     final taskColor = task.isWord ? Colors.orange : Colors.blue;
-    final accentColor = task.isOK 
-        ? Colors.grey 
-        : taskColor;
-    
+    final accentColor = task.isOK ? Colors.grey : taskColor;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -363,8 +247,8 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
           colors: isDark
               ? [
                   // 暗黑模式：深色渐变，带一点主题色调
-                  task.isOK 
-                      ? const Color(0xFF2D2D2D) 
+                  task.isOK
+                      ? const Color(0xFF2D2D2D)
                       : accentColor.withOpacity(0.15),
                   const Color(0xFF1A1A1A),
                 ]
@@ -376,16 +260,18 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
         ),
         border: Border.all(
           color: isDark
-              ? (task.isOK 
-                  ? Colors.grey.withOpacity(0.2) 
-                  : accentColor.withOpacity(0.3))
+              ? (task.isOK
+                    ? Colors.grey.withOpacity(0.2)
+                    : accentColor.withOpacity(0.3))
               : Colors.transparent,
           width: 1,
         ),
         boxShadow: isDark
             ? [
                 BoxShadow(
-                  color: (task.isOK ? Colors.black : accentColor).withOpacity(0.2),
+                  color: (task.isOK ? Colors.black : accentColor).withOpacity(
+                    0.2,
+                  ),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -421,7 +307,8 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
                       scale: 1.1,
                       child: Checkbox(
                         value: task.isOK,
-                        onChanged: (v) => _onTaskCheckChanged(v, task, provider),
+                        onChanged: (v) =>
+                            _onTaskCheckChanged(v, task, provider),
                         activeColor: accentColor,
                       ),
                     ),
@@ -431,7 +318,9 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
-                          decoration: task.isOK ? TextDecoration.lineThrough : null,
+                          decoration: task.isOK
+                              ? TextDecoration.lineThrough
+                              : null,
                           color: task.isOK
                               ? colorScheme.onSurface.withOpacity(0.5)
                               : colorScheme.onSurface,
@@ -439,11 +328,19 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.edit, size: 20, color: colorScheme.onSurface.withOpacity(0.6)),
+                      icon: Icon(
+                        Icons.edit,
+                        size: 20,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
                       onPressed: () => _showAddTaskDialog(context, task: task),
                     ),
                     IconButton(
-                      icon: Icon(Icons.delete_outline, size: 20, color: colorScheme.onSurface.withOpacity(0.6)),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        size: 20,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
                       onPressed: () => provider.deleteTask(task.id!),
                     ),
                   ],
@@ -715,5 +612,234 @@ class _TaskPageState extends State<TaskPage> with SingleTickerProviderStateMixin
         });
       },
     );
+  }
+}
+
+class _SimpleTaskCard extends StatefulWidget {
+  final Task task;
+  final AppProvider provider;
+  final Function(bool?) onTaskCheckChanged;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _SimpleTaskCard({
+    required this.task,
+    required this.provider,
+    required this.onTaskCheckChanged,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  State<_SimpleTaskCard> createState() => _SimpleTaskCardState();
+}
+
+class _SimpleTaskCardState extends State<_SimpleTaskCard> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Dismissible(
+      key: Key('task-${widget.task.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (direction) {
+        widget.onDelete();
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: widget.task.isOK 
+              ? colorScheme.surfaceContainerHighest.withOpacity(0.5)
+              : colorScheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: widget.task.isOK 
+                ? colorScheme.outline.withOpacity(0.2)
+                : colorScheme.outline.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            // 卡片头部（始终显示）
+            GestureDetector(
+              onLongPress: widget.onEdit,
+              onTap: () {
+                if (_isExpanded) {
+                  setState(() => _isExpanded = false);
+                } else {
+                  widget.onTaskCheckChanged(!widget.task.isOK);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    // 完成状态指示器
+                    Container(
+                      width: 20,
+                      height: 20,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: widget.task.isOK ? Colors.green : colorScheme.outline,
+                          width: 2,
+                        ),
+                        color: widget.task.isOK ? Colors.green : null,
+                      ),
+                      child: widget.task.isOK
+                          ? const Icon(Icons.check, size: 14, color: Colors.white)
+                          : null,
+                    ),
+                    // 任务标题
+                    Expanded(
+                      child: Text(
+                        widget.task.title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          decoration: widget.task.isOK ? TextDecoration.lineThrough : null,
+                          color: widget.task.isOK
+                              ? colorScheme.onSurface.withOpacity(0.5)
+                              : colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // 展开/收起指示器
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _isExpanded = !_isExpanded);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          _isExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // 展开的详情部分
+            if (_isExpanded)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: colorScheme.outline.withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 任务描述
+                    if (widget.task.description != null && widget.task.description!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          widget.task.description!,
+                          style: TextStyle(
+                            color: colorScheme.onSurface.withOpacity(0.6),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    // 任务信息
+                    Row(
+                      children: [
+                        // 任务类型
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (widget.task.isWord ? Colors.orange : Colors.blue).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            widget.task.isWord ? '单词任务' : '普通任务',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: widget.task.isWord ? Colors.orange : Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        // 循环信息
+                        if (widget.task.recurrence != 'none')
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _getRecurrenceText(widget.task.recurrence),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        // 积分奖励
+                        if (widget.task.rewardPoints > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '+${widget.task.rewardPoints}积分',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.amber,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getRecurrenceText(String recurrence) {
+    switch (recurrence) {
+      case 'daily':
+        return '每天';
+      case 'weekly':
+        return '每周';
+      case 'monthly':
+        return '每月';
+      default:
+        return '一次性';
+    }
   }
 }

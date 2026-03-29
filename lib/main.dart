@@ -27,7 +27,7 @@ class MyApp extends StatelessWidget {
       child: Consumer<AppProvider>(
         builder: (context, provider, child) {
           return MaterialApp(
-            title: '任务管家 V5',
+            title: '任务管家',
             debugShowCheckedModeBanner: false,
             theme: ThemeData.light(useMaterial3: true),
             darkTheme: ThemeData.dark(useMaterial3: true),
@@ -106,7 +106,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('任务管家 V5'),
+        title: const Text('任务管家'),
         centerTitle: true,
         actions: [
           Container(
