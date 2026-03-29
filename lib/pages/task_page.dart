@@ -255,8 +255,67 @@ class _TaskPageState extends State<TaskPage>
       provider: provider,
       onTaskCheckChanged: (v) => _onTaskCheckChanged(v, task, provider),
       onEdit: () => _showAddTaskDialog(context, task: task),
-      onDelete: () => provider.deleteTask(task.id!),
+      onDelete: (ctx) => _showDeleteConfirmDialog(ctx, task, provider),
     );
+  }
+
+  void _showDeleteConfirmDialog(
+    BuildContext context,
+    Task task,
+    AppProvider provider,
+  ) {
+    if (task.recurrence == 'none') {
+      // 非循环任务，直接删除
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认删除'),
+          content: const Text('确定要删除这个任务吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                provider.deleteTask(task.id!);
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // 循环任务，显示选择
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认删除'),
+          content: const Text('选择删除方式：'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                provider.deleteTask(task.id!, deleteAll: false);
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('仅删除当天'),
+            ),
+            TextButton(
+              onPressed: () {
+                provider.deleteTask(task.id!, deleteAll: true);
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('删除全部'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildRichView(BuildContext context, Task task, AppProvider provider) {
@@ -371,7 +430,8 @@ class _TaskPageState extends State<TaskPage>
                         size: 20,
                         color: colorScheme.onSurface.withOpacity(0.6),
                       ),
-                      onPressed: () => provider.deleteTask(task.id!),
+                      onPressed: () =>
+                          _showDeleteConfirmDialog(context, task, provider),
                     ),
                   ],
                 ),
@@ -866,7 +926,7 @@ class _SimpleTaskCard extends StatefulWidget {
   final AppProvider provider;
   final Function(bool?) onTaskCheckChanged;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final Function(BuildContext) onDelete;
 
   const _SimpleTaskCard({
     required this.task,
@@ -901,7 +961,7 @@ class _SimpleTaskCardState extends State<_SimpleTaskCard> {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       onDismissed: (direction) {
-        widget.onDelete();
+        widget.onDelete(context);
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

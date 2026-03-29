@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import 'help_page.dart';
 import 'widget_guide_page.dart';
+import 'recycle_bin_page.dart';
 import '../utils/version_utils.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -104,6 +105,18 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
               ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.orange),
+              title: const Text('任务回收站'),
+              subtitle: const Text('查看和恢复最近删除的任务'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
             ),
           ),
           const SizedBox(height: 10),

@@ -44,7 +44,7 @@ class Task {
     String? priority,
   }) {
     return Task(
-      id: id ?? this.id,
+      id: id,
       title: title ?? this.title,
       description: description ?? this.description,
       isWord: isWord ?? this.isWord,

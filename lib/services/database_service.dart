@@ -4,6 +4,7 @@ import '../models/task.dart';
 import '../models/shop_item.dart';
 import '../models/user_points.dart';
 import '../models/purchased_item.dart';
+import '../models/recycled_task.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -23,7 +24,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -103,6 +104,27 @@ class DatabaseService {
         // 列可能已存在
       }
     }
+    if (oldVersion < 7) {
+      // 版本6升级到版本7：添加recycled_tasks表
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS recycled_tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id INTEGER,
+          title TEXT NOT NULL,
+          description TEXT,
+          is_word INTEGER NOT NULL DEFAULT 0,
+          is_ok INTEGER NOT NULL DEFAULT 0,
+          cpl_time TEXT NOT NULL,
+          recurrence TEXT NOT NULL DEFAULT 'none',
+          completed_at TEXT,
+          reward_points INTEGER NOT NULL DEFAULT 0,
+          is_deducted INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'white',
+          deleted_at TEXT NOT NULL
+        )
+      ''');
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -170,6 +192,26 @@ class DatabaseService {
         value TEXT NOT NULL
       )
     ''');
+
+    // 创建回收站表
+    await db.execute('''
+      CREATE TABLE recycled_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER,
+        title TEXT NOT NULL,
+        description TEXT,
+        is_word INTEGER NOT NULL DEFAULT 0,
+        is_ok INTEGER NOT NULL DEFAULT 0,
+        cpl_time TEXT NOT NULL,
+        recurrence TEXT NOT NULL DEFAULT 'none',
+        completed_at TEXT,
+        reward_points INTEGER NOT NULL DEFAULT 0,
+        is_deducted INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'white',
+        deleted_at TEXT NOT NULL
+      )
+    ''');
   }
 
   // ========== Task Operations ==========
@@ -189,7 +231,7 @@ class DatabaseService {
       where: 'cplTime >= ? AND cplTime < ?',
       whereArgs: [start.toIso8601String(), end.toIso8601String()],
       orderBy:
-          'CASE priority WHEN \'red\' THEN 0 WHEN \'orange\' THEN 1 WHEN \'yellow\' THEN 2 WHEN \'blue\' THEN 3 WHEN \'white\' THEN 4 END, isOK ASC, cplTime ASC, id DESC',
+          'isOK ASC, CASE priority WHEN \'red\' THEN 0 WHEN \'orange\' THEN 1 WHEN \'yellow\' THEN 2 WHEN \'blue\' THEN 3 WHEN \'white\' THEN 4 END, cplTime ASC, id DESC',
     );
     return result.map((m) => Task.fromMap(m)).toList();
   }
@@ -201,6 +243,12 @@ class DatabaseService {
       where: 'recurrence != ?',
       whereArgs: ['none'],
     );
+    return result.map((m) => Task.fromMap(m)).toList();
+  }
+
+  Future<List<Task>> getAllTasks() async {
+    final db = await database;
+    final result = await db.query('tasks', orderBy: 'cplTime DESC');
     return result.map((m) => Task.fromMap(m)).toList();
   }
 
@@ -264,7 +312,121 @@ class DatabaseService {
 
   Future<void> deleteTask(int id) async {
     final db = await database;
+    // 先获取任务信息
+    final taskResult = await db.query(
+      'tasks',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (taskResult.isNotEmpty) {
+      final taskMap = taskResult.first;
+      // 保存到回收站
+      await db.insert('recycled_tasks', {
+        'task_id': taskMap['id'],
+        'title': taskMap['title'],
+        'description': taskMap['description'],
+        'is_word': taskMap['isWord'] ?? 0,
+        'is_ok': taskMap['isOK'] ?? 0,
+        'cpl_time': taskMap['cplTime'],
+        'recurrence': taskMap['recurrence'],
+        'completed_at': taskMap['completedAt'],
+        'reward_points': taskMap['rewardPoints'] ?? 0,
+        'is_deducted': taskMap['isDeducted'] ?? 0,
+        'created_at': taskMap['createdAt'],
+        'priority': taskMap['priority'] ?? 'white',
+        'deleted_at': DateTime.now().toIso8601String(),
+      });
+      // 清理回收站，只保留最近10条
+      await _cleanupRecycledTasks();
+    }
+    // 删除原任务
     await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 直接删除任务，不保存到回收站
+  Future<void> deleteTaskWithoutRecycle(int id) async {
+    final db = await database;
+    await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 清理回收站，只保留最近10条
+  Future<void> _cleanupRecycledTasks() async {
+    final db = await database;
+    final result = await db.query('recycled_tasks', orderBy: 'deleted_at DESC');
+    if (result.length > 10) {
+      final toDelete = result.skip(10).map((item) => item['id']).toList();
+      for (final id in toDelete) {
+        await db.delete('recycled_tasks', where: 'id = ?', whereArgs: [id]);
+      }
+    }
+  }
+
+  // 获取回收站中的任务
+  Future<List<RecycledTask>> getRecycledTasks() async {
+    final db = await database;
+    final result = await db.query('recycled_tasks', orderBy: 'deleted_at DESC');
+    return result.map((m) => RecycledTask.fromMap(m)).toList();
+  }
+
+  // 从回收站恢复任务
+  Future<Task> restoreTaskFromRecycle(int recycledTaskId) async {
+    final db = await database;
+    // 获取回收站中的任务
+    final recycledResult = await db.query(
+      'recycled_tasks',
+      where: 'id = ?',
+      whereArgs: [recycledTaskId],
+    );
+    if (recycledResult.isEmpty) {
+      throw Exception('回收站任务不存在');
+    }
+
+    final recycledMap = recycledResult.first;
+    // 创建新任务
+    final task = Task(
+      title: recycledMap['title'] as String,
+      description: recycledMap['description'] as String?,
+      isWord: (recycledMap['is_word'] as int? ?? 0) == 1,
+      isOK: (recycledMap['is_ok'] as int? ?? 0) == 1,
+      cplTime: DateTime.parse(recycledMap['cpl_time'] as String),
+      recurrence: recycledMap['recurrence'] as String? ?? 'none',
+      completedAt: recycledMap['completed_at'] != null
+          ? DateTime.parse(recycledMap['completed_at'] as String)
+          : null,
+      rewardPoints: recycledMap['reward_points'] as int? ?? 0,
+      isDeducted: (recycledMap['is_deducted'] as int? ?? 0) == 1,
+      createdAt: DateTime.parse(recycledMap['created_at'] as String),
+      priority: recycledMap['priority'] as String? ?? 'white',
+    );
+
+    // 插入到任务表
+    final taskId = await db.insert('tasks', task.toMap());
+    final newTask = task.copyWith(id: taskId);
+
+    // 从回收站删除
+    await db.delete(
+      'recycled_tasks',
+      where: 'id = ?',
+      whereArgs: [recycledTaskId],
+    );
+
+    return newTask;
+  }
+
+  // 从回收站删除任务
+  Future<void> deleteFromRecycle(int recycledTaskId) async {
+    final db = await database;
+    await db.delete(
+      'recycled_tasks',
+      where: 'id = ?',
+      whereArgs: [recycledTaskId],
+    );
+  }
+
+  // 清空回收站
+  Future<void> clearRecycleBin() async {
+    final db = await database;
+    await db.delete('recycled_tasks');
   }
 
   // 获取过期未完成的任务

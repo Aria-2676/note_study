@@ -3,6 +3,7 @@ import '../models/task.dart';
 import '../models/shop_item.dart';
 import '../models/user_points.dart';
 import '../models/purchased_item.dart';
+import '../models/recycled_task.dart';
 import '../services/database_service.dart';
 import '../services/widget_service.dart';
 
@@ -14,6 +15,7 @@ class AppProvider extends ChangeNotifier {
   List<Task> _tasks = [];
   List<ShopItem> _shopItems = [];
   List<PurchasedItem> _purchasedItems = [];
+  List<RecycledTask> _recycledTasks = [];
   UserPoints _userPoints = UserPoints();
   DateTime _selectedDate = DateTime.now();
   List<DateTime> _selectedDates = [DateTime.now()];
@@ -25,6 +27,7 @@ class AppProvider extends ChangeNotifier {
   List<Task> get tasks => _tasks;
   List<ShopItem> get shopItems => _shopItems;
   List<PurchasedItem> get purchasedItems => _purchasedItems;
+  List<RecycledTask> get recycledTasks => _recycledTasks;
   UserPoints get userPoints => _userPoints;
   int get currentPoints => _userPoints.points;
   DateTime get selectedDate => _selectedDate;
@@ -43,6 +46,7 @@ class AppProvider extends ChangeNotifier {
     await _loadUserPoints();
     await _loadShopItems();
     await _loadPurchasedItems();
+    await _loadRecycledTasks();
     await _initDefaultData(); // 初始化示例数据和固定商品
     await autoCheckRecurringTasks();
     await _checkOverdueTasks();
@@ -105,8 +109,12 @@ class AppProvider extends ChangeNotifier {
   // 加载设置
   Future<void> _loadSettings() async {
     final settings = await _db.getSettings();
-    _themeMode = settings['themeMode'] == 'dark' ? ThemeMode.dark : ThemeMode.light;
-    _taskViewMode = settings['taskViewMode'] == 'simple' ? TaskViewMode.simple : TaskViewMode.rich;
+    _themeMode = settings['themeMode'] == 'dark'
+        ? ThemeMode.dark
+        : ThemeMode.light;
+    _taskViewMode = settings['taskViewMode'] == 'simple'
+        ? TaskViewMode.simple
+        : TaskViewMode.rich;
   }
 
   // 保存设置
@@ -133,21 +141,21 @@ class AppProvider extends ChangeNotifier {
     if (existingItems.isEmpty) {
       await _initDefaultShopItems();
     }
-    
+
     // 检查是否需要添加引导任务
     await _initTutorialTasks();
   }
-  
+
   // 初始化引导任务（首次使用）
   Future<void> _initTutorialTasks() async {
     // 检查是否已存在任务
     final todayTasks = await _db.getTasksByDate(DateTime.now());
     if (todayTasks.isNotEmpty) return;
-    
+
     // 检查是否已经完成过引导
     final settings = await _db.getSettings();
     if (settings['tutorialCompleted'] == 'true') return;
-    
+
     // 添加引导任务
     final tutorialTasks = [
       Task(
@@ -205,11 +213,11 @@ class AppProvider extends ChangeNotifier {
         rewardPoints: 25,
       ),
     ];
-    
+
     for (final task in tutorialTasks) {
       await _db.createTask(task);
     }
-    
+
     // 标记引导已完成（用户完成所有引导任务后）
     // 这里不立即标记，等用户完成所有引导任务后再标记
   }
@@ -296,6 +304,47 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _loadRecycledTasks() async {
+    _recycledTasks = await _db.getRecycledTasks();
+    notifyListeners();
+  }
+
+  Future<void> loadRecycledTasks() async {
+    await _loadRecycledTasks();
+  }
+
+  Future<void> restoreTaskFromRecycle(int recycledTaskId) async {
+    // 获取回收站任务信息（用于获取原始cplTime）
+    final recycledTasks = await _db.getRecycledTasks();
+    final recycledTask = recycledTasks.firstWhere(
+      (t) => t.id == recycledTaskId,
+    );
+    final originalCplTime = recycledTask.task.cplTime;
+
+    // 恢复任务（使用原始cplTime）
+    final restoredTask = await _db.restoreTaskFromRecycle(recycledTaskId);
+
+    // 如果是循环任务，从原始日期开始重新生成循环实例
+    if (restoredTask.recurrence != 'none') {
+      // 使用原始cplTime创建任务模板，用于生成循环实例
+      final taskTemplate = restoredTask.copyWith(cplTime: originalCplTime);
+      await _generateTaskRange(taskTemplate);
+    }
+
+    await _loadRecycledTasks();
+    await loadTasksByDate(_selectedDate);
+  }
+
+  Future<void> deleteFromRecycle(int recycledTaskId) async {
+    await _db.deleteFromRecycle(recycledTaskId);
+    await _loadRecycledTasks();
+  }
+
+  Future<void> clearRecycleBin() async {
+    await _db.clearRecycleBin();
+    await _loadRecycledTasks();
+  }
+
   Future<void> _checkOverdueTasks() async {
     final overdueTasks = await _db.getOverdueTasks(DateTime.now());
     for (final task in overdueTasks) {
@@ -330,7 +379,11 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> _insertTaskIfNotExists(Task task) async {
-    final exists = await _db.existsTaskOnDate(task.title, task.description, task.cplTime);
+    final exists = await _db.existsTaskOnDate(
+      task.title,
+      task.description,
+      task.cplTime,
+    );
     if (!exists) {
       await _db.createTask(task);
     }
@@ -339,22 +392,76 @@ class AppProvider extends ChangeNotifier {
   Future<void> _generateTaskRange(Task task) async {
     final now = DateTime.now();
     final rangeEnd = now.add(const Duration(days: 15));
-    var next = DateTime(maxDate(task.cplTime, now).year, maxDate(task.cplTime, now).month, maxDate(task.cplTime, now).day);
+
+    // 使用任务的原始日期作为起始点
+    var next = DateTime(
+      task.cplTime.year,
+      task.cplTime.month,
+      task.cplTime.day,
+    );
 
     while (!next.isAfter(rangeEnd)) {
       if (task.recurrence == 'daily') {
-        await _insertTaskIfNotExists(task.copyWith(cplTime: next, isOK: false, completedAt: null, isDeducted: false));
+        await _insertTaskIfNotExists(
+          task.copyWith(
+            id: null, // 清除id，让数据库自动生成
+            cplTime: next,
+            isOK: false,
+            completedAt: null,
+            isDeducted: false,
+          ),
+        );
         next = next.add(const Duration(days: 1));
         continue;
       }
       if (task.recurrence == 'weekly') {
-        await _insertTaskIfNotExists(task.copyWith(cplTime: next, isOK: false, completedAt: null, isDeducted: false));
+        // 找到下一个与原任务相同星期几的日期
+        while (next.weekday != task.cplTime.weekday) {
+          next = next.add(const Duration(days: 1));
+        }
+        // 如果已经超出范围，直接退出
+        if (next.isAfter(rangeEnd)) {
+          break;
+        }
+        await _insertTaskIfNotExists(
+          task.copyWith(
+            id: null, // 清除id，让数据库自动生成
+            cplTime: next,
+            isOK: false,
+            completedAt: null,
+            isDeducted: false,
+          ),
+        );
         next = next.add(const Duration(days: 7));
         continue;
       }
       if (task.recurrence == 'monthly') {
-        await _insertTaskIfNotExists(task.copyWith(cplTime: next, isOK: false, completedAt: null, isDeducted: false));
-        next = DateTime(next.year, next.month + 1, next.day);
+        // 确保日期不超过月份的最大天数
+        int day = task.cplTime.day;
+        int daysInMonth = DateTime(next.year, next.month + 1, 0).day;
+        day = day > daysInMonth ? daysInMonth : day;
+        var monthlyDate = DateTime(next.year, next.month, day);
+
+        if (!monthlyDate.isAfter(rangeEnd)) {
+          await _insertTaskIfNotExists(
+            task.copyWith(
+              id: null, // 清除id，让数据库自动生成
+              cplTime: monthlyDate,
+              isOK: false,
+              completedAt: null,
+              isDeducted: false,
+            ),
+          );
+        }
+
+        // 处理月循环的日期边界问题
+        int nextMonth = next.month + 1;
+        int nextYear = next.year;
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear++;
+        }
+        next = DateTime(nextYear, nextMonth, 1);
         continue;
       }
       break;
@@ -367,8 +474,10 @@ class AppProvider extends ChangeNotifier {
     final uniquePatterns = <String, Task>{};
 
     for (var task in recurringTasks) {
-      final key = '${task.title}||${task.description}||${task.recurrence}||${task.isWord}||${task.rewardPoints}';
-      if (!uniquePatterns.containsKey(key) || uniquePatterns[key]!.cplTime.isAfter(task.cplTime)) {
+      final key =
+          '${task.title}||${task.description}||${task.recurrence}||${task.isWord}||${task.rewardPoints}';
+      if (!uniquePatterns.containsKey(key) ||
+          uniquePatterns[key]!.cplTime.isAfter(task.cplTime)) {
         uniquePatterns[key] = task;
       }
     }
@@ -385,31 +494,64 @@ class AppProvider extends ChangeNotifier {
       return '当前日期不是任务日期，不能完成任务';
     }
     await _db.completeTask(task.id!);
-    
+
     // 添加积分奖励
     if (task.rewardPoints > 0) {
       await _db.addPoints(task.rewardPoints);
       await _loadUserPoints();
     }
-    
+
     await loadTasksByDate(_selectedDate);
     return null;
   }
 
   Future<void> uncompleteTask(Task task) async {
     await _db.uncompleteTask(task.id!);
-    
+
     // 如果任务有奖励积分，取消完成时扣除相应积分（防止刷分）
     if (task.rewardPoints > 0) {
       await _db.deductPoints(task.rewardPoints);
       await _loadUserPoints();
     }
-    
+
     await loadTasksByDate(_selectedDate);
   }
 
-  Future<void> deleteTask(int id) async {
-    await _db.deleteTask(id);
+  Future<void> deleteTask(int id, {bool deleteAll = false}) async {
+    final task = _tasks.firstWhere((t) => t.id == id);
+
+    if (deleteAll && task.recurrence != 'none') {
+      // 删除循环任务：以当前任务为锚点，向后删除所有未来的实例
+      final allTasks = await _db.getAllTasks();
+
+      // 找到需要删除的所有任务（相同模式且日期 >= 当前任务日期）
+      final tasksToDelete = allTasks.where((t) {
+        return t.title == task.title &&
+            t.description == task.description &&
+            t.isWord == task.isWord &&
+            t.rewardPoints == task.rewardPoints &&
+            !_isDateBefore(t.cplTime, task.cplTime); // 日期 >= 当前任务日期
+      }).toList();
+
+      // 保存到回收站（使用最早的日期作为基准）
+      final earliestTask = tasksToDelete.reduce(
+        (a, b) => a.cplTime.isBefore(b.cplTime) ? a : b,
+      );
+
+      // 保存到回收站（只保存一次）
+      await _db.deleteTask(earliestTask.id!);
+
+      // 删除其他实例（不保存到回收站）
+      for (final t in tasksToDelete) {
+        if (t.id != earliestTask.id) {
+          await _db.deleteTaskWithoutRecycle(t.id!);
+        }
+      }
+    } else {
+      // 只删除当前任务
+      await _db.deleteTask(id);
+    }
+
     await loadTasksByDate(_selectedDate);
     await _updateWidget();
   }
@@ -457,7 +599,9 @@ class AppProvider extends ChangeNotifier {
   }
 
   void toggleTheme() {
-    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    _themeMode = _themeMode == ThemeMode.light
+        ? ThemeMode.dark
+        : ThemeMode.light;
     _saveSettings(); // 保存设置
     notifyListeners();
   }
@@ -469,7 +613,9 @@ class AppProvider extends ChangeNotifier {
   }
 
   void toggleTaskViewMode() {
-    _taskViewMode = _taskViewMode == TaskViewMode.rich ? TaskViewMode.simple : TaskViewMode.rich;
+    _taskViewMode = _taskViewMode == TaskViewMode.rich
+        ? TaskViewMode.simple
+        : TaskViewMode.rich;
     _saveSettings(); // 保存设置
     notifyListeners();
   }
@@ -496,7 +642,7 @@ class AppProvider extends ChangeNotifier {
       return '积分不足，无法兑换';
     }
     await _db.deductPoints(item.price);
-    
+
     // 添加到仓库，包含外观信息
     final purchasedItem = PurchasedItem(
       shopItemId: item.id!,
@@ -541,5 +687,12 @@ class AppProvider extends ChangeNotifier {
 
   bool _sameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  // 检查日期a是否在日期b之前（只比较年月日）
+  bool _isDateBefore(DateTime a, DateTime b) {
+    final dateA = DateTime(a.year, a.month, a.day);
+    final dateB = DateTime(b.year, b.month, b.day);
+    return dateA.isBefore(dateB);
   }
 }
