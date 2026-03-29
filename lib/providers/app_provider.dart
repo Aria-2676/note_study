@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../models/shop_item.dart';
@@ -371,22 +372,45 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addTask(Task task) async {
-    await _insertTaskIfNotExists(task);
-    if (task.recurrence != 'none') {
-      await _generateTaskRange(task);
+    // 为循环任务生成唯一的 loopId
+    if (task.recurrence != 'none' && task.loopId == null) {
+      final newTask = task.copyWith(loopId: _generateLoopId());
+      await _insertTaskIfNotExists(newTask);
+      await _generateTaskRange(newTask);
+    } else {
+      await _insertTaskIfNotExists(task);
+      if (task.recurrence != 'none') {
+        await _generateTaskRange(task);
+      }
     }
     await loadTasksByDate(_selectedDate);
   }
 
   Future<void> _insertTaskIfNotExists(Task task) async {
-    final exists = await _db.existsTaskOnDate(
-      task.title,
-      task.description,
-      task.cplTime,
-    );
+    // 对于循环任务，使用 loopId 和日期来检查任务是否存在
+    // 这样即使任务名称改变，也不会创建新的循环任务实例
+    bool exists;
+    if (task.recurrence != 'none' && task.loopId != null) {
+      final allTasks = await _db.getAllTasks();
+      exists = allTasks.any((t) {
+        return t.loopId == task.loopId && _sameDay(t.cplTime, task.cplTime);
+      });
+    } else {
+      // 对于非循环任务，使用传统的检查方式
+      exists = await _db.existsTaskOnDate(
+        task.title,
+        task.description,
+        task.cplTime,
+      );
+    }
     if (!exists) {
       await _db.createTask(task);
     }
+  }
+
+  // 生成唯一的循环任务标识符
+  String _generateLoopId() {
+    return 'loop_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
   }
 
   Future<void> _generateTaskRange(Task task) async {
@@ -474,7 +498,10 @@ class AppProvider extends ChangeNotifier {
     final uniquePatterns = <String, Task>{};
 
     for (var task in recurringTasks) {
+      // 使用 loopId 来识别唯一的循环任务模式
+      // 如果没有 loopId，则使用传统的属性组合
       final key =
+          task.loopId ??
           '${task.title}||${task.description}||${task.recurrence}||${task.isWord}||${task.rewardPoints}';
       if (!uniquePatterns.containsKey(key) ||
           uniquePatterns[key]!.cplTime.isAfter(task.cplTime)) {
@@ -520,16 +547,13 @@ class AppProvider extends ChangeNotifier {
   Future<void> deleteTask(int id, {bool deleteAll = false}) async {
     final task = _tasks.firstWhere((t) => t.id == id);
 
-    if (deleteAll && task.recurrence != 'none') {
-      // 删除循环任务：以当前任务为锚点，向后删除所有未来的实例
+    if (deleteAll && task.recurrence != 'none' && task.loopId != null) {
+      // 删除循环任务：使用 loopId 查找所有相关的循环任务实例
       final allTasks = await _db.getAllTasks();
 
-      // 找到需要删除的所有任务（相同模式且日期 >= 当前任务日期）
+      // 找到需要删除的所有任务（相同 loopId 且日期 >= 当前任务日期）
       final tasksToDelete = allTasks.where((t) {
-        return t.title == task.title &&
-            t.description == task.description &&
-            t.isWord == task.isWord &&
-            t.rewardPoints == task.rewardPoints &&
+        return t.loopId == task.loopId &&
             !_isDateBefore(t.cplTime, task.cplTime); // 日期 >= 当前任务日期
       }).toList();
 
@@ -556,12 +580,46 @@ class AppProvider extends ChangeNotifier {
     await _updateWidget();
   }
 
-  Future<void> updateTask(Task task) async {
+  Future<void> updateTask(Task task, {bool updateAll = false}) async {
+    // 更新当前任务
     await _db.updateTask(task);
+
+    if (task.recurrence != 'none' && updateAll && task.loopId != null) {
+      // 批量更新所有相关的循环任务
+      final allTasks = await _db.getAllTasks();
+
+      // 使用 loopId 来查找所有相关的循环任务实例，并且日期 >= 当前任务日期
+      final tasksToUpdate = allTasks.where((t) {
+        return t.loopId == task.loopId &&
+            t.id != task.id && // 排除当前任务，因为已经更新过了
+            !_isDateBefore(t.cplTime, task.cplTime); // 日期 >= 当前任务日期
+      }).toList();
+
+      // 更新所有相关的循环任务
+      for (final t in tasksToUpdate) {
+        final updatedTask = t.copyWith(
+          id: t.id, // 确保传递任务ID
+          title: task.title,
+          description: task.description,
+          isWord: task.isWord,
+          rewardPoints: task.rewardPoints,
+          priority: task.priority,
+          recurrence: task.recurrence,
+        );
+        await _db.updateTask(updatedTask);
+      }
+    }
+
+    // 无论是否更新全部，都生成未来的循环实例
+    // 这样可以确保即使修改了任务属性，未来的循环实例也能保持一致
     if (task.recurrence != 'none') {
       await _generateTaskRange(task);
     }
+
+    // 重新加载当前日期的任务，确保UI更新
     await loadTasksByDate(_selectedDate);
+    // 强制通知监听器，确保UI更新
+    notifyListeners();
     await _updateWidget();
   }
 

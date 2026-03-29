@@ -24,7 +24,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -125,12 +125,23 @@ class DatabaseService {
         )
       ''');
     }
+    if (oldVersion < 8) {
+      // 版本7升级到版本8：为tasks表添加loopId字段
+      try {
+        await db.execute(
+          'ALTER TABLE tasks ADD COLUMN loopId TEXT',
+        );
+      } catch (e) {
+        // 列可能已存在
+      }
+    }
   }
 
   Future _createDB(Database db, int version) async {
     await db.execute('''
       CREATE TABLE tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        loopId TEXT,
         title TEXT NOT NULL,
         description TEXT,
         isWord INTEGER NOT NULL DEFAULT 0,

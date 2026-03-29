@@ -168,11 +168,11 @@ class _TaskPageState extends State<TaskPage>
                       left:
                           (_tabController.animation?.value ?? 0) *
                           (MediaQuery.of(context).size.width - 32) /
-                          _tabs.length,
+                          (_tabs.length > 0 ? _tabs.length : 1),
                       child: Container(
                         width:
                             (MediaQuery.of(context).size.width - 32) /
-                            _tabs.length,
+                            (_tabs.length > 0 ? _tabs.length : 1),
                         height: 4,
                         decoration: BoxDecoration(
                           color: Theme.of(
@@ -886,6 +886,7 @@ class _TaskPageState extends State<TaskPage>
 
                           final newTask = Task(
                             id: task?.id,
+                            loopId: task?.loopId,
                             title: title,
                             description: descController.text.trim().isEmpty
                                 ? null
@@ -902,10 +903,65 @@ class _TaskPageState extends State<TaskPage>
 
                           if (task == null) {
                             await provider.addTask(newTask);
+                            if (mounted) Navigator.of(context).pop();
                           } else {
-                            await provider.updateTask(newTask);
+                            // 检查是否是循环任务且属性发生了变化
+                            if (task.recurrence != 'none' &&
+                                (task.title != newTask.title ||
+                                    task.description != newTask.description ||
+                                    task.isWord != newTask.isWord ||
+                                    task.rewardPoints != newTask.rewardPoints ||
+                                    task.priority != newTask.priority ||
+                                    task.recurrence != newTask.recurrence)) {
+                              // 显示选择对话框
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('更新循环任务'),
+                                  content: const Text('选择更新方式：'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      child: const Text('取消'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () async {
+                                        // 仅更新当天
+                                        await provider.updateTask(
+                                          newTask,
+                                          updateAll: false,
+                                        );
+                                        if (mounted) Navigator.of(ctx).pop();
+                                        if (mounted)
+                                          Navigator.of(context).pop();
+                                      },
+                                      child: const Text('仅更新当天'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () async {
+                                        // 更新全部
+                                        await provider.updateTask(
+                                          newTask,
+                                          updateAll: true,
+                                        );
+                                        if (mounted) Navigator.of(ctx).pop();
+                                        if (mounted)
+                                          Navigator.of(context).pop();
+                                      },
+                                      child: const Text('更新后续全部'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              // 非循环任务或属性未变化，直接更新
+                              await provider.updateTask(
+                                newTask,
+                                updateAll: false,
+                              );
+                              if (mounted) Navigator.of(context).pop();
+                            }
                           }
-                          if (mounted) Navigator.of(context).pop();
                         },
                         child: Text(task == null ? '保存任务' : '更新任务'),
                       ),

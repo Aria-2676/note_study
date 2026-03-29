@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class Task {
   final int? id;
+  final String? loopId; // 循环任务唯一标识符
   final String title;
   final String? description;
   final bool isWord;
@@ -16,6 +17,7 @@ class Task {
 
   Task({
     this.id,
+    this.loopId,
     required this.title,
     this.description,
     this.isWord = false,
@@ -31,6 +33,7 @@ class Task {
 
   Task copyWith({
     int? id,
+    String? loopId,
     String? title,
     String? description,
     bool? isWord,
@@ -45,6 +48,7 @@ class Task {
   }) {
     return Task(
       id: id,
+      loopId: loopId ?? this.loopId,
       title: title ?? this.title,
       description: description ?? this.description,
       isWord: isWord ?? this.isWord,
@@ -61,7 +65,7 @@ class Task {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'loopId': loopId,
       'title': title,
       'description': description,
       'isWord': isWord ? 1 : 0,
@@ -79,6 +83,7 @@ class Task {
   factory Task.fromMap(Map<String, dynamic> map) {
     return Task(
       id: map['id'] as int?,
+      loopId: map['loopId'] as String?,
       title: map['title'] as String,
       description: map['description'] as String?,
       isWord: (map['isWord'] as int? ?? 0) == 1,
