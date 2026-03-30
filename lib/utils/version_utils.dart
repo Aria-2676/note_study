@@ -2,10 +2,10 @@ import 'package:flutter/services.dart';
 import 'package:yaml/yaml.dart';
 
 class VersionUtils {
-  static String _version = '5.0.1';
+  static String _version = '';
   
   static Future<String> get version async {
-    if (_version == '5.0.1') {
+    if (_version.isEmpty) {
       await _loadVersion();
     }
     return _version;
@@ -18,6 +18,7 @@ class VersionUtils {
       _version = yamlMap['version'].toString().split('+')[0];
     } catch (e) {
       print('Error loading version: $e');
+      _version = '5.0.9'; //  fallback
     }
   }
 }
