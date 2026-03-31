@@ -17,13 +17,13 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
     super.initState();
     // 加载回收站任务
     final provider = Provider.of<AppProvider>(context, listen: false);
-    provider.loadRecycledTasks();
+    provider.task.loadRecycledTasks();
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
-    final recycledTasks = provider.recycledTasks;
+    final recycledTasks = provider.task.recycledTasks;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -137,7 +137,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
                     size: 20,
                     color: Colors.red,
                   ),
-                  onPressed: () => provider.deleteFromRecycle(recycledTask.id),
+                  onPressed: () => provider.task.deleteFromRecycle(recycledTask.id),
                 ),
               ],
             ),
@@ -241,8 +241,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
               onPressed: () async {
                 // 恢复为普通任务
                 final newTask = task.copyWith(recurrence: 'none');
-                await provider.deleteFromRecycle(recycledTask.id);
-                await provider.addTask(newTask);
+                await provider.task.deleteFromRecycle(recycledTask.id);
+                await provider.task.addTask(newTask);
                 // 先关闭对话框，再通知更新
                 Navigator.of(ctx).pop();
               },
@@ -251,7 +251,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
             TextButton(
               onPressed: () async {
                 // 恢复为循环任务
-                await provider.restoreTaskFromRecycle(recycledTask.id);
+                await provider.task.restoreTaskFromRecycle(recycledTask.id);
                 // 先关闭对话框，再通知更新
                 Navigator.of(ctx).pop();
               },
@@ -274,7 +274,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
             ),
             TextButton(
               onPressed: () async {
-                await provider.restoreTaskFromRecycle(recycledTask.id);
+                await provider.task.restoreTaskFromRecycle(recycledTask.id);
                 // 先关闭对话框，再通知更新
                 Navigator.of(ctx).pop();
               },
@@ -299,7 +299,7 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
           ),
           TextButton(
             onPressed: () {
-              provider.clearRecycleBin();
+              provider.task.clearRecycleBin();
               Navigator.of(ctx).pop();
             },
             child: const Text('清空'),

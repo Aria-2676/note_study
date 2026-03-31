@@ -1,16 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/task.dart';
 
-enum StatisticsView {
-  day,
-  threeDays,
-  week,
-  month,
-  year
-}
+enum StatisticsView { day, threeDays, week, month, year }
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage({super.key});
@@ -37,7 +30,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('统计', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+        const Text(
+          '统计',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
 
         _buildViewSelector(),
@@ -58,7 +54,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   List<Task> _getAllTasks(AppProvider provider) {
-    return provider.tasks;
+    return provider.task.tasks;
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -145,7 +141,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
               children: [
                 _buildStatItem('总任务', total.toString(), Colors.blue),
                 _buildStatItem('已完成', completed.toString(), Colors.green),
-                _buildStatItem('完成率', '${(rate * 100).toInt()}%', Colors.orange),
+                _buildStatItem(
+                  '完成率',
+                  '${(rate * 100).toInt()}%',
+                  Colors.orange,
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -174,10 +174,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
-          ),
+          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
         ),
       ],
     );
@@ -201,7 +198,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildTypeItem('普通任务', total - wordTasks - recurringTasks, Colors.blue),
+            _buildTypeItem(
+              '普通任务',
+              total - wordTasks - recurringTasks,
+              Colors.blue,
+            ),
             const SizedBox(height: 12),
             _buildTypeItem('单词任务', wordTasks, Colors.orange),
             const SizedBox(height: 12),
@@ -218,18 +219,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
         Container(
           width: 12,
           height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 16),
-          ),
-        ),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 16))),
         Text(
           count.toString(),
           style: TextStyle(
@@ -259,9 +252,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   Widget _buildDayChart(List<Task> tasks) {
     final today = DateTime.now();
-    final todayTasks = tasks.where((t) => _isSameDay(t.cplTime, today)).toList();
+    final todayTasks = tasks
+        .where((t) => _isSameDay(t.cplTime, today))
+        .toList();
     final todayCompleted = todayTasks.where((t) => t.isOK).length;
-    final rate = todayTasks.length == 0 ? 0.0 : todayCompleted / todayTasks.length;
+    final rate = todayTasks.length == 0
+        ? 0.0
+        : todayCompleted / todayTasks.length;
 
     return Card(
       child: Padding(
@@ -331,7 +328,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     for (int i = 2; i >= 0; i--) {
       final date = today.subtract(Duration(days: i));
-      final dayTasks = tasks.where((t) => _isSameDay(t.cplTime, date) && t.isOK).length;
+      final dayTasks = tasks
+          .where((t) => _isSameDay(t.cplTime, date) && t.isOK)
+          .length;
       stats.add(dayTasks);
       labels.add('${date.month}/${date.day}');
     }
@@ -379,7 +378,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         width: 40,
                         height: height,
                         decoration: BoxDecoration(
-                          color: index == 2 ? Colors.blue : Colors.blue.withOpacity(0.5),
+                          color: index == 2
+                              ? Colors.blue
+                              : Colors.blue.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -388,8 +389,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         labels[index],
                         style: TextStyle(
                           fontSize: 12,
-                          color: index == 2 ? Colors.blue : Colors.grey.shade600,
-                          fontWeight: index == 2 ? FontWeight.bold : FontWeight.normal,
+                          color: index == 2
+                              ? Colors.blue
+                              : Colors.grey.shade600,
+                          fontWeight: index == 2
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -451,7 +456,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         width: 24,
                         height: height,
                         decoration: BoxDecoration(
-                          color: index == 6 ? Colors.teal : Colors.teal.withOpacity(0.5),
+                          color: index == 6
+                              ? Colors.teal
+                              : Colors.teal.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -460,8 +467,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         days[dayIndex],
                         style: TextStyle(
                           fontSize: 12,
-                          color: index == 6 ? Colors.teal : Colors.grey.shade600,
-                          fontWeight: index == 6 ? FontWeight.bold : FontWeight.normal,
+                          color: index == 6
+                              ? Colors.teal
+                              : Colors.grey.shade600,
+                          fontWeight: index == 6
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -483,7 +494,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     for (int i = 0; i < daysInMonth; i++) {
       final date = DateTime(today.year, today.month, i + 1);
-      final dayTasks = tasks.where((t) => _isSameDay(t.cplTime, date) && t.isOK).length;
+      final dayTasks = tasks
+          .where((t) => _isSameDay(t.cplTime, date) && t.isOK)
+          .length;
       stats.add(dayTasks);
       labels.add('${i + 1}');
     }
@@ -519,19 +532,22 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (value > 0) Text(
-                        value.toString(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey.shade600,
+                      if (value > 0)
+                        Text(
+                          value.toString(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
                       if (value == 0) const SizedBox(height: 16),
                       Container(
                         width: 8,
                         height: height,
                         decoration: BoxDecoration(
-                          color: index == daysInMonth - 1 ? Colors.purple : Colors.purple.withOpacity(0.5),
+                          color: index == daysInMonth - 1
+                              ? Colors.purple
+                              : Colors.purple.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -540,8 +556,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         labels[index],
                         style: TextStyle(
                           fontSize: 10,
-                          color: index == daysInMonth - 1 ? Colors.purple : Colors.grey.shade600,
-                          fontWeight: index == daysInMonth - 1 ? FontWeight.bold : FontWeight.normal,
+                          color: index == daysInMonth - 1
+                              ? Colors.purple
+                              : Colors.grey.shade600,
+                          fontWeight: index == daysInMonth - 1
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -558,11 +578,30 @@ class _StatisticsPageState extends State<StatisticsPage> {
   Widget _buildYearChart(List<Task> tasks) {
     final today = DateTime.now();
     final stats = <int>[];
-    final labels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+    final labels = [
+      '1月',
+      '2月',
+      '3月',
+      '4月',
+      '5月',
+      '6月',
+      '7月',
+      '8月',
+      '9月',
+      '10月',
+      '11月',
+      '12月',
+    ];
 
     for (int i = 0; i < 12; i++) {
       final month = i + 1;
-      final monthTasks = tasks.where((t) => _isSameMonth(t.cplTime, DateTime(today.year, month, 1)) && t.isOK).length;
+      final monthTasks = tasks
+          .where(
+            (t) =>
+                _isSameMonth(t.cplTime, DateTime(today.year, month, 1)) &&
+                t.isOK,
+          )
+          .length;
       stats.add(monthTasks);
     }
 
@@ -597,19 +636,22 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (value > 0) Text(
-                        value.toString(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey.shade600,
+                      if (value > 0)
+                        Text(
+                          value.toString(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
                       if (value == 0) const SizedBox(height: 16),
                       Container(
                         width: 16,
                         height: height,
                         decoration: BoxDecoration(
-                          color: index == today.month - 1 ? Colors.orange : Colors.orange.withOpacity(0.5),
+                          color: index == today.month - 1
+                              ? Colors.orange
+                              : Colors.orange.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -618,8 +660,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         labels[index],
                         style: TextStyle(
                           fontSize: 10,
-                          color: index == today.month - 1 ? Colors.orange : Colors.grey.shade600,
-                          fontWeight: index == today.month - 1 ? FontWeight.bold : FontWeight.normal,
+                          color: index == today.month - 1
+                              ? Colors.orange
+                              : Colors.grey.shade600,
+                          fontWeight: index == today.month - 1
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -639,7 +685,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     for (int i = 6; i >= 0; i--) {
       final date = today.subtract(Duration(days: i));
-      final dayTasks = tasks.where((t) => _isSameDay(t.cplTime, date) && t.isOK).length;
+      final dayTasks = tasks
+          .where((t) => _isSameDay(t.cplTime, date) && t.isOK)
+          .length;
       stats.add(dayTasks);
     }
 

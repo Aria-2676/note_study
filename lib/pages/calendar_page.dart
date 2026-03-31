@@ -17,7 +17,7 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
-    final tasks = provider.tasks;
+    final tasks = provider.task.tasks;
 
     return Scaffold(
       appBar: AppBar(

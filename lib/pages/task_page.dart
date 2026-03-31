@@ -100,7 +100,7 @@ class _TaskPageState extends State<TaskPage>
 
   void _resetAndScroll() {
     final provider = context.read<AppProvider>();
-    provider.selectDate(DateTime.now());
+    provider.task.selectDate(DateTime.now());
     widget.scrollToToday();
   }
 
@@ -192,7 +192,10 @@ class _TaskPageState extends State<TaskPage>
           child: TabBarView(
             controller: _tabController,
             children: List.generate(_tabs.length, (index) {
-              final filteredTasks = _getFilteredTasks(provider.tasks, index);
+              final filteredTasks = _getFilteredTasks(
+                provider.task.tasks,
+                index,
+              );
 
               return filteredTasks.isEmpty
                   ? Center(
@@ -225,7 +228,7 @@ class _TaskPageState extends State<TaskPage>
       animation: _tabController,
       builder: (context, child) {
         final filteredTasks = _getFilteredTasks(
-          provider.tasks,
+          provider.task.tasks,
           _tabController.index,
         );
         final completed = filteredTasks.where((t) => t.isOK).length;
@@ -239,7 +242,7 @@ class _TaskPageState extends State<TaskPage>
   }
 
   Widget _buildTaskCard(BuildContext context, Task task, AppProvider provider) {
-    if (provider.isRichView) {
+    if (provider.settings.isRichView) {
       return _buildRichView(context, task, provider);
     }
     return _buildSimpleView(context, task, provider);
@@ -278,7 +281,7 @@ class _TaskPageState extends State<TaskPage>
             ),
             TextButton(
               onPressed: () {
-                provider.deleteTask(task.id!);
+                provider.task.deleteTask(task.id!);
                 Navigator.of(ctx).pop();
               },
               child: const Text('删除'),
@@ -300,14 +303,14 @@ class _TaskPageState extends State<TaskPage>
             ),
             TextButton(
               onPressed: () {
-                provider.deleteTask(task.id!, deleteAll: false);
+                provider.task.deleteTask(task.id!, deleteAll: false);
                 Navigator.of(ctx).pop();
               },
               child: const Text('仅删除当天'),
             ),
             TextButton(
               onPressed: () {
-                provider.deleteTask(task.id!, deleteAll: true);
+                provider.task.deleteTask(task.id!, deleteAll: true);
                 Navigator.of(ctx).pop();
               },
               child: const Text('删除全部'),
@@ -517,7 +520,7 @@ class _TaskPageState extends State<TaskPage>
           now.difference(_lastWarningTime!).inSeconds < 3) {
         return;
       }
-      final warn = await provider.completeTask(task);
+      final warn = await provider.task.completeTask(task);
       if (warn != null) {
         if (!mounted) return;
         _lastWarningTime = now;
@@ -526,7 +529,7 @@ class _TaskPageState extends State<TaskPage>
         _showCenterToast('获得 +${task.rewardPoints} 积分！', isWarning: false);
       }
     } else {
-      await provider.uncompleteTask(task);
+      await provider.task.uncompleteTask(task);
       if (task.rewardPoints > 0) {
         _showCenterToast('扣除 ${task.rewardPoints} 积分', isWarning: true);
       }
@@ -551,12 +554,14 @@ class _TaskPageState extends State<TaskPage>
         itemCount: 30,
         itemBuilder: (context, index) {
           final date = now.add(Duration(days: index - 7));
-          final selected = provider.selectedDates.any((d) => _sameDay(d, date));
+          final selected = provider.task.selectedDates.any(
+            (d) => _sameDay(d, date),
+          );
           final isToday = _sameDay(date, now);
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: GestureDetector(
-              onTap: () => provider.selectDate(date),
+              onTap: () => provider.task.selectDate(date),
               child: Container(
                 width: 58,
                 padding: const EdgeInsets.all(6),
@@ -902,7 +907,7 @@ class _TaskPageState extends State<TaskPage>
                           );
 
                           if (task == null) {
-                            await provider.addTask(newTask);
+                            await provider.task.addTask(newTask);
                             if (mounted) Navigator.of(context).pop();
                           } else {
                             // 检查是否是循环任务且属性发生了变化
@@ -927,7 +932,7 @@ class _TaskPageState extends State<TaskPage>
                                     TextButton(
                                       onPressed: () async {
                                         // 仅更新当天
-                                        await provider.updateTask(
+                                        await provider.task.updateTask(
                                           newTask,
                                           updateAll: false,
                                         );
@@ -940,7 +945,7 @@ class _TaskPageState extends State<TaskPage>
                                     TextButton(
                                       onPressed: () async {
                                         // 更新全部
-                                        await provider.updateTask(
+                                        await provider.task.updateTask(
                                           newTask,
                                           updateAll: true,
                                         );
@@ -955,7 +960,7 @@ class _TaskPageState extends State<TaskPage>
                               );
                             } else {
                               // 非循环任务或属性未变化，直接更新
-                              await provider.updateTask(
+                              await provider.task.updateTask(
                                 newTask,
                                 updateAll: false,
                               );

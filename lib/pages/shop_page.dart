@@ -14,7 +14,7 @@ class _ShopPageState extends State<ShopPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('积分商城'),
@@ -46,12 +46,16 @@ class _ShopPageState extends State<ShopPage> {
           ),
         ],
       ),
-      body: provider.shopItems.isEmpty
+      body: provider.shop.shopItems.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.shopping_bag_outlined, size: 64, color: Colors.grey.shade400),
+                  Icon(
+                    Icons.shopping_bag_outlined,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     '暂无商品，点击右下角添加',
@@ -62,9 +66,9 @@ class _ShopPageState extends State<ShopPage> {
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: provider.shopItems.length,
+              itemCount: provider.shop.shopItems.length,
               itemBuilder: (context, index) {
-                final item = provider.shopItems[index];
+                final item = provider.shop.shopItems[index];
                 return _buildShopItemCard(context, item, provider);
               },
             ),
@@ -75,9 +79,13 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
-  Widget _buildShopItemCard(BuildContext context, ShopItem item, AppProvider provider) {
+  Widget _buildShopItemCard(
+    BuildContext context,
+    ShopItem item,
+    AppProvider provider,
+  ) {
     final canAfford = provider.currentPoints >= item.price;
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -98,11 +106,7 @@ class _ShopPageState extends State<ShopPage> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: item.color.withOpacity(0.5)),
                       ),
-                      child: Icon(
-                        item.icon,
-                        color: item.color,
-                        size: 28,
-                      ),
+                      child: Icon(item.icon, color: item.color, size: 28),
                     ),
                     const SizedBox(width: 12),
                     Column(
@@ -117,9 +121,14 @@ class _ShopPageState extends State<ShopPage> {
                         ),
                         const SizedBox(height: 2),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: canAfford ? Colors.amber.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
+                            color: canAfford
+                                ? Colors.amber.withOpacity(0.2)
+                                : Colors.grey.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -134,7 +143,9 @@ class _ShopPageState extends State<ShopPage> {
                               Text(
                                 '${item.price}',
                                 style: TextStyle(
-                                  color: canAfford ? Colors.amber.shade700 : Colors.grey,
+                                  color: canAfford
+                                      ? Colors.amber.shade700
+                                      : Colors.grey,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
@@ -189,7 +200,11 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
-  Future<void> _purchaseItem(BuildContext context, ShopItem item, AppProvider provider) async {
+  Future<void> _purchaseItem(
+    BuildContext context,
+    ShopItem item,
+    AppProvider provider,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -217,14 +232,21 @@ class _ShopPageState extends State<ShopPage> {
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('成功兑换"${item.name}"！'), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text('成功兑换"${item.name}"！'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       }
     }
   }
 
-  Future<void> _confirmDeleteItem(BuildContext context, ShopItem item, AppProvider provider) async {
+  Future<void> _confirmDeleteItem(
+    BuildContext context,
+    ShopItem item,
+    AppProvider provider,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -245,7 +267,7 @@ class _ShopPageState extends State<ShopPage> {
     );
 
     if (confirmed == true) {
-      await provider.deleteShopItem(item.id!);
+      await provider.shop.deleteShopItem(item.id!);
     }
   }
 
@@ -267,188 +289,257 @@ class _ShopPageState extends State<ShopPage> {
     int selectedColor = item?.colorValue ?? 0xFF9C27B0;
 
     final iconOptions = [
-      'shopping_bag', 'card_giftcard', 'star', 'favorite', 'emoji_events',
-      'local_cafe', 'restaurant', 'cake', 'icecream', 'sports_esports',
-      'movie', 'music_note', 'book', 'sports', 'fitness_center',
-      'flight', 'beach_access', 'pets', 'shopping_cart', 'phone_iphone',
-      'laptop', 'headphones', 'watch', 'camera', 'lightbulb',
-      'eco', 'local_florist',
+      'shopping_bag',
+      'card_giftcard',
+      'star',
+      'favorite',
+      'emoji_events',
+      'local_cafe',
+      'restaurant',
+      'cake',
+      'icecream',
+      'sports_esports',
+      'movie',
+      'music_note',
+      'book',
+      'sports',
+      'fitness_center',
+      'flight',
+      'beach_access',
+      'pets',
+      'shopping_cart',
+      'phone_iphone',
+      'laptop',
+      'headphones',
+      'watch',
+      'camera',
+      'lightbulb',
+      'eco',
+      'local_florist',
     ];
 
     final colorOptions = [
-      0xFF9C27B0, 0xFF2196F3, 0xFF4CAF50, 0xFFFF9800,
-      0xFFE91E63, 0xFF00BCD4, 0xFFFF5722, 0xFF795548,
-      0xFF607D8B, 0xFFFFEB3B, 0xFF3F51B5, 0xFF009688,
+      0xFF9C27B0,
+      0xFF2196F3,
+      0xFF4CAF50,
+      0xFFFF9800,
+      0xFFE91E63,
+      0xFF00BCD4,
+      0xFFFF5722,
+      0xFF795548,
+      0xFF607D8B,
+      0xFFFFEB3B,
+      0xFF3F51B5,
+      0xFF009688,
     ];
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: 16, right: 16, top: 16,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item == null ? '添加商品' : '编辑商品',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: '商品名称',
-                      border: OutlineInputBorder(),
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      item == null ? '添加商品' : '编辑商品',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descController,
-                    decoration: const InputDecoration(
-                      labelText: '商品描述',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '商品名称',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: priceController,
-                    decoration: const InputDecoration(
-                      labelText: '所需积分',
-                      border: OutlineInputBorder(),
-                      hintText: '0',
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descController,
+                      decoration: const InputDecoration(
+                        labelText: '商品描述',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
                     ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('选择图标:', style: TextStyle(fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: iconOptions.map((iconName) {
-                      final isSelected = selectedIcon == iconName;
-                      return InkWell(
-                        onTap: () => setState(() => selectedIcon = iconName),
-                        child: Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            color: isSelected ? Color(selectedColor).withOpacity(0.2) : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected ? Color(selectedColor) : Colors.transparent,
-                              width: 2,
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: priceController,
+                      decoration: const InputDecoration(
+                        labelText: '所需积分',
+                        border: OutlineInputBorder(),
+                        hintText: '0',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '选择图标:',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: iconOptions.map((iconName) {
+                        final isSelected = selectedIcon == iconName;
+                        return InkWell(
+                          onTap: () => setState(() => selectedIcon = iconName),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Color(selectedColor).withOpacity(0.2)
+                                  : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Color(selectedColor)
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              _getIconData(iconName),
+                              color: isSelected
+                                  ? Color(selectedColor)
+                                  : Colors.grey.shade600,
                             ),
                           ),
-                          child: Icon(
-                            _getIconData(iconName),
-                            color: isSelected ? Color(selectedColor) : Colors.grey.shade600,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('选择颜色:', style: TextStyle(fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: colorOptions.map((color) {
-                      final isSelected = selectedColor == color;
-                      return InkWell(
-                        onTap: () => setState(() => selectedColor = color),
-                        child: Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            color: Color(color),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected ? Colors.white : Colors.transparent,
-                              width: 3,
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '选择颜色:',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: colorOptions.map((color) {
+                        final isSelected = selectedColor == color;
+                        return InkWell(
+                          onTap: () => setState(() => selectedColor = color),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Color(color),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: Color(color).withOpacity(0.5),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ]
+                                  : null,
                             ),
-                            boxShadow: isSelected
-                                ? [BoxShadow(color: Color(color).withOpacity(0.5), blurRadius: 8, spreadRadius: 2)]
+                            child: isSelected
+                                ? const Icon(Icons.check, color: Colors.white)
                                 : null,
                           ),
-                          child: isSelected ? const Icon(Icons.check, color: Colors.white) : null,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            color: Color(selectedColor).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Color(selectedColor).withOpacity(0.5)),
-                          ),
-                          child: Icon(
-                            _getIconData(selectedIcon),
-                            color: Color(selectedColor),
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('预览效果', style: TextStyle(fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final name = nameController.text.trim();
-                      final desc = descController.text.trim();
-                      final price = int.tryParse(priceController.text) ?? 0;
-
-                      if (name.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('商品名称不能为空')),
                         );
-                        return;
-                      }
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Color(selectedColor).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Color(selectedColor).withOpacity(0.5),
+                              ),
+                            ),
+                            child: Icon(
+                              _getIconData(selectedIcon),
+                              color: Color(selectedColor),
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            '预览效果',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final name = nameController.text.trim();
+                        final desc = descController.text.trim();
+                        final price = int.tryParse(priceController.text) ?? 0;
 
-                      final provider = context.read<AppProvider>();
-                      final newItem = ShopItem(
-                        id: item?.id,
-                        name: name,
-                        description: desc.isEmpty ? '暂无描述' : desc,
-                        price: price,
-                        iconName: selectedIcon,
-                        colorValue: selectedColor,
-                      );
+                        if (name.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('商品名称不能为空')),
+                          );
+                          return;
+                        }
 
-                      if (item == null) {
-                        await provider.addShopItem(newItem);
-                      } else {
-                        await provider.updateShopItem(newItem);
-                      }
+                        final provider = context.read<AppProvider>();
+                        final newItem = ShopItem(
+                          id: item?.id,
+                          name: name,
+                          description: desc.isEmpty ? '暂无描述' : desc,
+                          price: price,
+                          iconName: selectedIcon,
+                          colorValue: selectedColor,
+                        );
 
-                      if (context.mounted) Navigator.of(context).pop();
-                    },
-                    child: Text(item == null ? '添加商品' : '保存修改'),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                        if (item == null) {
+                          await provider.shop.addShopItem(newItem);
+                        } else {
+                          await provider.shop.updateShopItem(newItem);
+                        }
+
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                      child: Text(item == null ? '添加商品' : '保存修改'),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
-            ),
-          );
-        });
+            );
+          },
+        );
       },
     );
   }
