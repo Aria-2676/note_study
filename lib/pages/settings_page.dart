@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import '../providers/app_provider.dart';
+import '../providers/settings_provider.dart';
 import 'help_page.dart';
 import 'widget_guide_page.dart';
 import 'recycle_bin_page.dart';
 import '../utils/version_utils.dart';
+import '../services/data_migration_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -15,6 +19,9 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String _version = '5.0.1';
+  bool _isBasicSettingsExpanded = true;
+  bool _isDataSettingsExpanded = true;
+  bool _isMoreSettingsExpanded = false;
 
   @override
   void initState() {
@@ -79,7 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             Text('任务管家是一款帮助您管理日常任务的应用。'),
             SizedBox(height: 16),
-            Text('版本: V5.0.1', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text('版本: V$_version', style: TextStyle(fontWeight: FontWeight.w500)),
             SizedBox(height: 8),
             Text('功能亮点:', style: TextStyle(fontWeight: FontWeight.w500)),
             SizedBox(height: 4),
@@ -121,7 +128,7 @@ class _SettingsPageState extends State<SettingsPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Text('版本: V5.0.1'),
+            Text('版本: V$_version'),
           ],
         ),
         actions: [
@@ -295,20 +302,39 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 20),
           
-          _buildSectionTitle('基础设置'),
+          // 常用设置区域
           Card(
             child: Column(
               children: [
+                // 主题切换（常用设置）
                 ListTile(
-                  leading: const Icon(Icons.help_outline, color: Colors.orange),
-                  title: const Text('使用说明'),
-                  subtitle: const Text('了解如何使用任务管家'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+                  leading: const Icon(Icons.color_lens, color: Colors.purple),
+                  title: const Text('主题切换'),
+                  subtitle: const Text('切换亮色/暗色模式'),
+                  trailing: Switch(
+                    value: context.watch<AppProvider>().settings.isDark,
+                    onChanged: (value) {
+                      final provider = context.read<AppProvider>();
+                      provider.toggleTheme();
+                    },
+                  ),
                 ),
                 const Divider(height: 1),
+                // 任务视图模式（常用设置）
+                ListTile(
+                  leading: const Icon(Icons.view_list, color: Colors.blue),
+                  title: const Text('任务视图模式'),
+                  subtitle: const Text('切换任务显示方式'),
+                  trailing: Switch(
+                    value: context.watch<AppProvider>().settings.taskViewMode == TaskViewMode.rich,
+                    onChanged: (value) {
+                      final provider = context.read<AppProvider>();
+                      provider.toggleTaskViewMode();
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                // 桌面小组件（常用设置）
                 ListTile(
                   leading: const Icon(Icons.widgets, color: Colors.indigo),
                   title: const Text('桌面小组件'),
@@ -318,52 +344,131 @@ class _SettingsPageState extends State<SettingsPage> {
                     MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
                   ),
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.orange),
-                  title: const Text('任务回收站'),
-                  subtitle: const Text('查看和恢复最近删除的任务'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
-                ),
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          _buildSectionTitle('数据管理'),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text('清除缓存'),
-              subtitle: const Text('删除所有数据并重置'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _clearCache(context),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          _buildSectionTitle('更多设置'),
+          // 可折叠设置区域
           Card(
             child: Column(
               children: [
+                // 基础设置折叠项
                 ListTile(
-                  leading: const Icon(Icons.feedback_outlined, color: Colors.purple),
-                  title: const Text('反馈与支持'),
-                  subtitle: const Text('意见反馈、问题报告、分享应用'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showFeedbackSupportPage(context),
+                  leading: const Icon(Icons.settings, color: Colors.blue),
+                  title: const Text('基础设置'),
+                  trailing: Icon(
+                    _isBasicSettingsExpanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _isBasicSettingsExpanded = !_isBasicSettingsExpanded;
+                    });
+                  },
                 ),
+                if (_isBasicSettingsExpanded)
+                  Column(
+                    children: [
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.help_outline, color: Colors.orange),
+                        title: const Text('使用说明'),
+                        subtitle: const Text('了解如何使用任务管家'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(
+                          context,
+                        ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline, color: Colors.orange),
+                        title: const Text('任务回收站'),
+                        subtitle: const Text('查看和恢复最近删除的任务'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(
+                          context,
+                        ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
+                      ),
+                    ],
+                  ),
                 const Divider(height: 1),
+                // 数据管理折叠项
                 ListTile(
-                  leading: const Icon(Icons.info_outline, color: Colors.blue),
-                  title: const Text('关于'),
-                  subtitle: const Text('版本信息、检查更新'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showAboutPage(context),
+                  leading: const Icon(Icons.storage, color: Colors.green),
+                  title: const Text('数据管理'),
+                  trailing: Icon(
+                    _isDataSettingsExpanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _isDataSettingsExpanded = !_isDataSettingsExpanded;
+                    });
+                  },
                 ),
+                if (_isDataSettingsExpanded)
+                  Column(
+                    children: [
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.upload, color: Colors.blue),
+                        title: const Text('导出数据'),
+                        subtitle: const Text('将所有数据导出为JSON文件'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _exportData(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.download, color: Colors.green),
+                        title: const Text('导入数据'),
+                        subtitle: const Text('从JSON文件导入数据'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _importData(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.delete_forever, color: Colors.red),
+                        title: const Text('清除缓存'),
+                        subtitle: const Text('删除所有数据并重置'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _clearCache(context),
+                      ),
+                    ],
+                  ),
+                const Divider(height: 1),
+                // 更多设置折叠项
+                ListTile(
+                  leading: const Icon(Icons.more_horiz, color: Colors.grey),
+                  title: const Text('更多设置'),
+                  trailing: Icon(
+                    _isMoreSettingsExpanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _isMoreSettingsExpanded = !_isMoreSettingsExpanded;
+                    });
+                  },
+                ),
+                if (_isMoreSettingsExpanded)
+                  Column(
+                    children: [
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.feedback_outlined, color: Colors.purple),
+                        title: const Text('反馈与支持'),
+                        subtitle: const Text('意见反馈、问题报告、分享应用'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _showFeedbackSupportPage(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.info_outline, color: Colors.blue),
+                        title: const Text('关于'),
+                        subtitle: const Text('版本信息、检查更新'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _showAboutPage(context),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -501,5 +606,143 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     );
+  }
+
+  // 导出数据
+  Future<void> _exportData(BuildContext context) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
+    // 显示加载对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导出数据'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在导出数据...'),
+          ],
+        ),
+      ),
+    );
+
+    // 执行导出
+    final filePath = await DataMigrationService.exportData();
+    
+    // 关闭加载对话框
+    Navigator.of(context).pop();
+
+    if (filePath != null) {
+      // 显示成功消息
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('数据导出成功！文件保存在：$filePath'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      // 显示失败消息
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('数据导出失败，请重试'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // 导入数据
+  Future<void> _importData(BuildContext context) async {
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认导入数据'),
+        content: const Text('导入数据将覆盖现有数据，此操作不可恢复！'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
+    // 显示加载对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导入数据'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在导入数据...'),
+          ],
+        ),
+      ),
+    );
+
+    // 执行导入
+    final filePath = await DataMigrationService.getExportFilePath();
+    if (filePath == null) {
+      Navigator.of(context).pop();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('未找到导出文件'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final success = await DataMigrationService.importData(filePath);
+    
+    // 关闭加载对话框
+    Navigator.of(context).pop();
+
+    if (success) {
+      // 显示成功消息
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('数据导入成功！应用将重启以应用更改'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // 重启应用
+      Future.delayed(const Duration(seconds: 2), () {
+        // 这里可以实现应用重启逻辑
+        // 暂时只刷新当前页面
+        Navigator.of(context).pop();
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+          builder: (_) => const SettingsPage(),
+        ));
+      });
+    } else {
+      // 显示失败消息
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('数据导入失败，请检查文件格式'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
