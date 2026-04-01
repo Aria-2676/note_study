@@ -568,6 +568,48 @@ class DatabaseService {
     );
   }
 
+  // ========== Data Migration Operations ==========
+
+  // 插入任务（用于数据导入）
+  Future<void> insertTask(Task task) async {
+    final db = await database;
+    await db.insert('tasks', task.toMap());
+  }
+
+  // 插入回收站任务（用于数据导入）
+  Future<void> insertRecycledTask(RecycledTask task) async {
+    final db = await database;
+    await db.insert('recycled_tasks', task.toMap());
+  }
+
+  // 插入商城商品（用于数据导入）
+  Future<void> insertShopItem(ShopItem item) async {
+    final db = await database;
+    await db.insert('shop_items', item.toMap());
+  }
+
+  // 插入已购买商品（用于数据导入）
+  Future<void> insertPurchasedItem(PurchasedItem item) async {
+    final db = await database;
+    await db.insert('purchased_items', item.toMap());
+  }
+
+  // 插入设置（用于数据导入）
+  Future<void> insertSetting(String key, String value) async {
+    final db = await database;
+    await db.insert('settings', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // 获取所有已购买商品（用于数据导出）
+  Future<List<PurchasedItem>> getPurchasedItems() async {
+    final db = await database;
+    final result = await db.query('purchased_items', orderBy: 'purchasedAt DESC');
+    return result.map((m) => PurchasedItem.fromMap(m)).toList();
+  }
+
   // ========== Settings Operations ==========
 
   Future<Map<String, String>> getSettings() async {
