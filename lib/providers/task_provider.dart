@@ -135,6 +135,17 @@ class TaskProvider extends ChangeNotifier {
     return 'loop_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
   }
 
+  /// 创建循环任务的新实例，重置状态字段
+  Task _createRecurringTaskInstance(Task task, DateTime newCplTime) {
+    return task.copyWith(
+      id: null,
+      cplTime: newCplTime,
+      isOK: false,
+      completedAt: null,
+      isDeducted: false,
+    );
+  }
+
   Future<void> _generateTaskRange(Task task) async {
     final now = DateTime.now();
     final rangeEnd = now.add(const Duration(days: 15));
@@ -148,13 +159,7 @@ class TaskProvider extends ChangeNotifier {
     while (!next.isAfter(rangeEnd)) {
       if (task.recurrence == 'daily') {
         await _insertTaskIfNotExists(
-          task.copyWith(
-            id: null,
-            cplTime: next,
-            isOK: false,
-            completedAt: null,
-            isDeducted: false,
-          ),
+          _createRecurringTaskInstance(task, next),
         );
         next = next.add(const Duration(days: 1));
         continue;
@@ -167,13 +172,7 @@ class TaskProvider extends ChangeNotifier {
           break;
         }
         await _insertTaskIfNotExists(
-          task.copyWith(
-            id: null,
-            cplTime: next,
-            isOK: false,
-            completedAt: null,
-            isDeducted: false,
-          ),
+          _createRecurringTaskInstance(task, next),
         );
         next = next.add(const Duration(days: 7));
         continue;
@@ -186,13 +185,7 @@ class TaskProvider extends ChangeNotifier {
 
         if (!monthlyDate.isAfter(rangeEnd)) {
           await _insertTaskIfNotExists(
-            task.copyWith(
-              id: null,
-              cplTime: monthlyDate,
-              isOK: false,
-              completedAt: null,
-              isDeducted: false,
-            ),
+            _createRecurringTaskInstance(task, monthlyDate),
           );
         }
 
