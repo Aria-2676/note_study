@@ -297,38 +297,12 @@ class _SettingsPageState extends State<SettingsPage> {
           
           _buildSectionTitle('基础设置'),
           Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.help_outline, color: Colors.orange),
-                  title: const Text('使用说明'),
-                  subtitle: const Text('了解如何使用任务管家'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.widgets, color: Colors.indigo),
-                  title: const Text('桌面小组件'),
-                  subtitle: const Text('添加小组件到桌面，快速查看任务'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.orange),
-                  title: const Text('任务回收站'),
-                  subtitle: const Text('查看和恢复最近删除的任务'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
-                ),
-              ],
+            child: ListTile(
+              leading: const Icon(Icons.settings, color: Colors.blue),
+              title: const Text('基础设置'),
+              subtitle: const Text('使用说明、桌面小组件、任务回收站'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showBasicSettingsPage(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -492,6 +466,59 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: const Text('任务管家 V5 - 带积分系统的任务管理应用'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => _showAboutDialog(context),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showBasicSettingsPage(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: const Text('基础设置'),
+            centerTitle: true,
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.help_outline, color: Colors.orange),
+                      title: const Text('使用说明'),
+                      subtitle: const Text('了解如何使用任务管家'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.widgets, color: Colors.indigo),
+                      title: const Text('桌面小组件'),
+                      subtitle: const Text('添加小组件到桌面，快速查看任务'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.delete_outline, color: Colors.orange),
+                      title: const Text('任务回收站'),
+                      subtitle: const Text('查看和恢复最近删除的任务'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
                     ),
                   ],
                 ),

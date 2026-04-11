@@ -5,6 +5,7 @@ import '../models/shop_item.dart';
 import '../models/user_points.dart';
 import '../models/purchased_item.dart';
 import '../models/recycled_task.dart';
+import '../models/lottery_record.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -24,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 10,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -128,12 +129,37 @@ class DatabaseService {
     if (oldVersion < 8) {
       // 版本7升级到版本8：为tasks表添加loopId字段
       try {
-        await db.execute(
-          'ALTER TABLE tasks ADD COLUMN loopId TEXT',
-        );
+        await db.execute('ALTER TABLE tasks ADD COLUMN loopId TEXT');
       } catch (e) {
         // 列可能已存在
       }
+    }
+    if (oldVersion < 9) {
+      // 版本8升级到版本9：添加刮刮乐相关表
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS custom_prize_pool (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          value INTEGER NOT NULL,
+          probability REAL NOT NULL DEFAULT 0.0
+        )
+      ''');
+    }
+    if (oldVersion < 10) {
+      // 版本9升级到版本10：添加抽奖记录表
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS lottery_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId TEXT NOT NULL,
+          drawTime TEXT NOT NULL,
+          prizeName TEXT NOT NULL,
+          prizeType TEXT NOT NULL,
+          prizeValue INTEGER NOT NULL,
+          costPoints INTEGER NOT NULL,
+          createdAt TEXT NOT NULL
+        )
+      ''');
     }
   }
 
@@ -221,6 +247,31 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         priority TEXT NOT NULL DEFAULT 'white',
         deleted_at TEXT NOT NULL
+      )
+    ''');
+
+    // 创建自定义奖品池表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS custom_prize_pool (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        value INTEGER NOT NULL,
+        probability REAL NOT NULL DEFAULT 0.0
+      )
+    ''');
+
+    // 创建抽奖记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS lottery_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL,
+        drawTime TEXT NOT NULL,
+        prizeName TEXT NOT NULL,
+        prizeType TEXT NOT NULL,
+        prizeValue INTEGER NOT NULL,
+        costPoints INTEGER NOT NULL,
+        createdAt TEXT NOT NULL
       )
     ''');
   }
@@ -557,9 +608,13 @@ class DatabaseService {
 
   Future<void> clearAllData() async {
     final db = await database;
+    // 删除所有表中的数据
     await db.delete('tasks');
     await db.delete('shop_items');
     await db.delete('purchased_items');
+    await db.delete('recycled_tasks');
+    await db.delete('settings');
+    // 重置积分表
     await db.update(
       'user_points',
       {'points': 0, 'updatedAt': DateTime.now().toIso8601String()},
@@ -588,5 +643,96 @@ class DatabaseService {
         'value': entry.value,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
+  }
+
+  // ========== Lottery Operations ==========
+
+  Future<void> saveCustomPrizePool(List<dynamic> prizes) async {
+    final db = await database;
+    await db.delete('custom_prize_pool');
+    for (final prize in prizes) {
+      await db.insert('custom_prize_pool', prize.toMap());
+    }
+  }
+
+  Future<List<dynamic>> getCustomPrizePool() async {
+    final db = await database;
+    final result = await db.query('custom_prize_pool');
+    return result.map((row) {
+      return {
+        'id': row['id'] as String,
+        'name': row['name'] as String,
+        'type': row['type'] as String,
+        'value': row['value'] as int,
+        'probability': (row['probability'] as num).toDouble(),
+      };
+    }).toList();
+  }
+
+  // ========== Lottery Record Operations ==========
+
+  Future<void> insertLotteryRecord(LotteryRecord record) async {
+    final db = await database;
+    await db.insert('lottery_records', record.toMap());
+  }
+
+  Future<List<LotteryRecord>> getLotteryRecords({String? userId}) async {
+    final db = await database;
+    List<Map<String, dynamic>> result;
+
+    if (userId != null) {
+      result = await db.query(
+        'lottery_records',
+        where: 'userId = ?',
+        whereArgs: [userId],
+        orderBy: 'drawTime DESC',
+      );
+    } else {
+      result = await db.query('lottery_records', orderBy: 'drawTime DESC');
+    }
+
+    return result.map((row) => LotteryRecord.fromMap(row)).toList();
+  }
+
+  Future<LotteryRecord?> getLotteryRecordById(int id) async {
+    final db = await database;
+    final result = await db.query(
+      'lottery_records',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (result.isEmpty) {
+      return null;
+    }
+
+    return LotteryRecord.fromMap(result.first);
+  }
+
+  Future<int> updateLotteryRecord(LotteryRecord record) async {
+    final db = await database;
+    return await db.update(
+      'lottery_records',
+      record.toMap(),
+      where: 'id = ?',
+      whereArgs: [record.id],
+    );
+  }
+
+  Future<int> deleteLotteryRecord(int id) async {
+    final db = await database;
+    return await db.delete('lottery_records', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteAllLotteryRecords({String? userId}) async {
+    final db = await database;
+    if (userId != null) {
+      return await db.delete(
+        'lottery_records',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+    }
+    return await db.delete('lottery_records');
   }
 }

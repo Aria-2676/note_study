@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
 class Task {
-  final int? id;
+  final int? id;//任务唯一id，识别不同的任务
   final String? loopId; // 循环任务唯一标识符
-  final String title;
-  final String? description;
-  final bool isWord;
-  final bool isOK;
-  final DateTime cplTime;
-  final String recurrence; // none/daily/weekly/monthly
-  final DateTime? completedAt;
+  final String title;//任务标题，可重复，由用户自己查重
+  final String? description;//描述，描述任务具体内容
+  final bool isWord;//是否为单词任务
+  final bool isOK;//是否完成，触发完成动画切换
+  final DateTime cplTime;//计划完成时间
+  final String recurrence; // none/daily/weekly/monthly，后续可升级为更自由的循环任务
+  final DateTime? completedAt;//记录最后一次完成时间，可用于数据统计
   final int rewardPoints; // 完成奖励积分
   final bool isDeducted; // 是否已扣除积分（用于未完成时只扣一次）
   final DateTime createdAt; // 任务创建时间

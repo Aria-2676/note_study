@@ -149,13 +149,13 @@ class AppProvider extends ChangeNotifier {
 
   // 初始化引导任务（首次使用）
   Future<void> _initTutorialTasks() async {
-    // 检查是否已存在任务
-    final todayTasks = await _db.getTasksByDate(DateTime.now());
-    if (todayTasks.isNotEmpty) return;
-
     // 检查是否已经完成过引导
     final settings = await _db.getSettings();
     if (settings['tutorialCompleted'] == 'true') return;
+
+    // 检查是否已存在任务
+    final todayTasks = await _db.getTasksByDate(DateTime.now());
+    if (todayTasks.isNotEmpty) return;
 
     // 添加引导任务
     final tutorialTasks = [
@@ -219,8 +219,8 @@ class AppProvider extends ChangeNotifier {
       await _db.createTask(task);
     }
 
-    // 标记引导已完成（用户完成所有引导任务后）
-    // 这里不立即标记，等用户完成所有引导任务后再标记
+    // 立即标记引导已完成，防止重复添加
+    await _db.saveSettings({...settings, 'tutorialCompleted': 'true'});
   }
 
   // 初始化固定商城商品
