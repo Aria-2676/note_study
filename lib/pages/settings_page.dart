@@ -4,6 +4,7 @@ import '../providers/app_provider.dart';
 import 'help_page.dart';
 import 'widget_guide_page.dart';
 import 'recycle_bin_page.dart';
+import '../services/database_service.dart';
 import '../utils/version_utils.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -263,6 +264,262 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _exportDatabase(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.upload, color: Colors.green),
+            SizedBox(width: 8),
+            Text('确认备份'),
+          ],
+        ),
+        content: const Text('确定要创建当前数据的备份吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('确认备份'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final result = await DatabaseService.instance.exportDatabase();
+    if (result != null) {
+      if (context.mounted) {
+        await _showBackupSuccessDialog(context, result);
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('导出失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showBackupSuccessDialog(BuildContext context, String backupPath) async {
+    final fileName = backupPath.split('/').last;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('备份成功'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('备份文件: $fileName'),
+            const SizedBox(height: 8),
+            const Text('存储位置: noteapp_backups 文件夹'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _shareBackupFile(context, backupPath);
+            },
+            child: const Text('分享备份'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _shareBackupFile(BuildContext context, String backupPath) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('功能开发中'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('分享备份文件功能尚未完全实现。'),
+            SizedBox(height: 8),
+            Text('当前备份文件已保存在设备中，您可以：'),
+            SizedBox(height: 4),
+            Text('• 通过文件管理器手动分享'),
+            Text('• 复制备份文件到其他设备'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBackupListDialog(BuildContext context) async {
+    final backups = await DatabaseService.instance.getBackupFiles();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.backup, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('备份文件列表'),
+          ],
+        ),
+        content: backups.isEmpty
+            ? const Text('暂无备份文件')
+            : Container(
+                width: double.maxFinite,
+                height: 300,
+                child: ListView.builder(
+                  itemCount: backups.length,
+                  itemBuilder: (_, index) {
+                    final path = backups[index];
+                    final fileName = path.split('/').last;
+                    return ListTile(
+                      title: Text(fileName),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.share, color: Colors.blue),
+                            onPressed: () => _shareBackupFile(ctx, path),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.restore, color: Colors.green),
+                            onPressed: () => _restoreBackup(ctx, path),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restoreBackup(BuildContext context, String backupPath) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('确认恢复'),
+          ],
+        ),
+        content: const Text('恢复备份将覆盖当前所有数据，此操作不可撤销！'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('确认恢复'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await DatabaseService.instance.importDatabase(backupPath);
+    if (success) {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('备份恢复成功！应用将重启'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.of(context).pop();
+        });
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('恢复失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showBackupPathSettings(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.folder, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('备份存储位置'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('备份存储位置设置功能尚未完全实现。'),
+            SizedBox(height: 8),
+            Text('当前备份文件默认保存在：'),
+            SizedBox(height: 4),
+            Text('• Android: 应用私有目录/Download/noteapp_backups'),
+            Text('• iOS: 应用文档目录'),
+            Text('• Web: 浏览器本地存储'),
+            SizedBox(height: 8),
+            Text('注：当前所有位置在删除App后都会被清除。'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildShareOption(IconData icon, String label, Color color) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -309,12 +566,40 @@ class _SettingsPageState extends State<SettingsPage> {
 
           _buildSectionTitle('数据管理'),
           Card(
-            child: ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text('清除缓存'),
-              subtitle: const Text('删除所有数据并重置'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _clearCache(context),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.upload, color: Colors.green),
+                  title: const Text('导出备份'),
+                  subtitle: const Text('将数据备份到设置的目录'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _exportDatabase(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.download, color: Colors.blue),
+                  title: const Text('恢复备份'),
+                  subtitle: const Text('从备份文件恢复数据'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showBackupListDialog(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.folder, color: Colors.orange),
+                  title: const Text('备份存储位置'),
+                  subtitle: const Text('设置备份文件保存位置'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showBackupPathSettings(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: const Text('清除缓存'),
+                  subtitle: const Text('删除所有数据并重置'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _clearCache(context),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),

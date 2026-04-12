@@ -1,5 +1,9 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../models/shop_item.dart';
 import '../models/user_points.dart';
@@ -11,12 +15,14 @@ import '../models/prize_item.dart';
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   static Database? _database;
+  static const String _dbName = 'v5_tasks.db';
+  static const String _backupPathKey = 'backup_storage_path';
 
   DatabaseService._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('v5_tasks.db');
+    _database = await _initDB(_dbName);
     return _database!;
   }
 
@@ -24,155 +30,7 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(
-      path,
-      version: 11,
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
-    );
-  }
-
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      // 版本1升级到版本2：添加purchased_items表
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS purchased_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          shopItemId INTEGER NOT NULL,
-          name TEXT NOT NULL,
-          description TEXT NOT NULL,
-          price INTEGER NOT NULL,
-          purchasedAt TEXT NOT NULL
-        )
-      ''');
-    }
-    if (oldVersion < 3) {
-      // 版本2升级到版本3：为shop_items和purchased_items添加外观字段
-      try {
-        await db.execute(
-          'ALTER TABLE shop_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-      try {
-        await db.execute(
-          'ALTER TABLE shop_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-      try {
-        await db.execute(
-          'ALTER TABLE purchased_items ADD COLUMN iconName TEXT DEFAULT "shopping_bag"',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-      try {
-        await db.execute(
-          'ALTER TABLE purchased_items ADD COLUMN colorValue INTEGER DEFAULT ${0xFF9C27B0}',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-    }
-    if (oldVersion < 4) {
-      // 版本3升级到版本4：添加设置表
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS settings (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        )
-      ''');
-    }
-    if (oldVersion < 5) {
-      // 版本4升级到版本5：为tasks表添加createdAt字段
-      try {
-        await db.execute(
-          'ALTER TABLE tasks ADD COLUMN createdAt TEXT DEFAULT NULL',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-    }
-    if (oldVersion < 6) {
-      // 版本5升级到版本6：为tasks表添加priority字段
-      try {
-        await db.execute(
-          'ALTER TABLE tasks ADD COLUMN priority TEXT DEFAULT "white"',
-        );
-      } catch (e) {
-        // 列可能已存在
-      }
-    }
-    if (oldVersion < 7) {
-      // 版本6升级到版本7：添加recycled_tasks表
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS recycled_tasks (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          task_id INTEGER,
-          title TEXT NOT NULL,
-          description TEXT,
-          is_word INTEGER NOT NULL DEFAULT 0,
-          is_ok INTEGER NOT NULL DEFAULT 0,
-          cpl_time TEXT NOT NULL,
-          recurrence TEXT NOT NULL DEFAULT 'none',
-          completed_at TEXT,
-          reward_points INTEGER NOT NULL DEFAULT 0,
-          is_deducted INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          priority TEXT NOT NULL DEFAULT 'white',
-          deleted_at TEXT NOT NULL
-        )
-      ''');
-    }
-    if (oldVersion < 8) {
-      // 版本7升级到版本8：为tasks表添加loopId字段
-      try {
-        await db.execute('ALTER TABLE tasks ADD COLUMN loopId TEXT');
-      } catch (e) {
-        // 列可能已存在
-      }
-    }
-    if (oldVersion < 9) {
-      // 版本8升级到版本9：添加刮刮乐相关表
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS custom_prize_pool (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL,
-          value INTEGER NOT NULL,
-          probability REAL NOT NULL DEFAULT 0.0
-        )
-      ''');
-    }
-    if (oldVersion < 10) {
-      // 版本9升级到版本10：确保抽奖记录表存在（已在_createDB中定义）
-      // 此处仅处理升级时的增量变更
-    }
-    if (oldVersion < 11) {
-      // 版本10升级到版本11：移除userId字段（SQLite不支持DROP COLUMN，需重建表）
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS lottery_records_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          drawTime TEXT NOT NULL,
-          prizeName TEXT NOT NULL,
-          prizeType TEXT NOT NULL,
-          prizeValue INTEGER NOT NULL,
-          costPoints INTEGER NOT NULL,
-          createdAt TEXT NOT NULL
-        )
-      ''');
-      await db.execute('''
-        INSERT INTO lottery_records_new (id, drawTime, prizeName, prizeType, prizeValue, costPoints, createdAt)
-        SELECT id, drawTime, prizeName, prizeType, prizeValue, costPoints, createdAt FROM lottery_records
-      ''');
-      await db.execute('DROP TABLE lottery_records');
-      await db.execute(
-        'ALTER TABLE lottery_records_new RENAME TO lottery_records',
-      );
-    }
+    return await openDatabase(path, version: 1, onCreate: _createDB);
   }
 
   Future _createDB(Database db, int version) async {
@@ -227,14 +85,6 @@ class DatabaseService {
       )
     ''');
 
-    // 初始化用户积分
-    await db.insert('user_points', {
-      'id': 1,
-      'points': 0,
-      'updatedAt': DateTime.now().toIso8601String(),
-    });
-
-    // 创建设置表
     await db.execute('''
       CREATE TABLE settings (
         key TEXT PRIMARY KEY,
@@ -242,7 +92,6 @@ class DatabaseService {
       )
     ''');
 
-    // 创建回收站表
     await db.execute('''
       CREATE TABLE recycled_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -262,9 +111,8 @@ class DatabaseService {
       )
     ''');
 
-    // 创建自定义奖品池表
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS custom_prize_pool (
+      CREATE TABLE custom_prize_pool (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
@@ -273,9 +121,8 @@ class DatabaseService {
       )
     ''');
 
-    // 创建抽奖记录表
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS lottery_records (
+      CREATE TABLE lottery_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         drawTime TEXT NOT NULL,
         prizeName TEXT NOT NULL,
@@ -285,6 +132,14 @@ class DatabaseService {
         createdAt TEXT NOT NULL
       )
     ''');
+
+    await db.insert('user_points', {
+      'id': 1,
+      'points': 0,
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+
+    print('✅ Database version 1.0 created successfully');
   }
 
   // ========== Task Operations ==========
@@ -731,5 +586,161 @@ class DatabaseService {
   Future<int> deleteAllLotteryRecords() async {
     final db = await database;
     return await db.delete('lottery_records');
+  }
+
+  // ========== Backup & Restore Operations ==========
+
+  Future<String?> exportDatabase({String? customPath}) async {
+    try {
+      final dbPath = await getDatabasesPath();
+      final sourcePath = join(dbPath, _dbName);
+      final sourceFile = File(sourcePath);
+
+      if (!await sourceFile.exists()) {
+        return null;
+      }
+
+      final backupDir = await _getBackupDirectory(customPath);
+      final timestamp = DateTime.now().toIso8601String().replaceAll(
+        RegExp(r'[:-]'),
+        '_',
+      );
+      final backupName = 'noteapp_backup_$timestamp.db';
+      final destPath = join(backupDir.path, backupName);
+
+      await sourceFile.copy(destPath);
+      return destPath;
+    } catch (e) {
+      print('Failed to export database: $e');
+      return null;
+    }
+  }
+
+  Future<bool> importDatabase(String backupPath) async {
+    try {
+      final backupFile = File(backupPath);
+      if (!await backupFile.exists()) {
+        return false;
+      }
+
+      await _closeDatabase();
+
+      final dbPath = await getDatabasesPath();
+      final destPath = join(dbPath, _dbName);
+
+      await backupFile.copy(destPath);
+
+      _database = null;
+      await database;
+
+      return true;
+    } catch (e) {
+      print('Failed to import database: $e');
+      return false;
+    }
+  }
+
+  Future<List<String>> getBackupFiles({String? customPath}) async {
+    try {
+      final backupDir = await _getBackupDirectory(customPath);
+      if (!await backupDir.exists()) {
+        return [];
+      }
+
+      final files = await backupDir.list().where((entity) {
+        return entity is File &&
+            entity.path.endsWith('.db') &&
+            entity.path.contains('noteapp_backup');
+      }).toList();
+
+      files.sort((a, b) => b.path.compareTo(a.path));
+      return files.map((f) => f.path).toList();
+    } catch (e) {
+      print('Failed to get backup files: $e');
+      return [];
+    }
+  }
+
+  Future<String?> getStoredBackupPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_backupPathKey);
+  }
+
+  Future<void> setStoredBackupPath(String? path) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (path != null && path.isNotEmpty) {
+      await prefs.setString(_backupPathKey, path);
+    } else {
+      await prefs.remove(_backupPathKey);
+    }
+  }
+
+  Future<List<Map<String, String>>> getAvailableStorageLocations() async {
+    final locations = <Map<String, String>>[];
+
+    try {
+      final appDocs = await getApplicationDocumentsDirectory();
+      locations.add({
+        'name': '应用文档目录',
+        'path': appDocs.path,
+        'description': kIsWeb ? '浏览器存储' : '随App删除',
+      });
+    } catch (e) {
+      print('Error getting app documents: $e');
+    }
+
+    if (!kIsWeb) {
+      try {
+        final externalStorage = await getExternalStorageDirectory();
+        if (externalStorage != null) {
+          final appDownloads = join(externalStorage.path, 'Download');
+          locations.add({
+            'name': '应用下载目录',
+            'path': appDownloads,
+            'description': '随App删除',
+          });
+        }
+      } catch (e) {
+        print('Error getting external storage: $e');
+      }
+    }
+
+    return locations;
+  }
+
+  Future<Directory> _getBackupDirectory(String? customPath) async {
+    String? path = customPath;
+
+    if (path == null || path.isEmpty) {
+      path = await getStoredBackupPath();
+    }
+
+    Directory dir;
+
+    if (path != null && path.isNotEmpty) {
+      dir = Directory(path);
+    } else {
+      if (!kIsWeb) {
+        try {
+          final externalStorage = await getExternalStorageDirectory();
+          dir = externalStorage ?? await getApplicationDocumentsDirectory();
+        } catch (e) {
+          dir = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+    }
+
+    final backupDir = Directory(join(dir.path, 'noteapp_backups'));
+    await backupDir.create(recursive: true);
+    return backupDir;
+  }
+
+  Future _closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
   }
 }
