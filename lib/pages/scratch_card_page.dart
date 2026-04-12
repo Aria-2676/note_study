@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/purchased_item.dart';
 import '../models/lottery_record.dart';
+import '../models/prize_item.dart';
 import '../services/database_service.dart';
 
 class ScratchCardPage extends StatefulWidget {
@@ -26,7 +27,7 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
   bool _showRecords = false;
   int _selectedCost = 10;
   final List<int> _costOptions = [10, 20, 50];
-  final String _userId = 'default_user';
+  int? _currentRecordId;
 
   @override
   void initState() {
@@ -58,9 +59,7 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
 
   Future<void> _loadLotteryRecords() async {
     try {
-      final records = await DatabaseService.instance.getLotteryRecords(
-        userId: _userId,
-      );
+      final records = await DatabaseService.instance.getLotteryRecords();
       setState(() {
         _lotteryRecords = records;
       });
@@ -70,18 +69,30 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
   }
 
   Future<void> _saveLotteryRecord() async {
-    if (_currentPrize == null) return;
+    final prize = _currentPrize;
+    if (prize == null) return;
 
     try {
-      final record = LotteryRecord(
-        userId: _userId,
-        drawTime: DateTime.now(),
-        prizeName: _currentPrize!.name,
-        prizeType: _currentPrize!.type,
-        prizeValue: _currentPrize!.value,
-        costPoints: _selectedCost,
-      );
-      await DatabaseService.instance.insertLotteryRecord(record);
+      if (_currentRecordId != null) {
+        final record = LotteryRecord(
+          id: _currentRecordId,
+          drawTime: DateTime.now(),
+          prizeName: prize.name,
+          prizeType: prize.type,
+          prizeValue: prize.value,
+          costPoints: _selectedCost,
+        );
+        await DatabaseService.instance.updateLotteryRecord(record);
+      } else {
+        final record = LotteryRecord(
+          drawTime: DateTime.now(),
+          prizeName: prize.name,
+          prizeType: prize.type,
+          prizeValue: prize.value,
+          costPoints: _selectedCost,
+        );
+        await DatabaseService.instance.insertLotteryRecord(record);
+      }
       await _loadLotteryRecords();
     } catch (e) {
       print('Failed to save lottery record: $e');
@@ -90,10 +101,25 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
 
   Future<void> _deleteLotteryRecord(int id) async {
     try {
-      await DatabaseService.instance.deleteLotteryRecord(id);
-      await _loadLotteryRecords();
+      final affectedRows = await DatabaseService.instance.deleteLotteryRecord(
+        id,
+      );
+      if (affectedRows == 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('删除失败，记录不存在')));
+        }
+      } else {
+        await _loadLotteryRecords();
+      }
     } catch (e) {
       print('Failed to delete lottery record: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('删除失败: ${e.toString()}')));
+      }
     }
   }
 
@@ -140,22 +166,45 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
     try {
       await provider.deductPoints(_selectedCost);
 
+      final tempRecord = LotteryRecord(
+        drawTime: DateTime.now(),
+        prizeName: '未刮开',
+        prizeType: 'unknown',
+        prizeValue: 0,
+        costPoints: _selectedCost,
+      );
+      final recordId = await DatabaseService.instance.insertLotteryRecordWithId(
+        tempRecord,
+      );
+      setState(() {
+        _currentRecordId = recordId;
+      });
+
       final prize = _drawPrize();
       setState(() {
         _currentPrize = prize;
         _isScratching = true;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('抽奖失败: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('抽奖失败: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      if (_currentRecordId != null) {
+        try {
+          await DatabaseService.instance.deleteLotteryRecord(_currentRecordId!);
+        } catch (deleteEx) {
+          print('Failed to rollback record: $deleteEx');
+        }
+      }
     }
   }
 
-  PrizeItem _drawPrize() {
+  List<PrizeItem> _getCompletePrizePool() {
     final prizes = _customPrizePool.toList();
 
     final integralPrizes = [
@@ -173,6 +222,12 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
         prizes.add(prize);
       }
     }
+
+    return prizes;
+  }
+
+  PrizeItem _drawPrize() {
+    final prizes = _getCompletePrizePool();
 
     final probabilities = _calculateProbabilities(prizes, _selectedCost);
 
@@ -238,27 +293,48 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
   }
 
   Future<void> _claimPrize() async {
-    if (_currentPrize == null) return;
+    final prize = _currentPrize;
+    if (prize == null) return;
 
     final provider = Provider.of<AppProvider>(context, listen: false);
 
-    if (_currentPrize!.type == 'integral') {
-      await provider.addPoints(_currentPrize!.value);
-    } else if (_currentPrize!.type == 'goods') {
-      final items = provider.shopItems.where(
-        (i) => i.name == _currentPrize!.name,
-      );
-      if (items.isEmpty) return;
-      final item = items.first;
-      final purchasedItem = PurchasedItem(
-        shopItemId: item.id!,
-        name: item.name,
-        description: item.description,
-        price: item.price,
-        iconName: item.iconName,
-        colorValue: item.colorValue,
-      );
-      await DatabaseService.instance.addPurchasedItem(purchasedItem);
+    try {
+      if (prize.type == 'integral') {
+        await provider.addPoints(prize.value);
+      } else if (prize.type == 'goods') {
+        final items = provider.shopItems.where((i) => i.name == prize.name);
+        if (items.isEmpty) {
+          throw Exception('商品不存在');
+        }
+        final item = items.first;
+        if (item.id == null) {
+          throw Exception('商品ID为空');
+        }
+        final purchasedItem = PurchasedItem(
+          shopItemId: item.id!,
+          name: item.name,
+          description: item.description,
+          price: item.price,
+          iconName: item.iconName,
+          colorValue: item.colorValue,
+        );
+        await DatabaseService.instance.addPurchasedItem(purchasedItem);
+      }
+    } catch (e) {
+      print('Failed to claim prize: $e');
+      try {
+        await provider.addPoints(_selectedCost);
+      } catch (addEx) {
+        print('Failed to rollback points: $addEx');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('奖品发放失败，已退回积分: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -269,6 +345,7 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
       _scratchPoints.clear();
       _lastPosition = null;
       _currentPrize = null;
+      _currentRecordId = null;
     });
   }
 
@@ -577,19 +654,7 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
   }
 
   Widget _buildProbabilityInfo() {
-    final prizes = _customPrizePool.toList();
-
-    final integralPrizes = [
-      PrizeItem(id: 'int_5', name: '5积分', type: 'integral', value: 5),
-      PrizeItem(id: 'int_10', name: '10积分', type: 'integral', value: 10),
-      PrizeItem(id: 'int_20', name: '20积分', type: 'integral', value: 20),
-      PrizeItem(id: 'int_30', name: '30积分', type: 'integral', value: 30),
-      PrizeItem(id: 'int_50', name: '50积分', type: 'integral', value: 50),
-      PrizeItem(id: 'int_100', name: '100积分', type: 'integral', value: 100),
-    ];
-
-    prizes.addAll(integralPrizes);
-
+    final prizes = _getCompletePrizePool();
     final probabilities = _calculateProbabilities(prizes, _selectedCost);
 
     return Container(
@@ -784,7 +849,15 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteLotteryRecord(record.id!),
+                            onPressed: () {
+                              if (record.id != null) {
+                                _deleteLotteryRecord(record.id!);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('记录ID异常，无法删除')),
+                                );
+                              }
+                            },
                           ),
                         ),
                       )
@@ -812,10 +885,20 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                   ),
                 );
                 if (confirmed == true) {
-                  await DatabaseService.instance.deleteAllLotteryRecords(
-                    userId: _userId,
-                  );
-                  await _loadLotteryRecords();
+                  try {
+                    final affectedRows = await DatabaseService.instance.deleteAllLotteryRecords();
+                    if (affectedRows >= 0) {
+                      await _loadLotteryRecords();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('清空失败')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('清空失败: ${e.toString()}')),
+                    );
+                  }
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -833,59 +916,6 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
     final dateTime = DateTime.parse(dateTimeString);
     return '${dateTime.month}月${dateTime.day}日 ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
-}
-
-class PrizeItem {
-  final String id;
-  final String name;
-  final String type;
-  final int value;
-  final double probability;
-
-  PrizeItem({
-    required this.id,
-    required this.name,
-    required this.type,
-    required this.value,
-    this.probability = 0.0,
-  });
-
-  factory PrizeItem.fromShopItem(dynamic shopItem) {
-    return PrizeItem(
-      id: shopItem.id.toString(),
-      name: shopItem.name,
-      type: 'goods',
-      value: shopItem.price,
-    );
-  }
-
-  factory PrizeItem.fromMap(Map<String, dynamic> map) {
-    return PrizeItem(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      type: map['type'] as String,
-      value: map['value'] as int,
-      probability: (map['probability'] as num).toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'type': type,
-      'value': value,
-      'probability': probability,
-    };
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PrizeItem && runtimeType == other.runtimeType && id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
 }
 
 class ScratchPainter extends CustomPainter {

@@ -1,6 +1,5 @@
 class LotteryRecord {
   final int? id;
-  final String userId;
   final DateTime drawTime;
   final String prizeName;
   final String prizeType;
@@ -10,7 +9,6 @@ class LotteryRecord {
 
   LotteryRecord({
     this.id,
-    required this.userId,
     required this.drawTime,
     required this.prizeName,
     required this.prizeType,
@@ -22,7 +20,6 @@ class LotteryRecord {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'userId': userId,
       'drawTime': drawTime.toIso8601String(),
       'prizeName': prizeName,
       'prizeType': prizeType,
@@ -35,7 +32,6 @@ class LotteryRecord {
   factory LotteryRecord.fromMap(Map<String, dynamic> map) {
     return LotteryRecord(
       id: map['id'] as int?,
-      userId: map['userId'] as String,
       drawTime: DateTime.parse(map['drawTime'] as String),
       prizeName: map['prizeName'] as String,
       prizeType: map['prizeType'] as String,

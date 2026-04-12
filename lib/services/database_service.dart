@@ -6,6 +6,7 @@ import '../models/user_points.dart';
 import '../models/purchased_item.dart';
 import '../models/recycled_task.dart';
 import '../models/lottery_record.dart';
+import '../models/prize_item.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -25,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -147,11 +148,14 @@ class DatabaseService {
       ''');
     }
     if (oldVersion < 10) {
-      // 版本9升级到版本10：添加抽奖记录表
+      // 版本9升级到版本10：确保抽奖记录表存在（已在_createDB中定义）
+      // 此处仅处理升级时的增量变更
+    }
+    if (oldVersion < 11) {
+      // 版本10升级到版本11：移除userId字段（SQLite不支持DROP COLUMN，需重建表）
       await db.execute('''
-        CREATE TABLE IF NOT EXISTS lottery_records (
+        CREATE TABLE IF NOT EXISTS lottery_records_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          userId TEXT NOT NULL,
           drawTime TEXT NOT NULL,
           prizeName TEXT NOT NULL,
           prizeType TEXT NOT NULL,
@@ -160,6 +164,14 @@ class DatabaseService {
           createdAt TEXT NOT NULL
         )
       ''');
+      await db.execute('''
+        INSERT INTO lottery_records_new (id, drawTime, prizeName, prizeType, prizeValue, costPoints, createdAt)
+        SELECT id, drawTime, prizeName, prizeType, prizeValue, costPoints, createdAt FROM lottery_records
+      ''');
+      await db.execute('DROP TABLE lottery_records');
+      await db.execute(
+        'ALTER TABLE lottery_records_new RENAME TO lottery_records',
+      );
     }
   }
 
@@ -265,7 +277,6 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS lottery_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId TEXT NOT NULL,
         drawTime TEXT NOT NULL,
         prizeName TEXT NOT NULL,
         prizeType TEXT NOT NULL,
@@ -647,7 +658,7 @@ class DatabaseService {
 
   // ========== Lottery Operations ==========
 
-  Future<void> saveCustomPrizePool(List<dynamic> prizes) async {
+  Future<void> saveCustomPrizePool(List<PrizeItem> prizes) async {
     final db = await database;
     await db.delete('custom_prize_pool');
     for (final prize in prizes) {
@@ -655,7 +666,7 @@ class DatabaseService {
     }
   }
 
-  Future<List<dynamic>> getCustomPrizePool() async {
+  Future<List<Map<String, dynamic>>> getCustomPrizePool() async {
     final db = await database;
     final result = await db.query('custom_prize_pool');
     return result.map((row) {
@@ -676,21 +687,14 @@ class DatabaseService {
     await db.insert('lottery_records', record.toMap());
   }
 
-  Future<List<LotteryRecord>> getLotteryRecords({String? userId}) async {
+  Future<int> insertLotteryRecordWithId(LotteryRecord record) async {
     final db = await database;
-    List<Map<String, dynamic>> result;
+    return await db.insert('lottery_records', record.toMap());
+  }
 
-    if (userId != null) {
-      result = await db.query(
-        'lottery_records',
-        where: 'userId = ?',
-        whereArgs: [userId],
-        orderBy: 'drawTime DESC',
-      );
-    } else {
-      result = await db.query('lottery_records', orderBy: 'drawTime DESC');
-    }
-
+  Future<List<LotteryRecord>> getLotteryRecords() async {
+    final db = await database;
+    final result = await db.query('lottery_records', orderBy: 'drawTime DESC');
     return result.map((row) => LotteryRecord.fromMap(row)).toList();
   }
 
@@ -724,15 +728,8 @@ class DatabaseService {
     return await db.delete('lottery_records', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<int> deleteAllLotteryRecords({String? userId}) async {
+  Future<int> deleteAllLotteryRecords() async {
     final db = await database;
-    if (userId != null) {
-      return await db.delete(
-        'lottery_records',
-        where: 'userId = ?',
-        whereArgs: [userId],
-      );
-    }
     return await db.delete('lottery_records');
   }
 }
