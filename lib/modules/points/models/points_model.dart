@@ -1,3 +1,4 @@
+/// 用户积分数据模型
 class UserPoints {
   final int id;
   final int points;
@@ -40,6 +41,7 @@ class UserPoints {
   }
 }
 
+/// 积分记录数据模型
 class PointsRecord {
   final int? id;
   final int points;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// 商城商品数据模型
 class ShopItem {
   final int? id;
   final String name;
@@ -100,6 +101,7 @@ class ShopItem {
   }
 }
 
+/// 已购买商品数据模型
 class PurchasedItem {
   final int? id;
   final int shopItemId;

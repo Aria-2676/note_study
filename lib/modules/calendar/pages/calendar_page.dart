@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/task_provider.dart';
-import '../../../data/models/task/task_model.dart';
+import '../../tasks/models/task_model.dart';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -20,10 +20,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final tasks = taskProvider.tasks;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('日历'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('日历'), centerTitle: true),
       body: Column(
         children: [
           _buildMonthHeader(),
@@ -46,22 +43,25 @@ class _CalendarPageState extends State<CalendarPage> {
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
               setState(() {
-                _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+                _currentMonth = DateTime(
+                  _currentMonth.year,
+                  _currentMonth.month - 1,
+                );
               });
             },
           ),
           Text(
             '${_currentMonth.year}年${_currentMonth.month}月',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
               setState(() {
-                _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+                _currentMonth = DateTime(
+                  _currentMonth.year,
+                  _currentMonth.month + 1,
+                );
               });
             },
           ),
@@ -94,8 +94,16 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _buildCalendarGrid(List<Task> tasks) {
-    final firstDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
-    final lastDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
+    final firstDayOfMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month,
+      1,
+    );
+    final lastDayOfMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    );
     final startingWeekday = firstDayOfMonth.weekday;
     final daysInMonth = lastDayOfMonth.day;
 
@@ -105,7 +113,9 @@ class _CalendarPageState extends State<CalendarPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
-        children: List.generate((daysInMonth + startingWeekday - 1 + 6) ~/ 7, (weekIndex) {
+        children: List.generate((daysInMonth + startingWeekday - 1 + 6) ~/ 7, (
+          weekIndex,
+        ) {
           return Row(
             children: List.generate(7, (dayIndex) {
               final dayNumber = weekIndex * 7 + dayIndex - startingWeekday + 2;
@@ -114,13 +124,26 @@ class _CalendarPageState extends State<CalendarPage> {
                 return Expanded(child: Container());
               }
 
-              final date = DateTime(_currentMonth.year, _currentMonth.month, dayNumber);
+              final date = DateTime(
+                _currentMonth.year,
+                _currentMonth.month,
+                dayNumber,
+              );
               final dateNormalized = DateTime(date.year, date.month, date.day);
               final isToday = dateNormalized == todayNormalized;
-              final isSelected = _selectedDate != null && dateNormalized == DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
+              final isSelected =
+                  _selectedDate != null &&
+                  dateNormalized ==
+                      DateTime(
+                        _selectedDate!.year,
+                        _selectedDate!.month,
+                        _selectedDate!.day,
+                      );
               final isWeekend = dayIndex == 5 || dayIndex == 6;
 
-              final dayTasks = tasks.where((t) => _isSameDay(t.cplTime, date)).toList();
+              final dayTasks = tasks
+                  .where((t) => _isSameDay(t.cplTime, date))
+                  .toList();
               final hasCompletedTasks = dayTasks.any((t) => t.isOK);
               final hasPendingTasks = dayTasks.any((t) => !t.isOK);
 
@@ -134,7 +157,11 @@ class _CalendarPageState extends State<CalendarPage> {
                   child: Container(
                     margin: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.blue : (isToday ? Colors.blue.withValues(alpha: 0.2) : null),
+                      color: isSelected
+                          ? Colors.blue
+                          : (isToday
+                                ? Colors.blue.withValues(alpha: 0.2)
+                                : null),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
@@ -146,9 +173,11 @@ class _CalendarPageState extends State<CalendarPage> {
                             color: isSelected
                                 ? Colors.white
                                 : isWeekend
-                                    ? Colors.red
-                                    : null,
-                            fontWeight: isToday || isSelected ? FontWeight.bold : FontWeight.normal,
+                                ? Colors.red
+                                : null,
+                            fontWeight: isToday || isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -159,7 +188,9 @@ class _CalendarPageState extends State<CalendarPage> {
                               Container(
                                 width: 6,
                                 height: 6,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 1,
+                                ),
                                 decoration: const BoxDecoration(
                                   color: Colors.green,
                                   shape: BoxShape.circle,
@@ -169,9 +200,13 @@ class _CalendarPageState extends State<CalendarPage> {
                               Container(
                                 width: 6,
                                 height: 6,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 1,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isSelected ? Colors.white : Colors.orange,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.orange,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -197,7 +232,9 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
-    final selectedTasks = tasks.where((t) => _isSameDay(t.cplTime, _selectedDate!)).toList();
+    final selectedTasks = tasks
+        .where((t) => _isSameDay(t.cplTime, _selectedDate!))
+        .toList();
 
     if (selectedTasks.isEmpty) {
       return Padding(
@@ -206,10 +243,7 @@ class _CalendarPageState extends State<CalendarPage> {
           children: [
             Text(
               '${_selectedDate!.month}月${_selectedDate!.day}日',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text('当天没有任务'),
@@ -225,10 +259,7 @@ class _CalendarPageState extends State<CalendarPage> {
             padding: const EdgeInsets.all(16),
             child: Text(
               '${_selectedDate!.month}月${_selectedDate!.day}日 - ${selectedTasks.length}个任务',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
           Expanded(
@@ -240,13 +271,17 @@ class _CalendarPageState extends State<CalendarPage> {
                 return Card(
                   child: ListTile(
                     leading: Icon(
-                      task.isOK ? Icons.check_circle : Icons.radio_button_unchecked,
+                      task.isOK
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
                       color: task.isOK ? Colors.green : Colors.orange,
                     ),
                     title: Text(
                       task.title,
                       style: TextStyle(
-                        decoration: task.isOK ? TextDecoration.lineThrough : null,
+                        decoration: task.isOK
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
                     ),
                     subtitle: Text('+${task.rewardPoints}积分'),

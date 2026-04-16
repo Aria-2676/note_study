@@ -1,6 +1,6 @@
 import '../../../core/utils/date_utils.dart';
 import '../../../providers/task_provider.dart';
-import '../../../data/models/task/task_model.dart';
+import '../models/task_model.dart';
 
 class TaskService {
   final TaskProvider _provider;

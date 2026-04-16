@@ -1,5 +1,6 @@
-import '../../core/services/database_service.dart';
-
+import '../../../core/services/database_service.dart';
+/// 积分数据仓储
+/// 负责积分数据的增删改查操作
 class PointsRepository {
   final DatabaseService _dbService = DatabaseService.instance;
 

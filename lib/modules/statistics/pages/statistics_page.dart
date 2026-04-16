@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/points_provider.dart';
-import '../../../data/models/task/task_model.dart';
+import '../../tasks/models/task_model.dart';
 
 enum StatisticsView { day, threeDays, week, month, year }
 
@@ -32,7 +32,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('统计', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+        const Text(
+          '统计',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
         _buildViewSelector(),
         const SizedBox(height: 16),
@@ -80,7 +83,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
             color: isSelected ? Colors.blue : Colors.grey[100],
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black)),
+          child: Text(
+            label,
+            style: TextStyle(color: isSelected ? Colors.white : Colors.black),
+          ),
         ),
       ),
     );
@@ -97,13 +103,25 @@ class _StatisticsPageState extends State<StatisticsPage> {
               children: [
                 Column(
                   children: [
-                    Text('$completed/$total', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text(
+                      '$completed/$total',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const Text('完成/总数'),
                   ],
                 ),
                 Column(
                   children: [
-                    Text('${(rate * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text(
+                      '${(rate * 100).toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const Text('完成率'),
                   ],
                 ),
@@ -126,19 +144,37 @@ class _StatisticsPageState extends State<StatisticsPage> {
           children: [
             Column(
               children: [
-                Text('$total', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  '$total',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('总任务'),
               ],
             ),
             Column(
               children: [
-                Text('$word', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  '$word',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('单词任务'),
               ],
             ),
             Column(
               children: [
-                Text('$recurring', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  '$recurring',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const Text('循环任务'),
               ],
             ),
@@ -155,7 +191,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('完成趋势', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              '完成趋势',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 16),
             SizedBox(height: 100, child: _buildSimpleChart(tasks)),
           ],
@@ -170,10 +209,14 @@ class _StatisticsPageState extends State<StatisticsPage> {
       itemCount: 7,
       itemBuilder: (context, index) {
         final date = DateTime.now().subtract(Duration(days: 6 - index));
-        final dayTasks = tasks.where((t) => _isSameDay(t.cplTime, date)).toList();
+        final dayTasks = tasks
+            .where((t) => _isSameDay(t.cplTime, date))
+            .toList();
         final completed = dayTasks.where((t) => t.isOK).length;
         final maxHeight = 80.0;
-        final height = (dayTasks.isEmpty ? 10 : (completed / dayTasks.length) * maxHeight).toDouble();
+        final height =
+            (dayTasks.isEmpty ? 10 : (completed / dayTasks.length) * maxHeight)
+                .toDouble();
 
         return Container(
           width: 40,
@@ -185,7 +228,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.blue,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(4),
+                    ),
                   ),
                   height: height,
                 ),
@@ -219,7 +264,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('当前积分'),
-                Text('$points', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(
+                  '$points',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ],

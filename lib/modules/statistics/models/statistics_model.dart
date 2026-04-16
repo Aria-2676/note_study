@@ -1,3 +1,4 @@
+/// 任务统计数据模型
 class TaskStatistics {
   final int totalTasks;
   final int completedTasks;
@@ -42,6 +43,7 @@ class TaskStatistics {
   }
 }
 
+/// 每日统计数据模型
 class DailyStatistics {
   final DateTime date;
   final int tasksCreated;
@@ -58,6 +60,7 @@ class DailyStatistics {
   });
 }
 
+/// 每周统计数据模型
 class WeeklyStatistics {
   final int weekNumber;
   final DateTime startDate;
@@ -78,6 +81,7 @@ class WeeklyStatistics {
   });
 }
 
+/// 每月统计数据模型
 class MonthlyStatistics {
   final int year;
   final int month;

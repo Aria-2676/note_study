@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
-import '../data/repositories/statistics_repository.dart';
-import '../data/models/statistics/statistics_model.dart';
+import '../modules/statistics/repositories/statistics_repository.dart';
+import '../modules/statistics/models/statistics_model.dart';
 
+/// 统计数据状态管理Provider
+/// 负责任务统计数据的加载和展示
 class StatisticsProvider extends ChangeNotifier {
   final StatisticsRepository _repository = StatisticsRepository();
   TaskStatistics? _statistics;
@@ -34,8 +36,7 @@ class StatisticsProvider extends ChangeNotifier {
         earnedPoints: earnedPoints,
         spentPoints: spentPoints,
       );
-    } catch (_) {
-    }
+    } catch (_) {}
 
     _isLoading = false;
     notifyListeners();

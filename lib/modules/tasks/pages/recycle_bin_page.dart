@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../data/models/task/task_model.dart';
+import '../models/task_model.dart';
 import '../../../providers/task_provider.dart';
 
 class RecycleBinPage extends StatefulWidget {
@@ -69,7 +69,11 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
               itemCount: recycledTasks.length,
               itemBuilder: (context, index) {
                 final recycledTask = recycledTasks[index];
-                return _buildRecycledTaskCard(context, recycledTask, taskProvider);
+                return _buildRecycledTaskCard(
+                  context,
+                  recycledTask,
+                  taskProvider,
+                );
               },
             ),
     );
@@ -124,7 +128,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_forever, size: 20, color: Colors.red),
-                  onPressed: () => taskProvider.deleteFromRecycle(recycledTask.id),
+                  onPressed: () =>
+                      taskProvider.deleteFromRecycle(recycledTask.id),
                 ),
               ],
             ),
@@ -269,7 +274,10 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
     }
   }
 
-  void _showClearConfirmDialog(BuildContext context, TaskProvider taskProvider) {
+  void _showClearConfirmDialog(
+    BuildContext context,
+    TaskProvider taskProvider,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -285,8 +293,8 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
               taskProvider.clearRecycleBin();
               Navigator.of(ctx).pop();
             },
- 
-           child: const Text('清空'),
+
+            child: const Text('清空'),
           ),
         ],
       ),

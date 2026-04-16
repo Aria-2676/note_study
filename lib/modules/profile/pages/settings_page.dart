@@ -1,11 +1,15 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../modules/help/pages/help_page.dart';
 import './widget_guide_page.dart';
-import '../../tasks/pages/recycle_bin_page.dart';
+import './task_create_settings_page.dart';
+import './tag_management_page.dart';
+import './data_export_page.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/utils/version_utils.dart';
+import '../../../providers/settings_provider.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -27,8 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final version = await VersionUtils.version;
       setState(() => _version = version);
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> _clearCache(BuildContext context) async {
@@ -169,9 +172,9 @@ class _SettingsPageState extends State<SettingsPage> {
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
                 Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('感谢您的反馈！')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('感谢您的反馈！')));
               }
             },
             child: const Text('提交'),
@@ -242,10 +245,7 @@ class _SettingsPageState extends State<SettingsPage> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            Text(
-              '将任务管家推荐给好友',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
+            Text('将任务管家推荐给好友', style: TextStyle(color: Colors.grey.shade600)),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -298,16 +298,16 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('导出失败'),
-            backgroundColor: Colors.red,
-          ),
+          const SnackBar(content: Text('导出失败'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
-  Future<void> _showBackupSuccessDialog(BuildContext context, String backupPath) async {
+  Future<void> _showBackupSuccessDialog(
+    BuildContext context,
+    String backupPath,
+  ) async {
     final fileName = backupPath.split('/').last;
     await showDialog(
       context: context,
@@ -410,7 +410,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               onPressed: () => _shareBackupFile(ctx, path),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.restore, color: Colors.green),
+                              icon: const Icon(
+                                Icons.restore,
+                                color: Colors.green,
+                              ),
                               onPressed: () => _restoreBackup(ctx, path),
                             ),
                           ],
@@ -433,7 +436,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _restoreBackup(BuildContext context, String backupPath) async {
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -472,10 +475,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     } else {
       scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('恢复失败'),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('恢复失败'), backgroundColor: Colors.red),
       );
     }
   }
@@ -546,7 +546,7 @@ class _SettingsPageState extends State<SettingsPage> {
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           _buildSectionTitle('基础设置'),
           Card(
             child: ListTile(
@@ -563,6 +563,16 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.file_upload, color: Colors.teal),
+                  title: const Text('数据导出'),
+                  subtitle: const Text('选择性导出数据为JSON或数据库格式'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DataExportPage()),
+                  ),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.upload, color: Colors.green),
                   title: const Text('导出备份'),
@@ -604,7 +614,10 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.feedback_outlined, color: Colors.purple),
+                  leading: const Icon(
+                    Icons.feedback_outlined,
+                    color: Colors.purple,
+                  ),
                   title: const Text('反馈与支持'),
                   subtitle: const Text('意见反馈、问题报告、分享应用'),
                   trailing: const Icon(Icons.chevron_right),
@@ -622,14 +635,11 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           Center(
             child: Text(
               '任务管家 V5 $_version',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
             ),
           ),
         ],
@@ -655,10 +665,7 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('反馈与支持'),
-            centerTitle: true,
-          ),
+          appBar: AppBar(title: const Text('反馈与支持'), centerTitle: true),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -666,7 +673,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.feedback_outlined, color: Colors.purple),
+                      leading: const Icon(
+                        Icons.feedback_outlined,
+                        color: Colors.purple,
+                      ),
                       title: const Text('意见反馈'),
                       subtitle: const Text('向我们提出宝贵建议'),
                       trailing: const Icon(Icons.chevron_right),
@@ -674,7 +684,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.bug_report_outlined, color: Colors.red),
+                      leading: const Icon(
+                        Icons.bug_report_outlined,
+                        color: Colors.red,
+                      ),
                       title: const Text('问题报告'),
                       subtitle: const Text('报告应用中遇到的问题'),
                       trailing: const Icon(Icons.chevron_right),
@@ -702,10 +715,7 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('关于'),
-            centerTitle: true,
-          ),
+          appBar: AppBar(title: const Text('关于'), centerTitle: true),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -713,11 +723,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.info_outline, color: Colors.blue),
+                      leading: const Icon(
+                        Icons.info_outline,
+                        color: Colors.blue,
+                      ),
                       title: const Text('版本号'),
                       subtitle: Text('任务管家 V5 $_version'),
                       trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blue.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
@@ -741,7 +757,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.app_shortcut, color: Colors.green),
+                      leading: const Icon(
+                        Icons.app_shortcut,
+                        color: Colors.green,
+                      ),
                       title: const Text('关于应用'),
                       subtitle: const Text('任务管家 V5 - 带积分系统的任务管理应用'),
                       trailing: const Icon(Icons.chevron_right),
@@ -761,10 +780,7 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('基础设置'),
-            centerTitle: true,
-          ),
+          appBar: AppBar(title: const Text('基础设置'), centerTitle: true),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -772,13 +788,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.help_outline, color: Colors.orange),
+                      leading: const Icon(
+                        Icons.help_outline,
+                        color: Colors.orange,
+                      ),
                       title: const Text('使用说明'),
                       subtitle: const Text('了解如何使用任务管家'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(
-                        context,
-                      ).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const HelpPage()),
+                      ),
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -787,18 +806,63 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: const Text('添加小组件到桌面，快速查看任务'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const WidgetGuidePage()),
+                        MaterialPageRoute(
+                          builder: (_) => const WidgetGuidePage(),
+                        ),
                       ),
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.delete_outline, color: Colors.orange),
-                      title: const Text('任务回收站'),
-                      subtitle: const Text('查看和恢复最近删除的任务'),
+                      leading: const Icon(Icons.add_task, color: Colors.green),
+                      title: const Text('任务创建设置'),
+                      subtitle: const Text('自定义任务创建页面的编辑项'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(
-                        context,
-                      ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage())),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TaskCreateSettingsPage(),
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.label, color: Colors.teal),
+                      title: const Text('标签管理'),
+                      subtitle: const Text('管理任务标签，分类整理任务'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TagManagementPage(),
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Consumer<SettingsProvider>(
+                      builder: (context, settings, _) {
+                        return ExpansionTile(
+                          leading: const Icon(
+                            Icons.admin_panel_settings,
+                            color: Colors.deepPurple,
+                          ),
+                          title: const Text('高级选项'),
+                          subtitle: const Text('允许编辑和完成非当天任务'),
+                          children: [
+                            SwitchListTile(
+                              title: const Text('允许编辑非当天任务'),
+                              subtitle: const Text('开启后可编辑过去或未来日期的任务'),
+                              value: settings.allowEditPastTasks,
+                              onChanged: (v) =>
+                                  settings.setAllowEditPastTasks(v),
+                            ),
+                            SwitchListTile(
+                              title: const Text('允许完成非当天任务'),
+                              subtitle: const Text('开启后可完成或取消完成过去或未来日期的任务'),
+                              value: settings.allowCompletePastTasks,
+                              onChanged: (v) =>
+                                  settings.setAllowCompletePastTasks(v),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),

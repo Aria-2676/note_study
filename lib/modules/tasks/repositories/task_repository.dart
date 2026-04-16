@@ -1,8 +1,10 @@
-import '../../core/services/database_service.dart';
-import '../models/task/task_model.dart';
-import '../../core/utils/date_utils.dart';
+import '../../../core/services/database_service.dart';
+import '../models/task_model.dart';
+import '../../../core/utils/date_utils.dart';
 import 'dart:math';
 
+/// 任务数据仓储
+/// 负责任务数据的增删改查操作
 class TaskRepository {
   final DatabaseService _dbService = DatabaseService.instance;
 
@@ -10,29 +12,32 @@ class TaskRepository {
     return await _dbService.getTasksByDate(date);
   }
 
-  Future<void> addTask(Task task) async {
+  Future<Task> addTask(Task task) async {
     if (task.title.isEmpty) {
       throw ArgumentError('任务标题不能为空');
     }
 
     if (task.recurrence != 'none' && task.loopId == null) {
       final newTask = task.copyWith(loopId: _generateLoopId());
-      await _insertTaskIfNotExists(newTask);
+      final createdTask = await _insertTaskIfNotExists(newTask);
       await generateRecurringTasks(newTask);
+      return createdTask;
     } else {
-      await _insertTaskIfNotExists(task);
+      final createdTask = await _insertTaskIfNotExists(task);
       if (task.recurrence != 'none') {
         await generateRecurringTasks(task);
       }
+      return createdTask;
     }
   }
 
-  Future<void> _insertTaskIfNotExists(Task task) async {
+  Future<Task> _insertTaskIfNotExists(Task task) async {
     bool exists;
     if (task.recurrence != 'none' && task.loopId != null) {
       final allTasks = await _dbService.getAllTasks();
       exists = allTasks.any((t) {
-        return t.loopId == task.loopId && DateUtils.isSameDay(t.cplTime, task.cplTime);
+        return t.loopId == task.loopId &&
+            DateUtils.isSameDay(t.cplTime, task.cplTime);
       });
     } else {
       exists = await _dbService.existsTaskOnDate(
@@ -42,8 +47,9 @@ class TaskRepository {
       );
     }
     if (!exists) {
-      await _dbService.createTask(task);
+      return await _dbService.createTask(task);
     }
+    return task;
   }
 
   String _generateLoopId() {

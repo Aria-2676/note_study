@@ -1,26 +1,68 @@
 import 'package:flutter/material.dart';
-import '../data/models/task/task_model.dart';
-import '../data/repositories/task_repository.dart';
+import '../modules/tasks/models/task_model.dart';
+import '../modules/tasks/repositories/task_repository.dart';
 import '../core/services/widget_service.dart';
 import 'points_provider.dart';
 
+/// 任务排序选项
+enum TaskSortOption {
+  defaultOrder,
+  priority,
+  completionStatus,
+  createdTime,
+  completionTime,
+}
+
+/// 任务状态管理Provider
+/// 负责任务的增删改查、完成状态管理
 class TaskProvider extends ChangeNotifier {
   final TaskRepository _taskRepository = TaskRepository();
-  final PointsProvider _pointsProvider;
-  
+  PointsProvider _pointsProvider;
+
   List<Task> _tasks = [];
   List<RecycledTask> _recycledTasks = [];
   DateTime _selectedDate = DateTime.now();
   List<DateTime> _selectedDates = [DateTime.now()];
   bool _multiTaskMode = false;
 
-  List<Task> get tasks => _tasks;
+  String _searchQuery = '';
+  TaskSortOption _sortOption = TaskSortOption.defaultOrder;
+  bool _batchMode = false;
+  final Set<int> _selectedTaskIds = {};
+
+  List<Task> _searchResults = [];
+  bool _isSearching = false;
+  bool _isSearchMode = false;
+  int? _selectedTagId;
+  List<int> _filteredTaskIds = [];
+  String? _priorityFilter;
+  bool? _completionFilter;
+  bool? _recurrenceFilter;
+
+  List<Task> get tasks => _getFilteredAndSortedTasks();
+  List<Task> get rawTasks => _tasks;
   List<RecycledTask> get recycledTasks => _recycledTasks;
   DateTime get selectedDate => _selectedDate;
   List<DateTime> get selectedDates => _selectedDates;
   bool get multiTaskMode => _multiTaskMode;
+  String get searchQuery => _searchQuery;
+  TaskSortOption get sortOption => _sortOption;
+  bool get batchMode => _batchMode;
+  Set<int> get selectedTaskIds => _selectedTaskIds;
+  bool get hasSelectedTasks => _selectedTaskIds.isNotEmpty;
+  List<Task> get searchResults => _searchResults;
+  bool get isSearching => _isSearching;
+  bool get isSearchMode => _isSearchMode;
+  int? get selectedTagId => _selectedTagId;
+  String? get priorityFilter => _priorityFilter;
+  bool? get completionFilter => _completionFilter;
+  bool? get recurrenceFilter => _recurrenceFilter;
 
   TaskProvider(this._pointsProvider);
+
+  void updatePointsProvider(PointsProvider pointsProvider) {
+    _pointsProvider = pointsProvider;
+  }
 
   Future<void> initialize() async {
     await WidgetService.init();
@@ -46,7 +88,9 @@ class TaskProvider extends ChangeNotifier {
     );
     final originalCplTime = recycledTask.task.cplTime;
 
-    final restoredTask = await _taskRepository.restoreTaskFromRecycle(recycledTaskId);
+    final restoredTask = await _taskRepository.restoreTaskFromRecycle(
+      recycledTaskId,
+    );
 
     if (restoredTask.recurrence != 'none') {
       final taskTemplate = restoredTask.copyWith(cplTime: originalCplTime);
@@ -91,9 +135,10 @@ class TaskProvider extends ChangeNotifier {
     await loadTasksByDate(DateTime.now());
   }
 
-  Future<void> addTask(Task task) async {
-    await _taskRepository.addTask(task);
+  Future<Task> addTask(Task task) async {
+    final createdTask = await _taskRepository.addTask(task);
     await loadTasksByDate(_selectedDate);
+    return createdTask;
   }
 
   Future<void> autoCheckRecurringTasks() async {
@@ -196,8 +241,7 @@ class TaskProvider extends ChangeNotifier {
       if (hasChanges) {
         await loadTasksByDate(_selectedDate);
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> _updateWidget() async {
@@ -222,5 +266,308 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> loadTasksForDate(DateTime date) async {
     await loadTasksByDate(date);
+  }
+
+  List<Task> _getFilteredAndSortedTasks() {
+    var filteredTasks = _tasks;
+
+    if (_selectedTagId != null && _filteredTaskIds.isNotEmpty) {
+      filteredTasks = filteredTasks.where((task) {
+        return _filteredTaskIds.contains(task.id);
+      }).toList();
+    }
+
+    if (_priorityFilter != null) {
+      filteredTasks = filteredTasks.where((task) {
+        return task.priority == _priorityFilter;
+      }).toList();
+    }
+
+    if (_completionFilter != null) {
+      filteredTasks = filteredTasks.where((task) {
+        return task.isOK == _completionFilter;
+      }).toList();
+    }
+
+    if (_recurrenceFilter != null) {
+      filteredTasks = filteredTasks.where((task) {
+        if (_recurrenceFilter == true) {
+          return task.recurrence != 'none';
+        } else {
+          return task.recurrence == 'none';
+        }
+      }).toList();
+    }
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filteredTasks = filteredTasks.where((task) {
+        return task.title.toLowerCase().contains(query) ||
+            (task.description?.toLowerCase().contains(query) ?? false);
+      }).toList();
+    }
+
+    switch (_sortOption) {
+      case TaskSortOption.priority:
+        filteredTasks.sort(
+          (a, b) => a.priorityOrder.compareTo(b.priorityOrder),
+        );
+        break;
+      case TaskSortOption.completionStatus:
+        filteredTasks.sort((a, b) {
+          if (a.isOK == b.isOK) return 0;
+          return a.isOK ? 1 : -1;
+        });
+        break;
+      case TaskSortOption.createdTime:
+        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case TaskSortOption.completionTime:
+        filteredTasks.sort((a, b) {
+          if (a.completedAt == null && b.completedAt == null) {
+            return b.createdAt.compareTo(a.createdAt);
+          }
+          if (a.completedAt == null) return 1;
+          if (b.completedAt == null) return -1;
+          return b.completedAt!.compareTo(a.completedAt!);
+        });
+        break;
+      case TaskSortOption.defaultOrder:
+        break;
+    }
+
+    return filteredTasks;
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    _searchQuery = '';
+    _searchResults = [];
+    _isSearchMode = false;
+    notifyListeners();
+  }
+
+  void enterSearchMode() {
+    _isSearchMode = true;
+    notifyListeners();
+  }
+
+  void exitSearchMode() {
+    _isSearchMode = false;
+    _searchQuery = '';
+    _searchResults = [];
+    notifyListeners();
+  }
+
+  void selectTag(int tagId, {List<int>? taskIds}) {
+    _selectedTagId = tagId;
+    _filteredTaskIds = taskIds ?? [];
+    notifyListeners();
+  }
+
+  void clearTagFilter() {
+    _selectedTagId = null;
+    _filteredTaskIds = [];
+    notifyListeners();
+  }
+
+  void setPriorityFilter(String? priority) {
+    _priorityFilter = priority;
+    notifyListeners();
+  }
+
+  void setCompletionFilter(bool? completion) {
+    _completionFilter = completion;
+    notifyListeners();
+  }
+
+  void setRecurrenceFilter(bool? recurrence) {
+    _recurrenceFilter = recurrence;
+    notifyListeners();
+  }
+
+  void clearFilters() {
+    _priorityFilter = null;
+    _completionFilter = null;
+    _recurrenceFilter = null;
+    notifyListeners();
+  }
+
+  Future<void> searchAllTasks(String query) async {
+    if (query.isEmpty) {
+      _searchResults = [];
+      _isSearching = false;
+      notifyListeners();
+      return;
+    }
+
+    _isSearching = true;
+    notifyListeners();
+
+    try {
+      final allTasks = await _taskRepository.getAllTasks();
+      final queryLower = query.toLowerCase();
+
+      _searchResults = allTasks.where((task) {
+        return task.title.toLowerCase().contains(queryLower) ||
+            (task.description?.toLowerCase().contains(queryLower) ?? false);
+      }).toList();
+
+      _searchResults.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } catch (e) {
+      _searchResults = [];
+    }
+
+    _isSearching = false;
+    notifyListeners();
+  }
+
+  void setSortOption(TaskSortOption option) {
+    _sortOption = option;
+    notifyListeners();
+  }
+
+  void syncSortOption(TaskSortOption option) {
+    _sortOption = option;
+  }
+
+  void toggleBatchMode() {
+    _batchMode = !_batchMode;
+    if (!_batchMode) {
+      _selectedTaskIds.clear();
+    }
+    notifyListeners();
+  }
+
+  void setBatchMode(bool value) {
+    _batchMode = value;
+    if (!value) {
+      _selectedTaskIds.clear();
+    }
+    notifyListeners();
+  }
+
+  void toggleTaskSelection(int taskId) {
+    if (_selectedTaskIds.contains(taskId)) {
+      _selectedTaskIds.remove(taskId);
+    } else {
+      _selectedTaskIds.add(taskId);
+    }
+    notifyListeners();
+  }
+
+  void selectAllTasks() {
+    _selectedTaskIds.clear();
+    _selectedTaskIds.addAll(_tasks.map((t) => t.id!));
+    notifyListeners();
+  }
+
+  void deselectAllTasks() {
+    _selectedTaskIds.clear();
+    notifyListeners();
+  }
+
+  Future<String?> batchCompleteTasks() async {
+    try {
+      int successCount = 0;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        if (!task.isOK) {
+          await completeTask(task);
+          successCount++;
+        }
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return successCount > 0 ? '成功完成 $successCount 个任务' : null;
+    } catch (e) {
+      return '批量完成失败: $e';
+    }
+  }
+
+  Future<String?> batchUncompleteTasks() async {
+    try {
+      int successCount = 0;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        if (task.isOK) {
+          await uncompleteTask(task);
+          successCount++;
+        }
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return successCount > 0 ? '成功取消完成 $successCount 个任务' : null;
+    } catch (e) {
+      return '批量取消完成失败: $e';
+    }
+  }
+
+  Future<String?> batchDeleteTasks() async {
+    try {
+      int successCount = _selectedTaskIds.length;
+      for (final taskId in _selectedTaskIds.toList()) {
+        await deleteTask(taskId);
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return '成功删除 $successCount 个任务';
+    } catch (e) {
+      return '批量删除失败: $e';
+    }
+  }
+
+  Future<String?> batchUpdatePriority(String priority) async {
+    try {
+      int successCount = _selectedTaskIds.length;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        await updateTask(task.copyWith(priority: priority));
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return '成功更新 $successCount 个任务优先级';
+    } catch (e) {
+      return '批量更新优先级失败: $e';
+    }
+  }
+
+  Future<String?> batchUpdateDate(DateTime date) async {
+    try {
+      int successCount = _selectedTaskIds.length;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        await updateTask(task.copyWith(cplTime: date));
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return '成功更新 $successCount 个任务日期';
+    } catch (e) {
+      return '批量更新日期失败: $e';
+    }
+  }
+
+  Future<String?> batchUpdateTags(List<int> tagIds, dynamic tagProvider) async {
+    try {
+      int successCount = _selectedTaskIds.length;
+      for (final taskId in _selectedTaskIds.toList()) {
+        await tagProvider.setTagsForTask(taskId, tagIds);
+      }
+      _selectedTaskIds.clear();
+      _batchMode = false;
+      notifyListeners();
+      return '成功更新 $successCount 个任务标签';
+    } catch (e) {
+      return '批量更新标签失败: $e';
+    }
   }
 }

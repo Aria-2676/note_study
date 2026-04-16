@@ -4,10 +4,11 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../data/models/task/task_model.dart';
-import '../../data/models/shop/shop_model.dart';
-import '../../data/models/points/points_model.dart';
-import '../../data/models/scratch/scratch_model.dart';
+import '../../modules/tasks/models/task_model.dart';
+import '../../modules/shop/models/shop_model.dart';
+import '../../modules/points/models/points_model.dart';
+import '../../modules/scratch/models/scratch_model.dart';
+import '../../modules/tag/models/tag_model.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -27,7 +28,12 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -130,13 +136,83 @@ class DatabaseService {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        color TEXT NOT NULL DEFAULT '#2196F3',
+        icon TEXT,
+        isSystem INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE task_tags (
+        taskId INTEGER NOT NULL,
+        tagId INTEGER NOT NULL,
+        PRIMARY KEY (taskId, tagId),
+        FOREIGN KEY (taskId) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
+      )
+    ''');
+
     await db.insert('user_points', {
       'id': 1,
       'points': 0,
       'updatedAt': DateTime.now().toIso8601String(),
     });
+  }
 
-    
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE tags (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          color TEXT NOT NULL DEFAULT '#2196F3',
+          icon TEXT,
+          isSystem INTEGER NOT NULL DEFAULT 0,
+          createdAt TEXT NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE task_tags (
+          taskId INTEGER NOT NULL,
+          tagId INTEGER NOT NULL,
+          PRIMARY KEY (taskId, tagId),
+          FOREIGN KEY (taskId) REFERENCES tasks(id) ON DELETE CASCADE,
+          FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.insert('tags', {
+        'name': '单词',
+        'color': '#FF9800',
+        'icon': 'translate',
+        'isSystem': 1,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+
+      final wordTagId = (await db.query(
+        'tags',
+        where: 'name = ?',
+        whereArgs: ['单词'],
+      )).first['id'];
+
+      final wordTasks = await db.query(
+        'tasks',
+        where: 'isWord = ?',
+        whereArgs: [1],
+      );
+      for (final task in wordTasks) {
+        await db.insert('task_tags', {
+          'taskId': task['id'],
+          'tagId': wordTagId,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
   }
 
   // ========== Task Operations ==========
@@ -264,7 +340,7 @@ class DatabaseService {
         'priority': taskMap['priority'] ?? 'white',
         'deleted_at': DateTime.now().toIso8601String(),
       });
-      
+
       if (recycledId > 0) {
         await _cleanupRecycledTasks();
         await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
@@ -683,8 +759,7 @@ class DatabaseService {
         'path': appDocs.path,
         'description': kIsWeb ? '浏览器存储' : '随App删除',
       });
-    } catch (_) {
-    }
+    } catch (_) {}
 
     if (!kIsWeb) {
       try {
@@ -697,8 +772,7 @@ class DatabaseService {
             'description': '随App删除',
           });
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     return locations;
@@ -731,6 +805,90 @@ class DatabaseService {
     final backupDir = Directory(join(dir.path, 'noteapp_backups'));
     await backupDir.create(recursive: true);
     return backupDir;
+  }
+
+  // ========== Tag Operations ==========
+
+  Future<int> insertTag(Tag tag) async {
+    final db = await database;
+    return await db.insert('tags', tag.toMap());
+  }
+
+  Future<List<Tag>> getAllTags() async {
+    final db = await database;
+    final result = await db.query('tags', orderBy: 'name ASC');
+    return result.map((m) => Tag.fromMap(m)).toList();
+  }
+
+  Future<Tag?> getTagById(int id) async {
+    final db = await database;
+    final result = await db.query('tags', where: 'id = ?', whereArgs: [id]);
+    if (result.isEmpty) return null;
+    return Tag.fromMap(result.first);
+  }
+
+  Future<void> updateTag(Tag tag) async {
+    final db = await database;
+    await db.update('tags', tag.toMap(), where: 'id = ?', whereArgs: [tag.id]);
+  }
+
+  Future<void> deleteTag(int id) async {
+    final db = await database;
+    await db.delete('tags', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ========== Task Tag Operations ==========
+
+  Future<void> insertTaskTag(TaskTag taskTag) async {
+    final db = await database;
+    await db.insert(
+      'task_tags',
+      taskTag.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> deleteTaskTag(int taskId, int tagId) async {
+    final db = await database;
+    await db.delete(
+      'task_tags',
+      where: 'taskId = ? AND tagId = ?',
+      whereArgs: [taskId, tagId],
+    );
+  }
+
+  Future<void> deleteTaskTagsByTaskId(int taskId) async {
+    final db = await database;
+    await db.delete('task_tags', where: 'taskId = ?', whereArgs: [taskId]);
+  }
+
+  Future<void> deleteTaskTagsByTagId(int tagId) async {
+    final db = await database;
+    await db.delete('task_tags', where: 'tagId = ?', whereArgs: [tagId]);
+  }
+
+  Future<List<Tag>> getTagsForTask(int taskId) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      '''
+      SELECT t.* FROM tags t
+      INNER JOIN task_tags tt ON t.id = tt.tagId
+      WHERE tt.taskId = ?
+      ORDER BY t.name ASC
+    ''',
+      [taskId],
+    );
+    return result.map((m) => Tag.fromMap(m)).toList();
+  }
+
+  Future<List<int>> getTaskIdsByTag(int tagId) async {
+    final db = await database;
+    final result = await db.query(
+      'task_tags',
+      where: 'tagId = ?',
+      whereArgs: [tagId],
+    );
+    return result.map((m) => m['taskId'] as int).toList();
   }
 
   Future _closeDatabase() async {

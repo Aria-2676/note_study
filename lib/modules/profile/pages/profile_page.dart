@@ -5,6 +5,7 @@ import '../../../providers/shop_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../shop/pages/shop_page.dart';
 import '../../../modules/shop/pages/warehouse_page.dart';
+import '../../tasks/pages/recycle_bin_page.dart';
 import './settings_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -19,9 +20,12 @@ class ProfilePage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('我的', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+        const Text(
+          '我的',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 14),
-        
+
         Card(
           child: Container(
             padding: const EdgeInsets.all(16),
@@ -64,7 +68,7 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        
+
         Card(
           child: ListTile(
             leading: const Icon(Icons.shopping_bag, color: Colors.purple),
@@ -72,14 +76,14 @@ class ProfilePage extends StatelessWidget {
             subtitle: const Text('使用积分兑换奖励'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ShopPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ShopPage()));
             },
           ),
         ),
         const SizedBox(height: 10),
-        
+
         Card(
           child: ListTile(
             leading: const Icon(Icons.inventory_2, color: Colors.teal),
@@ -87,19 +91,36 @@ class ProfilePage extends StatelessWidget {
             subtitle: Text('已拥有 ${shopProvider.purchasedItems.length} 件商品'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const WarehousePage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const WarehousePage()));
             },
           ),
         ),
         const SizedBox(height: 10),
-        
+
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.orange),
+            title: const Text('任务回收站'),
+            subtitle: const Text('查看和恢复已删除的任务'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const RecycleBinPage()));
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+
         Card(
           child: SwitchListTile(
             title: const Text('夜间模式'),
             subtitle: const Text('切换白天/夜间主题'),
-            secondary: Icon(settingsProvider.isDark ? Icons.dark_mode : Icons.light_mode),
+            secondary: Icon(
+              settingsProvider.isDark ? Icons.dark_mode : Icons.light_mode,
+            ),
             value: settingsProvider.isDark,
             onChanged: (_) => settingsProvider.toggleTheme(),
           ),
@@ -108,12 +129,28 @@ class ProfilePage extends StatelessWidget {
         Card(
           child: ListTile(
             title: const Text('任务视图'),
-            subtitle: Text(settingsProvider.isRichView ? '丰富模式 - 精美卡片，完整信息' : '简洁模式 - 紧凑列表，高效浏览'),
-            leading: Icon(settingsProvider.isRichView ? Icons.auto_awesome : Icons.format_list_bulleted),
+            subtitle: Text(
+              settingsProvider.isRichView
+                  ? '丰富模式 - 精美卡片，完整信息'
+                  : '简洁模式 - 紧凑列表，高效浏览',
+            ),
+            leading: Icon(
+              settingsProvider.isRichView
+                  ? Icons.auto_awesome
+                  : Icons.format_list_bulleted,
+            ),
             trailing: SegmentedButton<TaskViewMode>(
               segments: const [
-                ButtonSegment(value: TaskViewMode.rich, label: Text('丰富'), icon: Icon(Icons.auto_awesome)),
-                ButtonSegment(value: TaskViewMode.simple, label: Text('简洁'), icon: Icon(Icons.format_list_bulleted)),
+                ButtonSegment(
+                  value: TaskViewMode.rich,
+                  label: Text('丰富'),
+                  icon: Icon(Icons.auto_awesome),
+                ),
+                ButtonSegment(
+                  value: TaskViewMode.simple,
+                  label: Text('简洁'),
+                  icon: Icon(Icons.format_list_bulleted),
+                ),
               ],
               selected: {settingsProvider.taskViewMode},
               onSelectionChanged: (Set<TaskViewMode> newSelection) {
@@ -123,7 +160,7 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        
+
         Card(
           child: ListTile(
             leading: const Icon(Icons.settings, color: Colors.blue),
@@ -131,9 +168,9 @@ class ProfilePage extends StatelessWidget {
             subtitle: const Text('清除缓存、查看版本号'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
             },
           ),
         ),

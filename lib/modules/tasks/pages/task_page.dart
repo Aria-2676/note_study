@@ -1,21 +1,26 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../data/models/task/task_model.dart';
+import '../models/task_model.dart';
+import '../../tag/models/tag_model.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/tag_provider.dart';
 
 class TaskPage extends StatefulWidget {
   final ScrollController? calendarController;
   final VoidCallback? onResetToToday;
   final VoidCallback? scrollToToday;
+  final void Function(bool isAtTop)? onScrollStateChanged;
+  final void Function(DragEndDetails)? onSwipeDownFromList;
 
   const TaskPage({
     super.key,
     this.calendarController,
     this.onResetToToday,
     this.scrollToToday,
+    this.onScrollStateChanged,
+    this.onSwipeDownFromList,
   });
 
   @override
@@ -28,6 +33,7 @@ class _TaskPageState extends State<TaskPage>
   final List<String> _tabs = ['全部', '普通', '循环'];
   DateTime? _lastWarningTime;
   bool _isScrolling = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -44,6 +50,7 @@ class _TaskPageState extends State<TaskPage>
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _scrollTimer?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -146,6 +153,7 @@ class _TaskPageState extends State<TaskPage>
           ),
         ),
         _buildCalendar(context),
+        _buildTagFilter(taskProvider),
         AnimatedOpacity(
           opacity: _isScrolling ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 200),
@@ -177,7 +185,9 @@ class _TaskPageState extends State<TaskPage>
                             (_tabs.isNotEmpty ? _tabs.length : 1),
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -188,33 +198,657 @@ class _TaskPageState extends State<TaskPage>
             ),
           ),
         ),
+        if (taskProvider.batchMode)
+          _buildBatchActionBar(taskProvider)
+        else if (taskProvider.sortOption != TaskSortOption.defaultOrder)
+          _buildSortIndicator(taskProvider),
         Expanded(
           child: TabBarView(
             controller: _tabController,
             children: List.generate(_tabs.length, (index) {
-              final filteredTasks = _getFilteredTasks(taskProvider.tasks, index);
+              final filteredTasks = _getFilteredTasks(
+                taskProvider.tasks,
+                index,
+              );
 
               return filteredTasks.isEmpty
-                  ? Center(
-                      child: Text(
-                        '暂无任务, 点击 + 添加',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                  ? _buildEmptyState(taskProvider, index)
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification is ScrollUpdateNotification) {
+                          final isAtTop = notification.metrics.pixels <= 0;
+                          widget.onScrollStateChanged?.call(isAtTop);
+                        }
+                        return false;
+                      },
+                      child: GestureDetector(
+                        onVerticalDragEnd: widget.onSwipeDownFromList,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: filteredTasks.length,
+                          itemBuilder: (context, itemIndex) {
+                            final task = filteredTasks[itemIndex];
+                            return _buildTaskCard(context, task, taskProvider);
+                          },
                         ),
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: filteredTasks.length,
-                      itemBuilder: (context, itemIndex) {
-                        final task = filteredTasks[itemIndex];
-                        return _buildTaskCard(context, task, taskProvider);
-                      },
                     );
             }),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyState(TaskProvider taskProvider, int tabIndex) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasSearchQuery = taskProvider.searchQuery.isNotEmpty;
+
+    if (hasSearchQuery) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: colorScheme.onSurface.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '未找到匹配的任务',
+              style: TextStyle(
+                fontSize: 16,
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => taskProvider.clearSearch(),
+              icon: const Icon(Icons.clear),
+              label: const Text('清空搜索'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            tabIndex == 2 ? Icons.repeat : Icons.task_alt,
+            size: 64,
+            color: colorScheme.onSurface.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            tabIndex == 2 ? '暂无循环任务' : '暂无任务',
+            style: TextStyle(
+              fontSize: 16,
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '点击 + 添加新任务',
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSortIndicator(TaskProvider taskProvider) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: Border(
+          bottom: BorderSide(color: colorScheme.outline.withValues(alpha: 0.1)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.sort,
+            size: 14,
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '当前排序：${_getSortLabel(taskProvider.sortOption)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () => _showSortOptions(taskProvider),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 24),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              '更改',
+              style: TextStyle(fontSize: 12, color: colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getSortLabel(TaskSortOption option) {
+    switch (option) {
+      case TaskSortOption.priority:
+        return '按优先级';
+      case TaskSortOption.completionStatus:
+        return '按完成状态';
+      case TaskSortOption.createdTime:
+        return '按创建时间';
+      case TaskSortOption.completionTime:
+        return '按完成时间';
+      case TaskSortOption.defaultOrder:
+        return '默认排序';
+    }
+  }
+
+  void _showSortOptions(TaskProvider taskProvider) {
+    final settingsProvider = context.read<SettingsProvider>();
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '排序方式',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            RadioGroup<TaskSortOption>(
+              groupValue: taskProvider.sortOption,
+              onChanged: (value) {
+                if (value != null) {
+                  taskProvider.setSortOption(value);
+                  settingsProvider.setTaskSortOption(value);
+                }
+                Navigator.of(ctx).pop();
+              },
+              child: Column(
+                children: TaskSortOption.values
+                    .map(
+                      (option) => RadioListTile<TaskSortOption>(
+                        title: Text(_getSortLabel(option)),
+                        value: option,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBar(TaskProvider taskProvider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => taskProvider.setBatchMode(false),
+            tooltip: '退出批量操作',
+          ),
+          Text(
+            '已选择 ${taskProvider.selectedTaskIds.length} 项',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed:
+                        taskProvider.selectedTaskIds.length ==
+                            taskProvider.rawTasks.length
+                        ? null
+                        : taskProvider.selectAllTasks,
+                    child: const Text('全选'),
+                  ),
+                  TextButton(
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : taskProvider.deselectAllTasks,
+                    child: const Text('取消选择'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.check_circle),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchCompleteOptions(taskProvider),
+                    tooltip: '批量完成',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchUncompleteConfirm(taskProvider),
+                    tooltip: '批量取消完成',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.flag),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchPriorityDialog(taskProvider),
+                    tooltip: '批量设置优先级',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.calendar_today),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchDateDialog(taskProvider),
+                    tooltip: '批量修改日期',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.label),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchTagDialog(taskProvider),
+                    tooltip: '批量设置标签',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: taskProvider.selectedTaskIds.isEmpty
+                        ? null
+                        : () => _showBatchDeleteConfirm(taskProvider),
+                    tooltip: '批量删除',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBatchCompleteOptions(TaskProvider taskProvider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量操作'),
+        content: Text('确定要完成选中的 ${taskProvider.selectedTaskIds.length} 个任务吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final result = await taskProvider.batchCompleteTasks();
+              if (result != null && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBatchDeleteConfirm(TaskProvider taskProvider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定要删除选中的 ${taskProvider.selectedTaskIds.length} 个任务吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final result = await taskProvider.batchDeleteTasks();
+              if (result != null && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBatchUncompleteConfirm(TaskProvider taskProvider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量取消完成'),
+        content: Text(
+          '确定要将选中的 ${taskProvider.selectedTaskIds.length} 个任务恢复为未完成吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final result = await taskProvider.batchUncompleteTasks();
+              if (result != null && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBatchPriorityDialog(TaskProvider taskProvider) {
+    String selectedPriority = 'white';
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('设置优先级'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('为选中的 ${taskProvider.selectedTaskIds.length} 个任务设置优先级'),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _buildPriorityChip(
+                    ctx,
+                    'white',
+                    '无',
+                    Colors.grey,
+                    selectedPriority,
+                    (p) => setState(() => selectedPriority = p),
+                  ),
+                  _buildPriorityChip(
+                    ctx,
+                    'red',
+                    '高',
+                    Colors.red,
+                    selectedPriority,
+                    (p) => setState(() => selectedPriority = p),
+                  ),
+                  _buildPriorityChip(
+                    ctx,
+                    'yellow',
+                    '中',
+                    Colors.amber,
+                    selectedPriority,
+                    (p) => setState(() => selectedPriority = p),
+                  ),
+                  _buildPriorityChip(
+                    ctx,
+                    'green',
+                    '低',
+                    Colors.green,
+                    selectedPriority,
+                    (p) => setState(() => selectedPriority = p),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                final result = await taskProvider.batchUpdatePriority(
+                  selectedPriority,
+                );
+                if (result != null && mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(result),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPriorityChip(
+    BuildContext context,
+    String value,
+    String label,
+    Color color,
+    String selectedPriority,
+    ValueChanged<String> onSelect,
+  ) {
+    final isSelected = selectedPriority == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: color.withValues(alpha: 0.3),
+      avatar: Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      onSelected: (_) => onSelect(value),
+    );
+  }
+
+  void _showBatchDateDialog(TaskProvider taskProvider) {
+    DateTime selectedDate = DateTime.now();
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('修改日期'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('为选中的 ${taskProvider.selectedTaskIds.length} 个任务修改日期'),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.calendar_today),
+                title: Text(
+                  '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (date != null) {
+                    setState(() => selectedDate = date);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                final result = await taskProvider.batchUpdateDate(selectedDate);
+                if (result != null && mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(result),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBatchTagDialog(TaskProvider taskProvider) async {
+    final tagProvider = context.read<TagProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    if (!tagProvider.isInitialized) {
+      await tagProvider.initialize();
+    }
+    if (!mounted) return;
+
+    final selectedTagIds = <int>{};
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('设置标签'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('为选中的 ${taskProvider.selectedTaskIds.length} 个任务设置标签'),
+                const SizedBox(height: 16),
+                if (tagProvider.tags.isEmpty)
+                  const Text('暂无标签，请先创建标签')
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: tagProvider.tags.map((tag) {
+                      final isSelected = selectedTagIds.contains(tag.id);
+                      return FilterChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: tag.flutterColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(tag.name),
+                          ],
+                        ),
+                        selected: isSelected,
+                        selectedColor: tag.flutterColor.withValues(alpha: 0.2),
+                        checkmarkColor: tag.flutterColor,
+                        onSelected: (_) {
+                          setState(() {
+                            if (isSelected) {
+                              selectedTagIds.remove(tag.id);
+                            } else {
+                              selectedTagIds.add(tag.id!);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                final result = await taskProvider.batchUpdateTags(
+                  selectedTagIds.toList(),
+                  tagProvider,
+                );
+                if (result != null && mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(result),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -236,12 +870,77 @@ class _TaskPageState extends State<TaskPage>
     );
   }
 
-  Widget _buildTaskCard(BuildContext context, Task task, TaskProvider taskProvider) {
+  Widget _buildTaskCard(
+    BuildContext context,
+    Task task,
+    TaskProvider taskProvider,
+  ) {
     final settingsProvider = context.watch<SettingsProvider>();
+
+    if (taskProvider.batchMode) {
+      return _buildBatchSelectCard(context, task, taskProvider);
+    }
+
     if (settingsProvider.isRichView) {
       return _buildRichView(context, task, taskProvider);
     }
     return _buildSimpleView(context, task, taskProvider);
+  }
+
+  Widget _buildBatchSelectCard(
+    BuildContext context,
+    Task task,
+    TaskProvider taskProvider,
+  ) {
+    final isSelected = taskProvider.selectedTaskIds.contains(task.id);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSelected
+              ? colorScheme.primary
+              : colorScheme.outline.withValues(alpha: 0.1),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: ListTile(
+        leading: Checkbox(
+          value: isSelected,
+          onChanged: (_) => taskProvider.toggleTaskSelection(task.id!),
+        ),
+        title: Text(
+          task.title,
+          style: TextStyle(
+            decoration: task.isOK ? TextDecoration.lineThrough : null,
+            color: task.isOK
+                ? colorScheme.onSurface.withValues(alpha: 0.5)
+                : colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Text(
+          task.isWord ? '单词任务' : '普通任务',
+          style: TextStyle(
+            fontSize: 12,
+            color: task.isWord ? Colors.orange : Colors.blue,
+          ),
+        ),
+        trailing: Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: task.priorityColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        onTap: () => taskProvider.toggleTaskSelection(task.id!),
+      ),
+    );
   }
 
   Widget _buildSimpleView(
@@ -253,7 +952,7 @@ class _TaskPageState extends State<TaskPage>
       task: task,
       taskProvider: taskProvider,
       onTaskCheckChanged: (v) => _onTaskCheckChanged(v, task, taskProvider),
-      onEdit: () => _showAddTaskDialog(context, task: task),
+      onEdit: () => _showAddTaskDialog(task: task),
       onDelete: (ctx) => _showDeleteConfirmDialog(ctx, task, taskProvider),
     );
   }
@@ -315,7 +1014,11 @@ class _TaskPageState extends State<TaskPage>
     }
   }
 
-  Widget _buildRichView(BuildContext context, Task task, TaskProvider taskProvider) {
+  Widget _buildRichView(
+    BuildContext context,
+    Task task,
+    TaskProvider taskProvider,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -336,10 +1039,7 @@ class _TaskPageState extends State<TaskPage>
                       : accentColor.withValues(alpha: 0.15),
                   const Color(0xFF1A1A1A),
                 ]
-              : [
-                  Colors.white,
-                  Colors.grey.shade50,
-                ],
+              : [Colors.white, Colors.grey.shade50],
         ),
         border: Border.all(
           color: isDark
@@ -352,7 +1052,9 @@ class _TaskPageState extends State<TaskPage>
         boxShadow: isDark
             ? [
                 BoxShadow(
-                  color: (task.isOK ? Colors.black : accentColor).withValues(alpha: 0.2),
+                  color: (task.isOK ? Colors.black : accentColor).withValues(
+                    alpha: 0.2,
+                  ),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -413,7 +1115,7 @@ class _TaskPageState extends State<TaskPage>
                         size: 20,
                         color: colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
-                      onPressed: () => _showAddTaskDialog(context, task: task),
+                      onPressed: () => _showAddTaskDialog(task: task),
                     ),
                     IconButton(
                       icon: Icon(
@@ -454,6 +1156,45 @@ class _TaskPageState extends State<TaskPage>
                       if (task.rewardPoints > 0) ...[
                         _buildTag('完成 +${task.rewardPoints}积分', Colors.amber),
                       ],
+                      if (task.id != null)
+                        FutureBuilder<List<Tag>>(
+                          future: context.read<TagProvider>().getTagsForTask(
+                            task.id!,
+                          ),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              );
+                            }
+                            if (snapshot.hasError || !snapshot.hasData) {
+                              return const SizedBox.shrink();
+                            }
+                            final tags = snapshot.data!;
+                            if (tags.isEmpty) return const SizedBox.shrink();
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: tags.map((tag) {
+                                final tagName = tag.name;
+                                final displayName = tagName.length > 6
+                                    ? '${tagName.substring(0, 6)}...'
+                                    : tagName;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: _buildTag(
+                                    displayName,
+                                    tag.flutterColor,
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -467,6 +1208,7 @@ class _TaskPageState extends State<TaskPage>
 
   Widget _buildTag(String text, Color color) {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 100),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
@@ -480,6 +1222,7 @@ class _TaskPageState extends State<TaskPage>
           color: color,
           fontWeight: FontWeight.w600,
         ),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -502,8 +1245,18 @@ class _TaskPageState extends State<TaskPage>
     Task task,
     TaskProvider taskProvider,
   ) async {
+    final settingsProvider = context.read<SettingsProvider>();
+    final now = DateTime.now();
+    final isToday =
+        task.cplTime.year == now.year &&
+        task.cplTime.month == now.month &&
+        task.cplTime.day == now.day;
+
     if (v == true) {
-      final now = DateTime.now();
+      if (!isToday && !settingsProvider.allowCompletePastTasks) {
+        _showCenterToast('非当天任务无法完成，可在设置中开启高级模式', isWarning: true);
+        return;
+      }
       if (_lastWarningTime != null &&
           now.difference(_lastWarningTime!).inSeconds < 3) {
         return;
@@ -517,6 +1270,10 @@ class _TaskPageState extends State<TaskPage>
         _showCenterToast('获得 +${task.rewardPoints} 积分！', isWarning: false);
       }
     } else {
+      if (!isToday && !settingsProvider.allowCompletePastTasks) {
+        _showCenterToast('非当天任务无法取消完成，可在设置中开启高级模式', isWarning: true);
+        return;
+      }
       await taskProvider.uncompleteTask(task);
       if (task.rewardPoints > 0) {
         _showCenterToast('扣除 ${task.rewardPoints} 积分', isWarning: true);
@@ -539,15 +1296,21 @@ class _TaskPageState extends State<TaskPage>
         controller: widget.calendarController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: 30,
+        itemCount: 31,
         itemBuilder: (context, index) {
-          final date = now.add(Duration(days: index - 7));
-          final selected = taskProvider.selectedDates.any((d) => _sameDay(d, date));
+          final date = now.add(Duration(days: index - 15));
+          final selected = taskProvider.selectedDates.any(
+            (d) => _sameDay(d, date),
+          );
           final isToday = _sameDay(date, now);
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: GestureDetector(
               onTap: () => taskProvider.selectDate(date),
+              onLongPress: () {
+                taskProvider.selectDate(date);
+                _showAddTaskDialog();
+              },
               child: Container(
                 width: 58,
                 padding: const EdgeInsets.all(6),
@@ -596,12 +1359,96 @@ class _TaskPageState extends State<TaskPage>
     );
   }
 
+  Widget _buildTagFilter(TaskProvider taskProvider) {
+    final tagProvider = context.watch<TagProvider>();
+    final tags = tagProvider.tags;
+
+    if (tags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: tags.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            final isSelected = taskProvider.selectedTagId == null;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: FilterChip(
+                label: const Text('全部'),
+                selected: isSelected,
+                onSelected: (_) => taskProvider.clearTagFilter(),
+                selectedColor: Colors.blue.withValues(alpha: 0.2),
+                checkmarkColor: Colors.blue,
+              ),
+            );
+          }
+
+          final tag = tags[index - 1];
+          final isSelected = taskProvider.selectedTagId == tag.id;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: FilterChip(
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: tag.flutterColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(tag.name),
+                ],
+              ),
+              selected: isSelected,
+              onSelected: (_) async {
+                final taskIds = await tagProvider.getTaskIdsByTag(tag.id!);
+                taskProvider.selectTag(tag.id!, taskIds: taskIds);
+              },
+              selectedColor: tag.flutterColor.withValues(alpha: 0.2),
+              checkmarkColor: tag.flutterColor,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   bool _sameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  void _showAddTaskDialog(BuildContext context, {Task? task}) {
+  void _showAddTaskDialog({Task? task}) async {
     final taskProvider = context.read<TaskProvider>();
+    final settingsProvider = context.read<SettingsProvider>();
+    final tagProvider = context.read<TagProvider>();
+
+    if (task != null) {
+      final now = DateTime.now();
+      final isToday =
+          task.cplTime.year == now.year &&
+          task.cplTime.month == now.month &&
+          task.cplTime.day == now.day;
+      if (!isToday && !settingsProvider.allowEditPastTasks) {
+        _showCenterToast('非当天任务无法编辑，可在设置中开启高级模式', isWarning: true);
+        return;
+      }
+    }
+
+    if (!tagProvider.isInitialized) {
+      await tagProvider.initialize();
+    }
+
+    if (!mounted) return;
+
     final titleController = TextEditingController(text: task?.title ?? '');
     final descController = TextEditingController(text: task?.description ?? '');
     final rewardPointsController = TextEditingController(
@@ -612,6 +1459,27 @@ class _TaskPageState extends State<TaskPage>
     bool isWord = task?.isWord ?? false;
     String priority = task?.priority ?? 'white';
     DateTime currentDate = selectDate;
+
+    Set<int> selectedTagIds = {};
+    if (task?.id != null) {
+      final taskTags = await tagProvider.getTagsForTask(task!.id!);
+      selectedTagIds = taskTags.map((t) => t.id!).toSet();
+    }
+    if (isWord && selectedTagIds.isEmpty) {
+      final wordTag = tagProvider.getTagByName('单词');
+      if (wordTag != null) {
+        selectedTagIds.add(wordTag.id!);
+      }
+    }
+
+    final createMode = settingsProvider.taskCreateMode;
+    bool showField(String key) {
+      if (createMode == TaskCreateMode.minimal) return false;
+      if (createMode == TaskCreateMode.full) return true;
+      return settingsProvider.isFieldEnabled(key);
+    }
+
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -644,223 +1512,271 @@ class _TaskPageState extends State<TaskPage>
                           labelText: '任务名称',
                           border: OutlineInputBorder(),
                         ),
+                        autofocus: createMode == TaskCreateMode.minimal,
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: descController,
-                        decoration: const InputDecoration(
-                          labelText: '任务描述（可选）',
-                          border: OutlineInputBorder(),
+                      if (showField('description')) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: descController,
+                          decoration: const InputDecoration(
+                            labelText: '任务描述（可选）',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: rewardPointsController,
-                        decoration: const InputDecoration(
-                          labelText: '完成奖励积分',
-                          border: OutlineInputBorder(),
-                          hintText: '0',
-                          helperText: '未完成将扣除一半积分（取整）',
+                      ],
+                      if (showField('rewardPoints')) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: rewardPointsController,
+                          decoration: const InputDecoration(
+                            labelText: '完成奖励积分',
+                            border: OutlineInputBorder(),
+                            hintText: '0',
+                            helperText: '未完成将扣除一半积分（取整）',
+                          ),
+                          keyboardType: TextInputType.number,
                         ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Text('任务日期：'),
-                          TextButton(
-                            onPressed: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: currentDate,
-                                firstDate: DateTime.now().subtract(
-                                  const Duration(days: 365),
-                                ),
-                                lastDate: DateTime.now().add(
-                                  const Duration(days: 365),
-                                ),
-                              );
-                              if (picked != null) {
-                                setState(() => currentDate = picked);
-                              }
-                            },
-                            child: Text(
-                              '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: recurrence,
-                              decoration: const InputDecoration(
-                                labelText: '循环',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'none',
-                                  child: Text('无'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'daily',
-                                  child: Text('每天'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'weekly',
-                                  child: Text('每周'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'monthly',
-                                  child: Text('每月'),
-                                ),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) setState(() => recurrence = v);
+                      ],
+                      if (showField('date')) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('任务日期：'),
+                            TextButton(
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: currentDate,
+                                  firstDate: DateTime.now().subtract(
+                                    const Duration(days: 365),
+                                  ),
+                                  lastDate: DateTime.now().add(
+                                    const Duration(days: 365),
+                                  ),
+                                );
+                                if (picked != null) {
+                                  setState(() => currentDate = picked);
+                                }
                               },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: priority,
-                              decoration: const InputDecoration(
-                                labelText: '优先级',
-                                border: OutlineInputBorder(),
+                              child: Text(
+                                '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}',
                               ),
-                              items: [
-                                DropdownMenuItem(
-                                  value: 'red',
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.red,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('红色'),
-                                    ],
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'orange',
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.orange,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('橙色'),
-                                    ],
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'yellow',
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.yellow,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('黄色'),
-                                    ],
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'blue',
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('蓝色'),
-                                    ],
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'white',
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey,
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('白色'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) setState(() => priority = v);
-                              },
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Row(
+                          ],
+                        ),
+                      ],
+                      if (showField('recurrence') || showField('priority')) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            if (showField('recurrence'))
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: recurrence,
+                                  decoration: const InputDecoration(
+                                    labelText: '循环',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'none',
+                                      child: Text('无'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'daily',
+                                      child: Text('每天'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'weekly',
+                                      child: Text('每周'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'monthly',
+                                      child: Text('每月'),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v != null) {
+                                      setState(() => recurrence = v);
+                                    }
+                                  },
+                                ),
+                              ),
+                            if (showField('recurrence') &&
+                                showField('priority'))
+                              const SizedBox(width: 8),
+                            if (showField('priority'))
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: priority,
+                                  decoration: const InputDecoration(
+                                    labelText: '优先级',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'red',
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.red,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('红色'),
+                                        ],
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'orange',
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.orange,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('橙色'),
+                                        ],
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'yellow',
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.yellow,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('黄色'),
+                                        ],
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'blue',
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('蓝色'),
+                                        ],
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'white',
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey,
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('白色'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v != null) setState(() => priority = v);
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                      if (showField('isWord')) ...[
+                        const SizedBox(height: 10),
+                        Builder(
+                          builder: (context) {
+                            final tags = tagProvider.tags;
+                            if (tags.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Switch(
-                                  value: isWord,
-                                  onChanged: (v) => setState(() => isWord = v),
+                                const Text('标签：'),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: tags.map((tag) {
+                                    final isSelected = selectedTagIds.contains(
+                                      tag.id,
+                                    );
+                                    return FilterChip(
+                                      label: Text(tag.name),
+                                      selected: isSelected,
+                                      selectedColor: tag.flutterColor
+                                          .withValues(alpha: 0.3),
+                                      checkmarkColor: tag.flutterColor,
+                                      avatar: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: tag.flutterColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          if (selected) {
+                                            selectedTagIds.add(tag.id!);
+                                          } else {
+                                            selectedTagIds.remove(tag.id!);
+                                          }
+                                          isWord = selectedTagIds.contains(
+                                            tagProvider.getTagByName('单词')?.id,
+                                          );
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
                                 ),
-                                const Text('单词任务'),
                               ],
-                            ),
-                          ),
-                        ],
-                      ),
+                            );
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       ElevatedButton(
                         onPressed: () async {
@@ -894,9 +1810,24 @@ class _TaskPageState extends State<TaskPage>
 
                           final pageNavigator = Navigator.of(context);
                           if (task == null) {
-                            await taskProvider.addTask(newTask);
-                            pageNavigator.pop();
+                            final createdTask = await taskProvider.addTask(
+                              newTask,
+                            );
+                            if (createdTask.id != null) {
+                              await tagProvider.setTagsForTask(
+                                createdTask.id!,
+                                selectedTagIds.toList(),
+                              );
+                            }
+                            if (mounted) pageNavigator.pop();
                           } else {
+                            if (newTask.id != null) {
+                              await tagProvider.setTagsForTask(
+                                newTask.id!,
+                                selectedTagIds.toList(),
+                              );
+                            }
+                            if (!mounted) return;
                             if (task.recurrence != 'none' &&
                                 (task.title != newTask.title ||
                                     task.description != newTask.description ||
@@ -991,177 +1922,154 @@ class _SimpleTaskCardState extends State<_SimpleTaskCard> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Dismissible(
-      key: Key('task-${widget.task.id}'),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (direction) {
-        widget.onDelete(context);
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: widget.task.isOK
-              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
-              : colorScheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: widget.task.isOK
-                ? colorScheme.outline.withValues(alpha: 0.2)
-                : colorScheme.outline.withValues(alpha: 0.1),
-            width: 1,
+    return GestureDetector(
+      onLongPress: widget.onEdit,
+      child: Dismissible(
+        key: Key('task-${widget.task.id}'),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            borderRadius: BorderRadius.circular(8),
           ),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          child: const Icon(Icons.delete, color: Colors.white),
         ),
-        child: Column(
-          children: [
-            GestureDetector(
-              onLongPress: widget.onEdit,
-              onTap: () {
-                if (_isExpanded) {
-                  setState(() => _isExpanded = false);
-                } else {
-                  widget.onTaskCheckChanged(!widget.task.isOK);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: widget.task.isOK
-                              ? Colors.green
-                              : colorScheme.outline,
-                          width: 2,
-                        ),
-                        color: widget.task.isOK ? Colors.green : null,
-                      ),
-                      child: widget.task.isOK
-                          ? const Icon(
-                              Icons.check,
-                              size: 14,
-                              color: Colors.white,
-                            )
-                          : null,
-                    ),
-                    Container(
-                      width: 4,
-                      height: 20,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: widget.task.priorityColor,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        widget.task.title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          decoration: widget.task.isOK
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: widget.task.isOK
-                              ? colorScheme.onSurface.withValues(alpha: 0.5)
-                              : colorScheme.onSurface,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _isExpanded = !_isExpanded);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        child: Icon(
-                          _isExpanded
-                              ? Icons.arrow_drop_up
-                              : Icons.arrow_drop_down,
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        onDismissed: (direction) {
+          widget.onDelete(context);
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: widget.task.isOK
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                : colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: widget.task.isOK
+                  ? colorScheme.outline.withValues(alpha: 0.2)
+                  : colorScheme.outline.withValues(alpha: 0.1),
+              width: 1,
             ),
-            if (_isExpanded)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: colorScheme.outline.withValues(alpha: 0.1),
-                      width: 1,
-                    ),
+          ),
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  if (_isExpanded) {
+                    setState(() => _isExpanded = false);
+                  } else {
+                    widget.onTaskCheckChanged(!widget.task.isOK);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: widget.task.isOK
+                                ? Colors.green
+                                : colorScheme.outline,
+                            width: 2,
+                          ),
+                          color: widget.task.isOK ? Colors.green : null,
+                        ),
+                        child: widget.task.isOK
+                            ? const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                      Container(
+                        width: 4,
+                        height: 20,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: widget.task.priorityColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          widget.task.title,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            decoration: widget.task.isOK
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: widget.task.isOK
+                                ? colorScheme.onSurface.withValues(alpha: 0.5)
+                                : colorScheme.onSurface,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _isExpanded = !_isExpanded);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          child: Icon(
+                            _isExpanded
+                                ? Icons.arrow_drop_up
+                                : Icons.arrow_drop_down,
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.task.description != null &&
-                        widget.task.description!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          widget.task.description!,
-                          style: TextStyle(
-                            color: colorScheme.onSurface.withValues(alpha: 0.6),
-                            fontSize: 13,
-                          ),
-                        ),
+              ),
+              if (_isExpanded)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: colorScheme.outline.withValues(alpha: 0.1),
+                        width: 1,
                       ),
-                    Row(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                (widget.task.isWord
-                                        ? Colors.orange
-                                        : Colors.blue)
-                                    .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.task.description != null &&
+                          widget.task.description!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
-                            widget.task.isWord ? '单词任务' : '普通任务',
+                            widget.task.description!,
                             style: TextStyle(
-                              fontSize: 11,
-                              color: widget.task.isWord
-                                  ? Colors.orange
-                                  : Colors.blue,
-                              fontWeight: FontWeight.w500,
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
+                              fontSize: 13,
                             ),
                           ),
                         ),
-                        if (widget.task.recurrence != 'none')
+                      Row(
+                        children: [
                           Container(
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(
@@ -1169,43 +2077,70 @@ class _SimpleTaskCardState extends State<_SimpleTaskCard> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.15),
+                              color:
+                                  (widget.task.isWord
+                                          ? Colors.orange
+                                          : Colors.blue)
+                                      .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              _getRecurrenceText(widget.task.recurrence),
-                              style: const TextStyle(
+                              widget.task.isWord ? '单词任务' : '普通任务',
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.green,
+                                color: widget.task.isWord
+                                    ? Colors.orange
+                                    : Colors.blue,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
-                        if (widget.task.rewardPoints > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '+${widget.task.rewardPoints}积分',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.amber,
-                                fontWeight: FontWeight.w500,
+                          if (widget.task.recurrence != 'none')
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _getRecurrenceText(widget.task.recurrence),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ],
+                          if (widget.task.rewardPoints > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '+${widget.task.rewardPoints}积分',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

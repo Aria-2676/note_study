@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
-import '../../data/models/task/task_model.dart';
+import '../../modules/tasks/models/task_model.dart';
 
 class WidgetService {
   static const String widgetName = 'TaskWidget';
@@ -25,12 +25,17 @@ class WidgetService {
         'title': t.title,
         'isOK': t.isOK,
         'rewardPoints': t.rewardPoints,
+        'priority': t.priority,
       }).toList();
+
+      final completedCount = tasks.where((t) => t.isOK).length;
+      final totalCount = tasks.length;
 
       await HomeWidget.saveWidgetData(tasksKey, jsonEncode(taskData));
       await HomeWidget.saveWidgetData(pointsKey, points.toString());
       await HomeWidget.saveWidgetData(dateKey, 
         '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}');
+      await HomeWidget.saveWidgetData('widget_progress', '$completedCount/$totalCount 完成');
 
       await HomeWidget.updateWidget(
         name: widgetName,

@@ -1,8 +1,10 @@
-import '../../core/services/database_service.dart';
-import '../models/statistics/statistics_model.dart';
-import '../models/task/task_model.dart';
-import '../../core/utils/date_utils.dart';
+import '../../../core/services/database_service.dart';
+import '../models/statistics_model.dart';
+import '../../tasks/models/task_model.dart';
+import '../../../core/utils/date_utils.dart';
 
+/// 统计数据仓储
+/// 负责统计数据的查询操作
 class StatisticsRepository {
   final DatabaseService _dbService = DatabaseService.instance;
 
@@ -78,7 +80,7 @@ class StatisticsRepository {
   Future<DailyStatistics> getDailyStatistics(DateTime date) async {
     final tasks = await _dbService.getTasksByDate(date);
     final completed = tasks.where((t) => t.isOK).toList();
-    
+
     return DailyStatistics(
       date: date,
       tasksCreated: tasks.length,
@@ -92,11 +94,15 @@ class StatisticsRepository {
     final startOfWeek = DateUtils.getStartOfWeek(date);
     final endOfWeek = DateUtils.getEndOfWeek(date);
     final allTasks = await _dbService.getAllTasks();
-    
+
     return allTasks.where((task) {
-      final taskDate = DateTime(task.cplTime.year, task.cplTime.month, task.cplTime.day);
+      final taskDate = DateTime(
+        task.cplTime.year,
+        task.cplTime.month,
+        task.cplTime.day,
+      );
       return taskDate.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
-             taskDate.isBefore(endOfWeek.add(const Duration(days: 1)));
+          taskDate.isBefore(endOfWeek.add(const Duration(days: 1)));
     }).toList();
   }
 
@@ -104,11 +110,15 @@ class StatisticsRepository {
     final startOfMonth = DateUtils.getStartOfMonth(date);
     final endOfMonth = DateUtils.getEndOfMonth(date);
     final allTasks = await _dbService.getAllTasks();
-    
+
     return allTasks.where((task) {
-      final taskDate = DateTime(task.cplTime.year, task.cplTime.month, task.cplTime.day);
+      final taskDate = DateTime(
+        task.cplTime.year,
+        task.cplTime.month,
+        task.cplTime.day,
+      );
       return taskDate.isAfter(startOfMonth.subtract(const Duration(days: 1))) &&
-             taskDate.isBefore(endOfMonth.add(const Duration(days: 1)));
+          taskDate.isBefore(endOfMonth.add(const Duration(days: 1)));
     }).toList();
   }
 }

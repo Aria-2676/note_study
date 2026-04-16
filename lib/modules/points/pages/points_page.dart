@@ -12,12 +12,15 @@ class PointsPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('我的积分', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+        const Text(
+          '我的积分',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
-        
+
         _buildPointsCard(pointsProvider.currentPoints),
         const SizedBox(height: 16),
-        
+
         _buildPointsHistory(),
       ],
     );
@@ -33,7 +36,11 @@ class PointsPage extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               '$points',
-              style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.amber),
+              style: const TextStyle(
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
+                color: Colors.amber,
+              ),
             ),
             const SizedBox(height: 8),
             const Text('可用积分'),
@@ -50,7 +57,10 @@ class PointsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('积分明细', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              '积分明细',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 16),
             _buildHistoryItem('完成任务', '+10', Colors.green),
             _buildHistoryItem('购买商品', '-50', Colors.red),
@@ -69,7 +79,10 @@ class PointsPage extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title),
-          Text(points, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          Text(
+            points,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );

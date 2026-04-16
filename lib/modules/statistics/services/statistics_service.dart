@@ -1,5 +1,5 @@
 import '../../../providers/statistics_provider.dart';
-import '../../../data/models/statistics/statistics_model.dart';
+import '../models/statistics_model.dart';
 
 class StatisticsService {
   final StatisticsProvider _provider;

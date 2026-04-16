@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../providers/points_provider.dart';
-import '../../../data/models/shop/shop_model.dart';
+import '../models/shop_model.dart';
 
 class ShopPage extends StatelessWidget {
   const ShopPage({super.key});
@@ -17,15 +17,21 @@ class ShopPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('商城', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+        const Text(
+          '商城',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
-        
+
         _buildPointsBanner(currentPoints),
         const SizedBox(height: 16),
-        
-        const Text('商品列表', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+
+        const Text(
+          '商品列表',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 8),
-        
+
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -44,23 +50,39 @@ class ShopPage extends StatelessWidget {
                   children: [
                     Icon(item.icon, size: 48, color: item.color),
                     const SizedBox(height: 8),
-                    Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      item.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 4),
-                    Text(item.description, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    Text(
+                      item.description,
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(Icons.stars, color: Colors.amber, size: 16),
                         const SizedBox(width: 4),
-                        Text('${item.price}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          '${item.price}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     ElevatedButton(
-                      onPressed: () => _purchaseItem(context, item, shopProvider, currentPoints),
+                      onPressed: () => _purchaseItem(
+                        context,
+                        item,
+                        shopProvider,
+                        currentPoints,
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: currentPoints >= item.price ? Colors.green : Colors.grey,
+                        backgroundColor: currentPoints >= item.price
+                            ? Colors.green
+                            : Colors.grey,
                       ),
                       child: const Text('购买'),
                     ),
@@ -88,7 +110,13 @@ class ShopPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('可用积分'),
-                  Text('$points', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text(
+                    '$points',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -98,11 +126,16 @@ class ShopPage extends StatelessWidget {
     );
   }
 
-  void _purchaseItem(BuildContext context, ShopItem item, ShopProvider shopProvider, int currentPoints) {
+  void _purchaseItem(
+    BuildContext context,
+    ShopItem item,
+    ShopProvider shopProvider,
+    int currentPoints,
+  ) {
     if (currentPoints < item.price) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('积分不足')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('积分不足')));
       return;
     }
 
@@ -122,9 +155,9 @@ class ShopPage extends StatelessWidget {
                 await shopProvider.purchaseItem(item);
                 if (context.mounted) {
                   Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('成功购买「${item.name}」')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('成功购买「${item.name}」')));
                 }
               },
               child: const Text('购买'),

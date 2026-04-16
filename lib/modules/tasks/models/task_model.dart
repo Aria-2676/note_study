@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+/// 任务数据模型
+/// 包含任务的所有属性和序列化方法
 class Task {
   final int? id;
   final String? loopId;
@@ -135,6 +137,8 @@ class Task {
   }
 }
 
+/// 回收站任务数据模型
+/// 用于存储已删除的任务信息
 class RecycledTask {
   final int id;
   final Task task;

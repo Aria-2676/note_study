@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import '../data/models/points/points_model.dart';
+import '../modules/points/models/points_model.dart';
 import '../core/services/database_service.dart';
 
+/// 积分状态管理Provider
+/// 负责积分的增减和查询
 class PointsProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService.instance;
-  
+
   UserPoints _userPoints = UserPoints();
 
   UserPoints get userPoints => _userPoints;

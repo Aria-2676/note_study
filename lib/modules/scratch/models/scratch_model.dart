@@ -1,3 +1,4 @@
+/// 抽奖奖品数据模型
 class PrizeItem {
   final String id;
   final String name;
@@ -43,6 +44,7 @@ class PrizeItem {
   }
 }
 
+/// 抽奖记录数据模型
 class LotteryRecord {
   final int? id;
   final DateTime drawTime;

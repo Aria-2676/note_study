@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../providers/points_provider.dart';
-import '../../../data/models/shop/shop_model.dart';
-import '../../../data/models/scratch/scratch_model.dart';
+import '../../shop/models/shop_model.dart';
+import '../models/scratch_model.dart';
 import '../../../core/services/database_service.dart';
 
 class ScratchCardPage extends StatefulWidget {
@@ -101,17 +101,23 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
 
   Future<void> _deleteLotteryRecord(int id) async {
     try {
-      final affectedRows = await DatabaseService.instance.deleteLotteryRecord(id);
+      final affectedRows = await DatabaseService.instance.deleteLotteryRecord(
+        id,
+      );
       if (affectedRows == 0) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('删除失败，记录不存在')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('删除失败，记录不存在')));
         }
       } else {
         await _loadLotteryRecords();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: ${e.toString()}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('删除失败: ${e.toString()}')));
       }
     }
   }
@@ -166,7 +172,9 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
         prizeValue: 0,
         costPoints: _selectedCost,
       );
-      final recordId = await DatabaseService.instance.insertLotteryRecordWithId(tempRecord);
+      final recordId = await DatabaseService.instance.insertLotteryRecordWithId(
+        tempRecord,
+      );
       setState(() {
         _currentRecordId = recordId;
       });
@@ -366,7 +374,9 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
     final pointsProvider = Provider.of<PointsProvider>(context);
     final shopProvider = Provider.of<ShopProvider>(context);
     final availableItems = shopProvider.shopItems
-        .where((item) => !_customPrizePool.any((p) => p.id == item.id.toString()))
+        .where(
+          (item) => !_customPrizePool.any((p) => p.id == item.id.toString()),
+        )
         .map((item) => PrizeItem.fromShopItem(item))
         .toList();
 
@@ -389,7 +399,10 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(30),
@@ -476,26 +489,33 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: _costOptions
-                          .map((cost) => Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                child: ElevatedButton(
-                                  onPressed: () => setState(() => _selectedCost = cost),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _selectedCost == cost
-                                        ? const Color(0xFFFF6B6B)
-                                        : Colors.grey.shade200,
-                                    foregroundColor: _selectedCost == cost
-                                        ? Colors.white
-                                        : Colors.black,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 24, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
+                          .map(
+                            (cost) => Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              child: ElevatedButton(
+                                onPressed: () =>
+                                    setState(() => _selectedCost = cost),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _selectedCost == cost
+                                      ? const Color(0xFFFF6B6B)
+                                      : Colors.grey.shade200,
+                                  foregroundColor: _selectedCost == cost
+                                      ? Colors.white
+                                      : Colors.black,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
                                   ),
-                                  child: Text('$cost积分'),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
                                 ),
-                              ))
+                                child: Text('$cost积分'),
+                              ),
+                            ),
+                          )
                           .toList(),
                     ),
                     const SizedBox(height: 8),
@@ -513,7 +533,10 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6B6B),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 60,
+                    vertical: 16,
+                  ),
                   textStyle: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -540,7 +563,9 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                       backgroundColor: _showPrizePool
                           ? const Color(0xFFFF6B6B)
                           : Colors.grey.shade200,
-                      foregroundColor: _showPrizePool ? Colors.white : Colors.black,
+                      foregroundColor: _showPrizePool
+                          ? Colors.white
+                          : Colors.black,
                     ),
                     child: const Text('自定义抽奖池'),
                   ),
@@ -551,7 +576,9 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                       backgroundColor: _showRecords
                           ? const Color(0xFFFF6B6B)
                           : Colors.grey.shade200,
-                      foregroundColor: _showRecords ? Colors.white : Colors.black,
+                      foregroundColor: _showRecords
+                          ? Colors.white
+                          : Colors.black,
                     ),
                     child: const Text('抽奖记录'),
                   ),
@@ -587,7 +614,9 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            _currentPrize!.type == 'integral' ? Icons.star : Icons.card_giftcard,
+            _currentPrize!.type == 'integral'
+                ? Icons.star
+                : Icons.card_giftcard,
             size: 64,
             color: Colors.amber,
           ),
@@ -712,14 +741,19 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
               ? const Text('暂无奖品，请从下方添加', style: TextStyle(color: Colors.grey))
               : Column(
                   children: _customPrizePool
-                      .map((prize) => ListTile(
-                            title: Text(prize.name),
-                            subtitle: Text('价值: ${prize.value}积分'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.remove_circle, color: Colors.red),
-                              onPressed: () => _updatePrizePool(false, prize),
+                      .map(
+                        (prize) => ListTile(
+                          title: Text(prize.name),
+                          subtitle: Text('价值: ${prize.value}积分'),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.remove_circle,
+                              color: Colors.red,
                             ),
-                          ))
+                            onPressed: () => _updatePrizePool(false, prize),
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
           const SizedBox(height: 12),
@@ -729,14 +763,19 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
               ? const Text('所有商品已添加', style: TextStyle(color: Colors.grey))
               : Column(
                   children: availableItems
-                      .map((prize) => ListTile(
-                            title: Text(prize.name),
-                            subtitle: Text('价格: ${prize.value}积分'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.add_circle, color: Colors.green),
-                              onPressed: () => _updatePrizePool(true, prize),
+                      .map(
+                        (prize) => ListTile(
+                          title: Text(prize.name),
+                          subtitle: Text('价格: ${prize.value}积分'),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.add_circle,
+                              color: Colors.green,
                             ),
-                          ))
+                            onPressed: () => _updatePrizePool(true, prize),
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
           const SizedBox(height: 8),
@@ -775,38 +814,49 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
               ? const Text('暂无抽奖记录', style: TextStyle(color: Colors.grey))
               : Column(
                   children: _lotteryRecords
-                      .map((record) => ListTile(
-                            leading: Icon(
-                              record.prizeType == 'integral' ? Icons.star : Icons.card_giftcard,
-                              color: record.prizeType == 'integral' ? Colors.amber : Colors.green,
-                            ),
-                            title: Text(record.prizeName),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '消耗: ${record.costPoints}积分 | 获得: ${record.prizeValue}积分价值',
-                                  style: const TextStyle(fontSize: 12),
+                      .map(
+                        (record) => ListTile(
+                          leading: Icon(
+                            record.prizeType == 'integral'
+                                ? Icons.star
+                                : Icons.card_giftcard,
+                            color: record.prizeType == 'integral'
+                                ? Colors.amber
+                                : Colors.green,
+                          ),
+                          title: Text(record.prizeName),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '消耗: ${record.costPoints}积分 | 获得: ${record.prizeValue}积分价值',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              Text(
+                                _formatDateTime(
+                                  record.drawTime.toIso8601String(),
                                 ),
-                                Text(
-                                  _formatDateTime(record.drawTime.toIso8601String()),
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
                                 ),
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                if (record.id != null) {
-                                  _deleteLotteryRecord(record.id!);
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('记录ID异常，无法删除')),
-                                  );
-                                }
-                              },
-                            ),
-                          ))
+                              ),
+                            ],
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              if (record.id != null) {
+                                _deleteLotteryRecord(record.id!);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('记录ID异常，无法删除')),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
           const SizedBox(height: 12),
@@ -832,20 +882,22 @@ class _ScratchCardPageState extends State<ScratchCardPage> {
                 );
                 if (confirmed == true) {
                   try {
-                    final affectedRows =
-                        await DatabaseService.instance.deleteAllLotteryRecords();
+                    final affectedRows = await DatabaseService.instance
+                        .deleteAllLotteryRecords();
                     if (affectedRows >= 0) {
                       await _loadLotteryRecords();
                     } else {
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('清空失败')));
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(const SnackBar(content: Text('清空失败')));
                       }
                     }
                   } catch (_) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('清空失败')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('清空失败')));
                     }
                   }
                 }

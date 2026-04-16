@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import '../data/models/shop/shop_model.dart';
+import '../modules/shop/models/shop_model.dart';
 import '../core/services/database_service.dart';
 import 'points_provider.dart';
 
+/// 商城状态管理Provider
+/// 负责商城商品和兑换逻辑
 class ShopProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService.instance;
-  final PointsProvider _pointsProvider;
-  
+  PointsProvider _pointsProvider;
+
   List<ShopItem> _shopItems = [];
   List<PurchasedItem> _purchasedItems = [];
 
@@ -14,6 +16,10 @@ class ShopProvider extends ChangeNotifier {
   List<PurchasedItem> get purchasedItems => _purchasedItems;
 
   ShopProvider(this._pointsProvider);
+
+  void updatePointsProvider(PointsProvider pointsProvider) {
+    _pointsProvider = pointsProvider;
+  }
 
   Future<void> initialize() async {
     await _loadShopItems();
