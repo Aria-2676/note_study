@@ -116,6 +116,31 @@ class StatisticKeys {
   /// 数据导出
   static const clickDataExport = 'click_data_export';
 
+  // ========== Pomodoro模块 ==========
+  /// 番茄钟页面访问
+  static const pageViewPomodoroHome = 'page_view_pomodoro_home';
+
+  /// 番茄钟启动
+  static const clickPomodoroStart = 'click_pomodoro_start';
+
+  /// 番茄钟暂停
+  static const clickPomodoroPause = 'click_pomodoro_pause';
+
+  /// 番茄钟重置
+  static const clickPomodoroReset = 'click_pomodoro_reset';
+
+  /// 番茄钟完成计数
+  static const countPomodoroCompleted = 'count_pomodoro_completed';
+
+  /// 番茄钟专注时长
+  static const countPomodoroFocusMinutes = 'count_pomodoro_focus_minutes';
+
+  /// 番茄钟设置修改
+  static const clickPomodoroSettings = 'click_pomodoro_settings';
+
+  /// 番茄钟历史记录访问
+  static const pageViewPomodoroHistory = 'page_view_pomodoro_history';
+
   // ========== System系统 ==========
   /// App崩溃信息
   static const systemAppCrash = 'system_app_crash';

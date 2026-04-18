@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../modules/tasks/models/task_model.dart';
 import '../modules/tasks/repositories/task_repository.dart';
 import '../core/services/widget_service.dart';
+import '../core/utils/task_sort_utils.dart';
 import 'points_provider.dart';
 
-/// 任务排序选项
 enum TaskSortOption {
   defaultOrder,
   priority,
@@ -13,10 +13,8 @@ enum TaskSortOption {
   completionTime,
 }
 
-/// 任务状态管理Provider
-/// 负责任务的增删改查、完成状态管理
 class TaskProvider extends ChangeNotifier {
-  final TaskRepository _taskRepository = TaskRepository();
+  final TaskRepository _taskRepository;
   PointsProvider _pointsProvider;
 
   List<Task> _tasks = [];
@@ -58,7 +56,21 @@ class TaskProvider extends ChangeNotifier {
   bool? get completionFilter => _completionFilter;
   bool? get recurrenceFilter => _recurrenceFilter;
 
-  TaskProvider(this._pointsProvider);
+  bool get hasActiveFilter =>
+      _priorityFilter != null ||
+      _completionFilter != null ||
+      _recurrenceFilter != null;
+
+  int get activeFilterCount {
+    int count = 0;
+    if (_priorityFilter != null) count++;
+    if (_completionFilter != null) count++;
+    if (_recurrenceFilter != null) count++;
+    return count;
+  }
+
+  TaskProvider(this._pointsProvider, {TaskRepository? taskRepository})
+    : _taskRepository = taskRepository ?? TaskRepository();
 
   void updatePointsProvider(PointsProvider pointsProvider) {
     _pointsProvider = pointsProvider;
@@ -78,25 +90,22 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadRecycledTasks() async {
-    await _loadRecycledTasks();
-  }
+  Future<void> loadRecycledTasks() async => await _loadRecycledTasks();
 
   Future<void> restoreTaskFromRecycle(int recycledTaskId) async {
     final recycledTask = _recycledTasks.firstWhere(
       (t) => t.id == recycledTaskId,
     );
     final originalCplTime = recycledTask.task.cplTime;
-
     final restoredTask = await _taskRepository.restoreTaskFromRecycle(
       recycledTaskId,
     );
 
     if (restoredTask.recurrence != 'none') {
-      final taskTemplate = restoredTask.copyWith(cplTime: originalCplTime);
-      await _taskRepository.generateRecurringTasks(taskTemplate);
+      await _taskRepository.generateRecurringTasks(
+        restoredTask.copyWith(cplTime: originalCplTime),
+      );
     }
-
     await _loadRecycledTasks();
     await loadTasksByDate(_selectedDate);
   }
@@ -111,14 +120,25 @@ class TaskProvider extends ChangeNotifier {
     await _loadRecycledTasks();
   }
 
+  Future<bool> _shouldHandlePoints(Task task, String type) async {
+    if (task.id == null || task.rewardPoints <= 0) return false;
+    return !await _pointsProvider.hasRecordForTypeAndRelatedId(type, task.id!);
+  }
+
   Future<void> _checkOverdueTasks() async {
     await _taskRepository.checkOverdueTasks();
     final overdueTasks = await _taskRepository.getAllTasks();
     for (final task in overdueTasks) {
       if (!task.isOK && task.rewardPoints > 0 && !task.isDeducted) {
         final deductPoints = (task.rewardPoints / 2).floor();
-        if (deductPoints > 0) {
-          await _pointsProvider.deductPoints(deductPoints);
+        if (deductPoints > 0 &&
+            await _shouldHandlePoints(task, 'overdue_deduct')) {
+          await _pointsProvider.deductPointsWithRecord(
+            points: deductPoints,
+            type: 'overdue_deduct',
+            description: '逾期任务扣除: ${task.title}',
+            relatedId: task.id,
+          );
         }
       }
     }
@@ -126,38 +146,48 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> loadTasksByDate(DateTime date) async {
     _selectedDate = date;
+    if (!_selectedDates.any((d) => _sameDay(d, date))) _selectedDates = [date];
     _tasks = await _taskRepository.getTasksForDate(date);
     notifyListeners();
     await _updateWidget();
   }
 
-  Future<void> loadTodayTasks() async {
-    await loadTasksByDate(DateTime.now());
-  }
+  Future<void> loadTodayTasks() async => await loadTasksByDate(DateTime.now());
 
   Future<Task> addTask(Task task) async {
     final createdTask = await _taskRepository.addTask(task);
-    await loadTasksByDate(_selectedDate);
+    await loadTasksByDate(task.cplTime);
     return createdTask;
   }
 
-  Future<void> autoCheckRecurringTasks() async {
-    await _taskRepository.autoCheckRecurringTasks();
-  }
+  Future<void> autoCheckRecurringTasks() async =>
+      await _taskRepository.autoCheckRecurringTasks();
 
   Future<String?> completeTask(Task task) async {
+    if (task.isOK) return null;
     final result = await _taskRepository.completeTask(task);
-    if (result == null && task.rewardPoints > 0) {
-      await _pointsProvider.addPoints(task.rewardPoints);
+    if (result == null && await _shouldHandlePoints(task, 'task_complete')) {
+      await _pointsProvider.addPointsWithRecord(
+        points: task.rewardPoints,
+        type: 'task_complete',
+        description: '完成任务: ${task.title}',
+        relatedId: task.id,
+      );
     }
     await loadTasksByDate(_selectedDate);
     return result;
   }
 
   Future<void> uncompleteTask(Task task) async {
+    if (!task.isOK) return;
     await _taskRepository.uncompleteTask(task);
-    if (task.rewardPoints > 0) {
-      await _pointsProvider.deductPoints(task.rewardPoints);
+    if (await _shouldHandlePoints(task, 'task_uncomplete')) {
+      await _pointsProvider.deductPointsWithRecord(
+        points: task.rewardPoints,
+        type: 'task_uncomplete',
+        description: '取消完成: ${task.title}',
+        relatedId: task.id,
+      );
     }
     await loadTasksByDate(_selectedDate);
   }
@@ -170,26 +200,23 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> updateTask(Task task, {bool updateAll = false}) async {
     await _taskRepository.updateTask(task, updateAll: updateAll);
-    await loadTasksByDate(_selectedDate);
+    await loadTasksByDate(task.cplTime);
     notifyListeners();
     await _updateWidget();
   }
 
   void selectDate(DateTime date) {
     _selectedDate = date;
-    if (!_selectedDates.any((d) => _sameDay(d, date))) {
-      _selectedDates = [date];
-    }
+    if (!_selectedDates.any((d) => _sameDay(d, date))) _selectedDates = [date];
+    notifyListeners();
     loadTasksByDate(date);
   }
 
   void toggleSelectedDate(DateTime date) {
     final idx = _selectedDates.indexWhere((d) => _sameDay(d, date));
-    if (idx >= 0) {
-      if (_selectedDates.length > 1) {
-        _selectedDates.removeAt(idx);
-      }
-    } else {
+    if (idx >= 0 && _selectedDates.length > 1) {
+      _selectedDates.removeAt(idx);
+    } else if (idx < 0) {
       _selectedDates.add(date);
     }
     notifyListeners();
@@ -197,9 +224,7 @@ class TaskProvider extends ChangeNotifier {
 
   void setMultiTaskMode(bool value) {
     _multiTaskMode = value;
-    if (!value) {
-      _selectedDates = [_selectedDate];
-    }
+    if (!value) _selectedDates = [_selectedDate];
     notifyListeners();
   }
 
@@ -210,25 +235,15 @@ class TaskProvider extends ChangeNotifier {
 
       final List<dynamic> widgetTasks = widgetData['tasks'] ?? [];
       final int widgetPoints = widgetData['points'] ?? 0;
-
       bool hasChanges = false;
+
       for (int i = 0; i < widgetTasks.length && i < _tasks.length; i++) {
         final widgetTask = widgetTasks[i];
         final localTask = _tasks[i];
         final bool widgetIsOK = widgetTask['isOK'] ?? false;
 
         if (widgetIsOK != localTask.isOK) {
-          if (widgetIsOK) {
-            await _taskRepository.completeTask(localTask);
-            if (localTask.rewardPoints > 0) {
-              await _pointsProvider.addPoints(localTask.rewardPoints);
-            }
-          } else {
-            await _taskRepository.uncompleteTask(localTask);
-            if (localTask.rewardPoints > 0) {
-              await _pointsProvider.deductPoints(localTask.rewardPoints);
-            }
-          }
+          await _syncTaskCompletion(localTask, widgetIsOK);
           hasChanges = true;
         }
       }
@@ -238,10 +253,44 @@ class TaskProvider extends ChangeNotifier {
         hasChanges = true;
       }
 
-      if (hasChanges) {
-        await loadTasksByDate(_selectedDate);
-      }
+      if (hasChanges) await loadTasksByDate(_selectedDate);
     } catch (_) {}
+  }
+
+  Future<void> _syncTaskCompletion(Task task, bool isCompleted) async {
+    if (isCompleted && !task.isOK) {
+      await _taskRepository.completeTask(task);
+      if (task.rewardPoints > 0 && task.id != null) {
+        final hasRecord = await _pointsProvider.hasRecordForTypeAndRelatedId(
+          'task_complete',
+          task.id!,
+        );
+        if (!hasRecord) {
+          await _pointsProvider.addPointsWithRecord(
+            points: task.rewardPoints,
+            type: 'task_complete',
+            description: '完成任务(小组件): ${task.title}',
+            relatedId: task.id,
+          );
+        }
+      }
+    } else if (!isCompleted && task.isOK) {
+      await _taskRepository.uncompleteTask(task);
+      if (task.rewardPoints > 0 && task.id != null) {
+        final hasRecord = await _pointsProvider.hasRecordForTypeAndRelatedId(
+          'task_uncomplete',
+          task.id!,
+        );
+        if (!hasRecord) {
+          await _pointsProvider.deductPointsWithRecord(
+            points: task.rewardPoints,
+            type: 'task_uncomplete',
+            description: '取消完成(小组件): ${task.title}',
+            relatedId: task.id,
+          );
+        }
+      }
+    }
   }
 
   Future<void> _updateWidget() async {
@@ -252,9 +301,8 @@ class TaskProvider extends ChangeNotifier {
     );
   }
 
-  bool _sameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Task? getTaskById(int id) {
     try {
@@ -264,79 +312,20 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadTasksForDate(DateTime date) async {
-    await loadTasksByDate(date);
-  }
+  Future<void> loadTasksForDate(DateTime date) async =>
+      await loadTasksByDate(date);
 
   List<Task> _getFilteredAndSortedTasks() {
-    var filteredTasks = _tasks;
-
-    if (_selectedTagId != null && _filteredTaskIds.isNotEmpty) {
-      filteredTasks = filteredTasks.where((task) {
-        return _filteredTaskIds.contains(task.id);
-      }).toList();
-    }
-
-    if (_priorityFilter != null) {
-      filteredTasks = filteredTasks.where((task) {
-        return task.priority == _priorityFilter;
-      }).toList();
-    }
-
-    if (_completionFilter != null) {
-      filteredTasks = filteredTasks.where((task) {
-        return task.isOK == _completionFilter;
-      }).toList();
-    }
-
-    if (_recurrenceFilter != null) {
-      filteredTasks = filteredTasks.where((task) {
-        if (_recurrenceFilter == true) {
-          return task.recurrence != 'none';
-        } else {
-          return task.recurrence == 'none';
-        }
-      }).toList();
-    }
-
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      filteredTasks = filteredTasks.where((task) {
-        return task.title.toLowerCase().contains(query) ||
-            (task.description?.toLowerCase().contains(query) ?? false);
-      }).toList();
-    }
-
-    switch (_sortOption) {
-      case TaskSortOption.priority:
-        filteredTasks.sort(
-          (a, b) => a.priorityOrder.compareTo(b.priorityOrder),
-        );
-        break;
-      case TaskSortOption.completionStatus:
-        filteredTasks.sort((a, b) {
-          if (a.isOK == b.isOK) return 0;
-          return a.isOK ? 1 : -1;
-        });
-        break;
-      case TaskSortOption.createdTime:
-        filteredTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        break;
-      case TaskSortOption.completionTime:
-        filteredTasks.sort((a, b) {
-          if (a.completedAt == null && b.completedAt == null) {
-            return b.createdAt.compareTo(a.createdAt);
-          }
-          if (a.completedAt == null) return 1;
-          if (b.completedAt == null) return -1;
-          return b.completedAt!.compareTo(a.completedAt!);
-        });
-        break;
-      case TaskSortOption.defaultOrder:
-        break;
-    }
-
-    return filteredTasks;
+    return TaskSortUtils.applyAllFilters(
+      tasks: _tasks,
+      priorityFilter: _priorityFilter,
+      completionFilter: _completionFilter,
+      recurrenceFilter: _recurrenceFilter,
+      searchQuery: _searchQuery,
+      filteredTaskIds: _filteredTaskIds,
+      selectedTagId: _selectedTagId,
+      sortOption: _sortOption,
+    );
   }
 
   void setSearchQuery(String query) {
@@ -410,14 +399,50 @@ class TaskProvider extends ChangeNotifier {
 
     try {
       final allTasks = await _taskRepository.getAllTasks();
-      final queryLower = query.toLowerCase();
-
-      _searchResults = allTasks.where((task) {
-        return task.title.toLowerCase().contains(queryLower) ||
-            (task.description?.toLowerCase().contains(queryLower) ?? false);
-      }).toList();
-
+      _searchResults = TaskSortUtils.filterBySearchQuery(allTasks, query);
       _searchResults.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } catch (e) {
+      _searchResults = [];
+    }
+
+    _isSearching = false;
+    notifyListeners();
+  }
+
+  Future<void> advancedSearch({
+    String query = '',
+    DateTime? startDate,
+    DateTime? endDate,
+    bool? completionStatus,
+  }) async {
+    _isSearching = true;
+    notifyListeners();
+
+    try {
+      var results = await _taskRepository.getAllTasks();
+
+      if (query.isNotEmpty) {
+        results = TaskSortUtils.filterBySearchQuery(results, query);
+      }
+      if (startDate != null) {
+        results = results.where((t) => !t.cplTime.isBefore(startDate)).toList();
+      }
+      if (endDate != null) {
+        results = results.where((t) {
+          return t.cplTime.year < endDate.year ||
+              (t.cplTime.year == endDate.year &&
+                  t.cplTime.month < endDate.month) ||
+              (t.cplTime.year == endDate.year &&
+                  t.cplTime.month == endDate.month &&
+                  t.cplTime.day <= endDate.day);
+        }).toList();
+      }
+      if (completionStatus != null) {
+        results = TaskSortUtils.filterByCompletion(results, completionStatus);
+      }
+
+      results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _searchResults = results;
     } catch (e) {
       _searchResults = [];
     }
@@ -431,23 +456,17 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void syncSortOption(TaskSortOption option) {
-    _sortOption = option;
-  }
+  void syncSortOption(TaskSortOption option) => _sortOption = option;
 
   void toggleBatchMode() {
     _batchMode = !_batchMode;
-    if (!_batchMode) {
-      _selectedTaskIds.clear();
-    }
+    if (!_batchMode) _selectedTaskIds.clear();
     notifyListeners();
   }
 
   void setBatchMode(bool value) {
     _batchMode = value;
-    if (!value) {
-      _selectedTaskIds.clear();
-    }
+    if (!value) _selectedTaskIds.clear();
     notifyListeners();
   }
 
@@ -471,103 +490,91 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<String?> batchCompleteTasks() async {
-    try {
-      int successCount = 0;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        if (!task.isOK) {
-          await completeTask(task);
-          successCount++;
-        }
-      }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return successCount > 0 ? '成功完成 $successCount 个任务' : null;
-    } catch (e) {
-      return '批量完成失败: $e';
-    }
-  }
+  Future<String?> batchCompleteTasks() async => _executeBatch(
+    (task) => !task.isOK,
+    (task) async => await completeTask(task),
+    '完成',
+  );
 
-  Future<String?> batchUncompleteTasks() async {
-    try {
-      int successCount = 0;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        if (task.isOK) {
-          await uncompleteTask(task);
-          successCount++;
-        }
-      }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return successCount > 0 ? '成功取消完成 $successCount 个任务' : null;
-    } catch (e) {
-      return '批量取消完成失败: $e';
-    }
-  }
+  Future<String?> batchUncompleteTasks() async => _executeBatch(
+    (task) => task.isOK,
+    (task) async => await uncompleteTask(task),
+    '取消完成',
+  );
 
   Future<String?> batchDeleteTasks() async {
     try {
-      int successCount = _selectedTaskIds.length;
+      final count = _selectedTaskIds.length;
       for (final taskId in _selectedTaskIds.toList()) {
         await deleteTask(taskId);
       }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return '成功删除 $successCount 个任务';
+      _clearBatchSelection();
+      return '成功删除 $count 个任务';
     } catch (e) {
       return '批量删除失败: $e';
     }
   }
 
-  Future<String?> batchUpdatePriority(String priority) async {
-    try {
-      int successCount = _selectedTaskIds.length;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        await updateTask(task.copyWith(priority: priority));
-      }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return '成功更新 $successCount 个任务优先级';
-    } catch (e) {
-      return '批量更新优先级失败: $e';
-    }
-  }
+  Future<String?> batchUpdatePriority(String priority) async =>
+      _executeBatchUpdate((task) => task.copyWith(priority: priority), '优先级');
 
-  Future<String?> batchUpdateDate(DateTime date) async {
-    try {
-      int successCount = _selectedTaskIds.length;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        await updateTask(task.copyWith(cplTime: date));
-      }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return '成功更新 $successCount 个任务日期';
-    } catch (e) {
-      return '批量更新日期失败: $e';
-    }
-  }
+  Future<String?> batchUpdateDate(DateTime date) async =>
+      _executeBatchUpdate((task) => task.copyWith(cplTime: date), '日期');
 
   Future<String?> batchUpdateTags(List<int> tagIds, dynamic tagProvider) async {
     try {
-      int successCount = _selectedTaskIds.length;
+      final count = _selectedTaskIds.length;
       for (final taskId in _selectedTaskIds.toList()) {
         await tagProvider.setTagsForTask(taskId, tagIds);
       }
-      _selectedTaskIds.clear();
-      _batchMode = false;
-      notifyListeners();
-      return '成功更新 $successCount 个任务标签';
+      _clearBatchSelection();
+      return '成功更新 $count 个任务标签';
     } catch (e) {
       return '批量更新标签失败: $e';
     }
+  }
+
+  Future<String?> _executeBatch(
+    bool Function(Task) condition,
+    Future<void> Function(Task) action,
+    String actionName,
+  ) async {
+    try {
+      int count = 0;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        if (condition(task)) {
+          await action(task);
+          count++;
+        }
+      }
+      _clearBatchSelection();
+      return count > 0 ? '成功$actionName $count 个任务' : null;
+    } catch (e) {
+      return '批量$actionName失败: $e';
+    }
+  }
+
+  Future<String?> _executeBatchUpdate(
+    Task Function(Task) updateFn,
+    String updateName,
+  ) async {
+    try {
+      final count = _selectedTaskIds.length;
+      for (final taskId in _selectedTaskIds.toList()) {
+        final task = _tasks.firstWhere((t) => t.id == taskId);
+        await updateTask(updateFn(task));
+      }
+      _clearBatchSelection();
+      return '成功更新 $count 个任务$updateName';
+    } catch (e) {
+      return '批量更新$updateName失败: $e';
+    }
+  }
+
+  void _clearBatchSelection() {
+    _selectedTaskIds.clear();
+    _batchMode = false;
+    notifyListeners();
   }
 }

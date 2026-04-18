@@ -1,4 +1,4 @@
-import '../../../core/services/database_service.dart';
+import '../../../core/services/database/database_service.dart';
 import '../models/shop_model.dart';
 
 /// 商城数据仓储

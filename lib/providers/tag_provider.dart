@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../modules/tag/models/tag_model.dart';
-import '../core/services/database_service.dart';
+import '../core/services/database/database_service.dart';
 
 /// 标签状态管理Provider
 /// 负责标签的增删改查

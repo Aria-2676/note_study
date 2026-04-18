@@ -47,6 +47,7 @@ class PointsRecord {
   final int points;
   final String type;
   final String description;
+  final int? relatedId;
   final DateTime createdAt;
 
   PointsRecord({
@@ -54,6 +55,7 @@ class PointsRecord {
     required this.points,
     required this.type,
     required this.description,
+    this.relatedId,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -63,6 +65,7 @@ class PointsRecord {
       'points': points,
       'type': type,
       'description': description,
+      'relatedId': relatedId,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -73,6 +76,7 @@ class PointsRecord {
       points: map['points'] as int,
       type: map['type'] as String,
       description: map['description'] as String,
+      relatedId: map['relatedId'] as int?,
       createdAt: DateTime.parse(map['createdAt'] as String),
     );
   }

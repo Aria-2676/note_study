@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../modules/shop/models/shop_model.dart';
-import '../core/services/database_service.dart';
+import '../core/services/database/database_service.dart';
 import 'points_provider.dart';
 
 /// 商城状态管理Provider
@@ -129,7 +129,16 @@ class ShopProvider extends ChangeNotifier {
     if (_pointsProvider.currentPoints < item.price) {
       return '积分不足，无法兑换';
     }
-    await _pointsProvider.deductPoints(item.price);
+    if (item.id == null) {
+      return '商品信息错误';
+    }
+
+    await _pointsProvider.deductPointsWithRecord(
+      points: item.price,
+      type: 'shop_purchase',
+      description: '购买商品: ${item.name}',
+      relatedId: item.id,
+    );
 
     final purchasedItem = PurchasedItem(
       shopItemId: item.id!,

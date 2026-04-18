@@ -1,4 +1,4 @@
-import '../../../core/services/database_service.dart';
+import '../../../core/services/database/database_service.dart';
 import '../models/task_model.dart';
 import '../../../core/utils/date_utils.dart';
 import 'dart:math';

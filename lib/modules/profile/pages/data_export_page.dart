@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../../core/services/database_service.dart';
+import '../../../core/services/database/database_service.dart';
 
 class DataExportPage extends StatefulWidget {
   const DataExportPage({super.key});
@@ -300,19 +300,18 @@ class _DataExportPageState extends State<DataExportPage> {
 
       if (mounted) {
         setState(() => _isExporting = false);
-        if (result != null) {
-          _showExportSuccessDialog(result, '数据库');
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导出失败'), backgroundColor: Colors.red),
-          );
-        }
+        _showExportSuccessDialog(result, '数据库');
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isExporting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              '导出失败: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

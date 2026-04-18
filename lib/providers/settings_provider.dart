@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../core/services/database_service.dart';
+import '../core/services/database/database_service.dart';
 import 'task_provider.dart' show TaskSortOption;
 
 /// 任务视图模式
@@ -7,6 +7,29 @@ enum TaskViewMode { simple, rich }
 
 /// 任务创建模式
 enum TaskCreateMode { minimal, full, custom }
+
+/// 快捷设置项位置
+enum PinnedSettingLocation { profile, settings }
+
+/// 快捷设置项类型
+enum SettingType { toggle, segmented }
+
+/// 快捷设置项定义
+class PinnedSettingItem {
+  final String key;
+  final String title;
+  final IconData icon;
+  final SettingType type;
+  final List<String>? options;
+
+  const PinnedSettingItem({
+    required this.key,
+    required this.title,
+    required this.icon,
+    required this.type,
+    this.options,
+  });
+}
 
 /// 任务创建字段配置
 class TaskCreateField {
@@ -84,12 +107,64 @@ class SettingsProvider extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.light;
   TaskViewMode _taskViewMode = TaskViewMode.simple;
-  TaskCreateMode _taskCreateMode = TaskCreateMode.minimal;
+  TaskCreateMode _taskCreateMode = TaskCreateMode.full;
   TaskSortOption _taskSortOption = TaskSortOption.defaultOrder;
   final Set<String> _enabledCreateFields = {};
 
   bool _allowEditPastTasks = false;
   bool _allowCompletePastTasks = false;
+
+  String? _lastPriorityFilter;
+  bool? _lastCompletionFilter;
+  bool? _lastRecurrenceFilter;
+  int? _lastTagFilterId;
+  bool _rememberFilters = true;
+
+  List<String> _profilePinnedSettings = [];
+  List<String> _settingsPinnedSettings = [];
+
+  static const int maxPinnedSettings = 6;
+
+  static const Map<String, PinnedSettingItem> availablePinnedSettings = {
+    'themeMode': PinnedSettingItem(
+      key: 'themeMode',
+      title: '夜间模式',
+      icon: Icons.dark_mode,
+      type: SettingType.toggle,
+    ),
+    'taskViewMode': PinnedSettingItem(
+      key: 'taskViewMode',
+      title: '任务视图',
+      icon: Icons.view_agenda,
+      type: SettingType.segmented,
+      options: ['丰富', '简洁'],
+    ),
+    'taskCreateMode': PinnedSettingItem(
+      key: 'taskCreateMode',
+      title: '创建模式',
+      icon: Icons.add_task,
+      type: SettingType.segmented,
+      options: ['极简', '完整', '自定义'],
+    ),
+    'allowEditPastTasks': PinnedSettingItem(
+      key: 'allowEditPastTasks',
+      title: '编辑非当天',
+      icon: Icons.edit,
+      type: SettingType.toggle,
+    ),
+    'allowCompletePastTasks': PinnedSettingItem(
+      key: 'allowCompletePastTasks',
+      title: '完成非当天',
+      icon: Icons.check_circle,
+      type: SettingType.toggle,
+    ),
+    'rememberFilters': PinnedSettingItem(
+      key: 'rememberFilters',
+      title: '记住筛选',
+      icon: Icons.filter_list,
+      type: SettingType.toggle,
+    ),
+  };
 
   ThemeMode get themeMode => _themeMode;
   TaskViewMode get taskViewMode => _taskViewMode;
@@ -99,8 +174,17 @@ class SettingsProvider extends ChangeNotifier {
   bool get allowEditPastTasks => _allowEditPastTasks;
   bool get allowCompletePastTasks => _allowCompletePastTasks;
 
+  String? get lastPriorityFilter => _lastPriorityFilter;
+  bool? get lastCompletionFilter => _lastCompletionFilter;
+  bool? get lastRecurrenceFilter => _lastRecurrenceFilter;
+  int? get lastTagFilterId => _lastTagFilterId;
+  bool get rememberFilters => _rememberFilters;
+
   bool get isDark => _themeMode == ThemeMode.dark;
   bool get isRichView => _taskViewMode == TaskViewMode.rich;
+
+  List<String> get profilePinnedSettings => _profilePinnedSettings;
+  List<String> get settingsPinnedSettings => _settingsPinnedSettings;
 
   bool isFieldEnabled(String key) {
     return _enabledCreateFields.contains(key);
@@ -124,7 +208,7 @@ class SettingsProvider extends ChangeNotifier {
       _taskCreateMode = TaskCreateMode.full;
     } else if (createModeStr == 'custom') {
       _taskCreateMode = TaskCreateMode.custom;
-    } else {
+    } else if (createModeStr == 'minimal') {
       _taskCreateMode = TaskCreateMode.minimal;
     }
 
@@ -149,6 +233,39 @@ class SettingsProvider extends ChangeNotifier {
 
     _allowEditPastTasks = settings['allowEditPastTasks'] == 'true';
     _allowCompletePastTasks = settings['allowCompletePastTasks'] == 'true';
+
+    _lastPriorityFilter = settings['lastPriorityFilter'];
+    _lastCompletionFilter = settings['lastCompletionFilter'] == 'true'
+        ? true
+        : settings['lastCompletionFilter'] == 'false'
+        ? false
+        : null;
+    _lastRecurrenceFilter = settings['lastRecurrenceFilter'] == 'true'
+        ? true
+        : settings['lastRecurrenceFilter'] == 'false'
+        ? false
+        : null;
+    final tagIdStr = settings['lastTagFilterId'];
+    _lastTagFilterId = tagIdStr != null && tagIdStr.isNotEmpty
+        ? int.tryParse(tagIdStr)
+        : null;
+    _rememberFilters = settings['rememberFilters'] != 'false';
+
+    final profilePinnedStr = settings['profilePinnedSettings'];
+    if (profilePinnedStr != null && profilePinnedStr.isNotEmpty) {
+      _profilePinnedSettings = profilePinnedStr
+          .split(',')
+          .where((k) => availablePinnedSettings.containsKey(k))
+          .toList();
+    }
+
+    final settingsPinnedStr = settings['settingsPinnedSettings'];
+    if (settingsPinnedStr != null && settingsPinnedStr.isNotEmpty) {
+      _settingsPinnedSettings = settingsPinnedStr
+          .split(',')
+          .where((k) => availablePinnedSettings.containsKey(k))
+          .toList();
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -164,6 +281,21 @@ class SettingsProvider extends ChangeNotifier {
       'enabledCreateFields': _enabledCreateFields.join(','),
       'allowEditPastTasks': _allowEditPastTasks ? 'true' : 'false',
       'allowCompletePastTasks': _allowCompletePastTasks ? 'true' : 'false',
+      'lastPriorityFilter': _lastPriorityFilter ?? '',
+      'lastCompletionFilter': _lastCompletionFilter == null
+          ? ''
+          : _lastCompletionFilter!
+          ? 'true'
+          : 'false',
+      'lastRecurrenceFilter': _lastRecurrenceFilter == null
+          ? ''
+          : _lastRecurrenceFilter!
+          ? 'true'
+          : 'false',
+      'lastTagFilterId': _lastTagFilterId?.toString() ?? '',
+      'rememberFilters': _rememberFilters ? 'true' : 'false',
+      'profilePinnedSettings': _profilePinnedSettings.join(','),
+      'settingsPinnedSettings': _settingsPinnedSettings.join(','),
     });
   }
 
@@ -236,5 +368,113 @@ class SettingsProvider extends ChangeNotifier {
     _allowCompletePastTasks = value;
     _saveSettings();
     notifyListeners();
+  }
+
+  void setLastPriorityFilter(String? value) {
+    _lastPriorityFilter = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setLastCompletionFilter(bool? value) {
+    _lastCompletionFilter = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setLastRecurrenceFilter(bool? value) {
+    _lastRecurrenceFilter = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setLastTagFilterId(int? value) {
+    _lastTagFilterId = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setRememberFilters(bool value) {
+    _rememberFilters = value;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void clearAllFilters() {
+    _lastPriorityFilter = null;
+    _lastCompletionFilter = null;
+    _lastRecurrenceFilter = null;
+    _lastTagFilterId = null;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  bool addPinnedSetting(String key, PinnedSettingLocation location) {
+    if (!availablePinnedSettings.containsKey(key)) return false;
+
+    final list = location == PinnedSettingLocation.profile
+        ? _profilePinnedSettings
+        : _settingsPinnedSettings;
+
+    if (list.contains(key)) return false;
+    if (list.length >= maxPinnedSettings) return false;
+
+    list.add(key);
+    _saveSettings();
+    notifyListeners();
+    return true;
+  }
+
+  void removePinnedSetting(String key, PinnedSettingLocation location) {
+    final list = location == PinnedSettingLocation.profile
+        ? _profilePinnedSettings
+        : _settingsPinnedSettings;
+
+    if (list.remove(key)) {
+      _saveSettings();
+      notifyListeners();
+    }
+  }
+
+  void reorderPinnedSettings(
+    int oldIndex,
+    int newIndex,
+    PinnedSettingLocation location,
+  ) {
+    final list = location == PinnedSettingLocation.profile
+        ? _profilePinnedSettings
+        : _settingsPinnedSettings;
+
+    if (oldIndex < 0 ||
+        oldIndex >= list.length ||
+        newIndex < 0 ||
+        newIndex >= list.length) {
+      return;
+    }
+
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void resetPinnedSettings(PinnedSettingLocation? location) {
+    if (location == null) {
+      _profilePinnedSettings.clear();
+      _settingsPinnedSettings.clear();
+    } else if (location == PinnedSettingLocation.profile) {
+      _profilePinnedSettings.clear();
+    } else {
+      _settingsPinnedSettings.clear();
+    }
+    _saveSettings();
+    notifyListeners();
+  }
+
+  bool isPinned(String key, PinnedSettingLocation location) {
+    final list = location == PinnedSettingLocation.profile
+        ? _profilePinnedSettings
+        : _settingsPinnedSettings;
+    return list.contains(key);
   }
 }

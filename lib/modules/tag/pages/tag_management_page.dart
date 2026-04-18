@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../tag/models/tag_model.dart';
+import '../models/tag_model.dart';
 import '../../../providers/tag_provider.dart';
 
 class TagManagementPage extends StatefulWidget {

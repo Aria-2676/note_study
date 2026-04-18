@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import './pomodoro_page.dart';
+import '../../pomodoro/pages/pomodoro_page.dart';
 import '../../calendar/pages/calendar_page.dart';
 import '../../scratch/pages/scratch_card_page.dart';
 
@@ -11,12 +11,6 @@ class OthersPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text(
-          '其他',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-
         _buildSectionTitle('工具'),
         const SizedBox(height: 8),
         Card(

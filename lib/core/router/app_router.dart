@@ -12,7 +12,7 @@ import '../../modules/profile/pages/widget_guide_page.dart';
 import '../../modules/help/pages/help_page.dart';
 import '../../modules/scratch/pages/scratch_card_page.dart';
 import '../../modules/others/pages/others_page.dart';
-import '../../modules/others/pages/pomodoro_page.dart';
+import '../../modules/pomodoro/pages/pomodoro_page.dart';
 
 class AppRouter {
   static const String home = '/';
@@ -33,9 +33,7 @@ class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
       case task:
-        return MaterialPageRoute(
-          builder: (_) => const TaskPage(),
-        );
+        return MaterialPageRoute(builder: (_) => const TaskPage());
       case home:
         return MaterialPageRoute(builder: (_) => const TasksHomePage());
       case calendar:
@@ -64,18 +62,24 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const PomodoroPage());
       default:
         return MaterialPageRoute(
-          builder: (_) => const Scaffold(
-            body: Center(child: Text('页面未找到')),
-          ),
+          builder: (_) => const Scaffold(body: Center(child: Text('页面未找到'))),
         );
     }
   }
 
-  static void push(BuildContext context, String routeName, {Object? arguments}) {
+  static void push(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+  }) {
     Navigator.pushNamed(context, routeName, arguments: arguments);
   }
 
-  static void pushReplacement(BuildContext context, String routeName, {Object? arguments}) {
+  static void pushReplacement(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+  }) {
     Navigator.pushReplacementNamed(context, routeName, arguments: arguments);
   }
 
