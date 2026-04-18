@@ -8,6 +8,9 @@ enum TaskViewMode { simple, rich }
 /// 任务创建模式
 enum TaskCreateMode { minimal, full, custom }
 
+/// 任务编辑模式
+enum TaskEditMode { minimal, full, custom }
+
 /// 快捷设置项位置
 enum PinnedSettingLocation { profile, settings }
 
@@ -85,8 +88,8 @@ class TaskCreateFields {
 
   static const isWord = TaskCreateField(
     key: 'isWord',
-    label: '单词任务',
-    icon: Icons.translate,
+    label: '标签',
+    icon: Icons.label,
     defaultEnabled: false,
   );
 
@@ -108,8 +111,10 @@ class SettingsProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.light;
   TaskViewMode _taskViewMode = TaskViewMode.simple;
   TaskCreateMode _taskCreateMode = TaskCreateMode.full;
+  TaskEditMode _taskEditMode = TaskEditMode.full;
   TaskSortOption _taskSortOption = TaskSortOption.defaultOrder;
   final Set<String> _enabledCreateFields = {};
+  final Set<String> _enabledEditFields = {};
 
   bool _allowEditPastTasks = false;
   bool _allowCompletePastTasks = false;
@@ -169,8 +174,10 @@ class SettingsProvider extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   TaskViewMode get taskViewMode => _taskViewMode;
   TaskCreateMode get taskCreateMode => _taskCreateMode;
+  TaskEditMode get taskEditMode => _taskEditMode;
   TaskSortOption get taskSortOption => _taskSortOption;
   Set<String> get enabledCreateFields => _enabledCreateFields;
+  Set<String> get enabledEditFields => _enabledEditFields;
   bool get allowEditPastTasks => _allowEditPastTasks;
   bool get allowCompletePastTasks => _allowCompletePastTasks;
 
@@ -188,6 +195,10 @@ class SettingsProvider extends ChangeNotifier {
 
   bool isFieldEnabled(String key) {
     return _enabledCreateFields.contains(key);
+  }
+
+  bool isEditFieldEnabled(String key) {
+    return _enabledEditFields.contains(key);
   }
 
   Future<void> initialize() async {
@@ -227,6 +238,28 @@ class SettingsProvider extends ChangeNotifier {
       for (final field in TaskCreateFields.all) {
         if (field.defaultEnabled) {
           _enabledCreateFields.add(field.key);
+        }
+      }
+    }
+
+    final editModeStr = settings['taskEditMode'];
+    if (editModeStr == 'full') {
+      _taskEditMode = TaskEditMode.full;
+    } else if (editModeStr == 'custom') {
+      _taskEditMode = TaskEditMode.custom;
+    } else if (editModeStr == 'minimal') {
+      _taskEditMode = TaskEditMode.minimal;
+    }
+
+    final enabledEditFieldsStr = settings['enabledEditFields'];
+    if (enabledEditFieldsStr != null && enabledEditFieldsStr.isNotEmpty) {
+      _enabledEditFields.clear();
+      _enabledEditFields.addAll(enabledEditFieldsStr.split(','));
+    } else {
+      _enabledEditFields.clear();
+      for (final field in TaskCreateFields.all) {
+        if (field.defaultEnabled) {
+          _enabledEditFields.add(field.key);
         }
       }
     }
@@ -277,8 +310,14 @@ class SettingsProvider extends ChangeNotifier {
           : _taskCreateMode == TaskCreateMode.custom
           ? 'custom'
           : 'minimal',
+      'taskEditMode': _taskEditMode == TaskEditMode.full
+          ? 'full'
+          : _taskEditMode == TaskEditMode.custom
+          ? 'custom'
+          : 'minimal',
       'taskSortOption': _taskSortOption.name,
       'enabledCreateFields': _enabledCreateFields.join(','),
+      'enabledEditFields': _enabledEditFields.join(','),
       'allowEditPastTasks': _allowEditPastTasks ? 'true' : 'false',
       'allowCompletePastTasks': _allowCompletePastTasks ? 'true' : 'false',
       'lastPriorityFilter': _lastPriorityFilter ?? '',
@@ -354,6 +393,37 @@ class SettingsProvider extends ChangeNotifier {
   void setEnabledCreateFields(Set<String> fields) {
     _enabledCreateFields.clear();
     _enabledCreateFields.addAll(fields);
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setTaskEditMode(TaskEditMode mode) {
+    _taskEditMode = mode;
+    if (mode == TaskEditMode.full) {
+      _enabledEditFields.clear();
+      _enabledEditFields.addAll(TaskCreateFields.all.map((f) => f.key));
+    } else if (mode == TaskEditMode.minimal) {
+      _enabledEditFields.clear();
+    }
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void toggleEditField(String fieldKey) {
+    if (_taskEditMode != TaskEditMode.custom) return;
+
+    if (_enabledEditFields.contains(fieldKey)) {
+      _enabledEditFields.remove(fieldKey);
+    } else {
+      _enabledEditFields.add(fieldKey);
+    }
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setEnabledEditFields(Set<String> fields) {
+    _enabledEditFields.clear();
+    _enabledEditFields.addAll(fields);
     _saveSettings();
     notifyListeners();
   }

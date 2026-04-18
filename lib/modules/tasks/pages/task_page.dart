@@ -15,7 +15,7 @@ import '../widgets/tag_filter_widget.dart';
 import '../widgets/progress_indicator_widget.dart';
 import '../widgets/task_rich_card_widget.dart';
 import '../widgets/batch_select_card_widget.dart';
-import '../widgets/task_edit_dialog.dart';
+import '../widgets/task_form_widget.dart';
 import './mixins/task_batch_dialogs_mixin.dart';
 
 class TaskPage extends StatefulWidget {
@@ -360,13 +360,12 @@ class _TaskPageState extends State<TaskPage>
       return TaskRichCardWidget(
         task: task,
         onTaskCheckChanged: (v) => _onTaskCheckChanged(v, task, taskProvider),
-        onEdit: () => TaskEditDialog.show(
+        onEdit: () => TaskFormWidget.show(
           context: context,
           taskProvider: taskProvider,
           settingsProvider: settingsProvider,
           tagProvider: context.read<TagProvider>(),
           task: task,
-          showToast: _showCenterToast,
         ),
         onDelete: (ctx) => showDeleteConfirmDialog(ctx, task, taskProvider),
       );
@@ -382,13 +381,12 @@ class _TaskPageState extends State<TaskPage>
     return TaskCardWidget(
       task: task,
       onTaskCheckChanged: (v) => _onTaskCheckChanged(v, task, taskProvider),
-      onEdit: () => TaskEditDialog.show(
+      onEdit: () => TaskFormWidget.show(
         context: context,
         taskProvider: taskProvider,
         settingsProvider: context.read<SettingsProvider>(),
         tagProvider: context.read<TagProvider>(),
         task: task,
-        showToast: _showCenterToast,
       ),
       onDelete: (ctx) => showDeleteConfirmDialog(ctx, task, taskProvider),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/settings_provider.dart';
 import './task_create_settings_page.dart';
+import './task_edit_settings_page.dart';
 import '../../tag/pages/tag_management_page.dart';
 
 class TaskSettingsPage extends StatelessWidget {
@@ -35,6 +36,30 @@ class TaskSettingsPage extends StatelessWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const TaskCreateSettingsPage(),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.edit_note, color: Colors.orange),
+              ),
+              title: const Text('任务编辑设置'),
+              subtitle: const Text('极简/完整/自定义模式'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TaskEditSettingsPage(),
                   ),
                 );
               },

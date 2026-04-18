@@ -12,7 +12,7 @@ import '../../statistics/pages/statistics_page.dart';
 import '../../others/pages/others_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../models/task_model.dart';
-import '../widgets/task_create_bottom_sheet_widget.dart';
+import '../widgets/task_form_widget.dart';
 import '../widgets/top_slide_menu_widget.dart';
 
 class TasksHomePage extends StatefulWidget {
@@ -389,18 +389,11 @@ class _TasksHomePageState extends State<TasksHomePage>
     SettingsProvider settingsProvider,
     TagProvider tagProvider,
   ) {
-    showModalBottomSheet(
+    TaskFormWidget.show(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => TaskCreateBottomSheetWidget(
-        taskProvider: taskProvider,
-        settingsProvider: settingsProvider,
-        tagProvider: tagProvider,
-      ),
+      taskProvider: taskProvider,
+      settingsProvider: settingsProvider,
+      tagProvider: tagProvider,
     );
   }
 }
