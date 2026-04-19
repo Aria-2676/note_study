@@ -267,7 +267,10 @@ class SettingsProvider extends ChangeNotifier {
     _allowEditPastTasks = settings['allowEditPastTasks'] == 'true';
     _allowCompletePastTasks = settings['allowCompletePastTasks'] == 'true';
 
-    _lastPriorityFilter = settings['lastPriorityFilter'];
+    final priorityFilter = settings['lastPriorityFilter'];
+    _lastPriorityFilter = (priorityFilter == null || priorityFilter.isEmpty)
+        ? null
+        : priorityFilter;
     _lastCompletionFilter = settings['lastCompletionFilter'] == 'true'
         ? true
         : settings['lastCompletionFilter'] == 'false'
