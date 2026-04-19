@@ -230,10 +230,60 @@ class DatabaseService
       'points': 0,
       'updatedAt': DateTime.now().toIso8601String(),
     });
+
+    await _insertSampleTasks(db);
   }
 
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+  Future<void> _insertSampleTasks(Database db) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final sampleTasks = [
+      {
+        'title': '欢迎使用任务管家',
+        'description': '点击右下角的 + 按钮创建新任务，或点击此任务查看详情',
+        'isWord': 0,
+        'isOK': 0,
+        'cplTime': today.toIso8601String(),
+        'recurrence': 'none',
+        'rewardPoints': 0,
+        'isDeducted': 0,
+        'createdAt': now.toIso8601String(),
+        'priority': 'blue',
+      },
+      {
+        'title': '查看使用说明',
+        'description': '进入 设置 → 帮助 → 使用说明，了解完整功能',
+        'isWord': 0,
+        'isOK': 0,
+        'cplTime': today.toIso8601String(),
+        'recurrence': 'none',
+        'rewardPoints': 0,
+        'isDeducted': 0,
+        'createdAt': now.toIso8601String(),
+        'priority': 'green',
+      },
+      {
+        'title': '试试下拉菜单',
+        'description': '在任务列表顶部向下拉，可以打开快捷菜单，快速筛选和排序',
+        'isWord': 0,
+        'isOK': 0,
+        'cplTime': tomorrow.toIso8601String(),
+        'recurrence': 'none',
+        'rewardPoints': 0,
+        'isDeducted': 0,
+        'createdAt': now.toIso8601String(),
+        'priority': 'yellow',
+      },
+    ];
+
+    for (final task in sampleTasks) {
+      await db.insert('tasks', task);
+    }
   }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {}
 
   Future<void> clearAllData() async {
     final db = await database;
@@ -254,6 +304,7 @@ class DatabaseService
       where: 'id = ?',
       whereArgs: [1],
     );
+    await _insertSampleTasks(db);
   }
 
   Future close() async {
