@@ -17,7 +17,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
-  String _version = '5.0.1';
+  String _version = '5.1.0';
 
   @override
   void initState() {

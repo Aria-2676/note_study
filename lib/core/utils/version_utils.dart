@@ -17,7 +17,7 @@ class VersionUtils {
       final yamlMap = loadYaml(yamlString);
       _version = yamlMap['version'].toString().split('+')[0];
     } catch (_) {
-      _version = '5.0.9';
+      _version = '5.1.0';
     }
   }
 }

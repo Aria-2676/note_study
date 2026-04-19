@@ -1,6 +1,6 @@
 class AppConfig {
   static const String appName = '任务管家';
-  static const String version = '5.0.9';
+  static const String version = '5.1.0';
   
   static const int defaultPoints = 0;
   static const int dailyTaskReward = 10;

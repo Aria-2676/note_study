@@ -51,7 +51,7 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
           children: [
             Text('任务管家是一款帮助您管理日常任务的应用。'),
             SizedBox(height: 16),
-            Text('版本: V5.0.1', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text('版本: V5.1.0', style: TextStyle(fontWeight: FontWeight.w500)),
             SizedBox(height: 8),
             Text('功能亮点:', style: TextStyle(fontWeight: FontWeight.w500)),
             SizedBox(height: 4),
@@ -93,7 +93,7 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Text('版本: V5.0.1'),
+            Text('版本: V5.1.0'),
           ],
         ),
         actions: [
