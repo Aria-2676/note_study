@@ -4,6 +4,7 @@ import '../../../providers/points_provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../shop/pages/shop_page.dart';
+import '../../shop/pages/warehouse_page.dart';
 import './settings_page.dart';
 
 class ProfilePage extends StatelessWidget {

@@ -5,6 +5,7 @@ import '../../modules/tasks/pages/recycle_bin_page.dart';
 import '../../modules/calendar/pages/calendar_page.dart';
 import '../../modules/statistics/pages/statistics_page.dart';
 import '../../modules/shop/pages/shop_page.dart';
+import '../../modules/shop/pages/warehouse_page.dart';
 import '../../modules/profile/pages/profile_page.dart';
 import '../../modules/profile/pages/settings_page.dart';
 import '../../modules/profile/pages/widget_guide_page.dart';
