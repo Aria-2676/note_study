@@ -2,8 +2,26 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../core/services/database/database_service.dart';
+import '../../../../core/utils/version_utils.dart';
 
 mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
+  String version = '1.0.0';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    await VersionUtils.loadVersion();
+    if (mounted) {
+      setState(() {
+        version = VersionUtils.version;
+      });
+    }
+  }
+
   Future<void> clearCache(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -45,21 +63,24 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
             Text('关于任务管家'),
           ],
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('任务管家是一款帮助您管理日常任务的应用。'),
-            SizedBox(height: 16),
-            Text('版本: V5.1.0', style: TextStyle(fontWeight: FontWeight.w500)),
-            SizedBox(height: 8),
-            Text('功能亮点:', style: TextStyle(fontWeight: FontWeight.w500)),
-            SizedBox(height: 4),
-            Text('• 任务管理与追踪'),
-            Text('• 积分奖励系统'),
-            Text('• 积分商城兑换'),
-            Text('• 桌面小组件支持'),
-            Text('• 循环任务设置'),
+            const Text('任务管家是一款帮助您管理日常任务的应用。'),
+            const SizedBox(height: 16),
+            Text(
+              '版本: V$version',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            const Text('功能亮点:', style: TextStyle(fontWeight: FontWeight.w500)),
+            const SizedBox(height: 4),
+            const Text('• 任务管理与追踪'),
+            const Text('• 积分奖励系统'),
+            const Text('• 积分商城兑换'),
+            const Text('• 桌面小组件支持'),
+            const Text('• 循环任务设置'),
           ],
         ),
         actions: [
@@ -83,17 +104,17 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
             Text('检查更新'),
           ],
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 48),
-            SizedBox(height: 16),
-            Text(
+            const Icon(Icons.check_circle, color: Colors.green, size: 48),
+            const SizedBox(height: 16),
+            const Text(
               '当前已是最新版本',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
-            SizedBox(height: 8),
-            Text('版本: V5.1.0'),
+            const SizedBox(height: 8),
+            Text('版本: V$version'),
           ],
         ),
         actions: [

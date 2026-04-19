@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/utils/version_utils.dart';
 import '../../../providers/settings_provider.dart';
 import './appearance_settings_page.dart';
 import './task_settings_page.dart';
@@ -17,21 +16,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
-  String _version = '5.1.0';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadVersion();
-  }
-
-  Future<void> _loadVersion() async {
-    try {
-      final version = await VersionUtils.version;
-      setState(() => _version = version);
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
     final settingsProvider = context.watch<SettingsProvider>();
@@ -95,7 +79,7 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
           const SizedBox(height: 20),
           Center(
             child: Text(
-              '任务管家 V5 $_version',
+              '任务管家 V$version',
               style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
             ),
           ),
@@ -334,7 +318,7 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('任务管家 V5 $_version'),
+            Text('任务管家 V$version'),
             const SizedBox(height: 16),
             const Text('一款带积分系统的任务管理应用'),
             const SizedBox(height: 8),
