@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/task_provider.dart';
+import '../../../providers/app_state_provider.dart';
 import '../../tasks/models/task_model.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -17,10 +18,23 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   Widget build(BuildContext context) {
     final taskProvider = context.watch<TaskProvider>();
-    final tasks = taskProvider.tasks;
+    final tasks = taskProvider.rawTasks;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('日历'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('日历'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            tooltip: '统计',
+            onPressed: () {
+              Navigator.of(context).pop();
+              context.read<AppStateProvider>().setCurrentTab(1);
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           _buildMonthHeader(),

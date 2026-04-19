@@ -12,6 +12,7 @@ import 'providers/task_provider.dart';
 import 'providers/tag_provider.dart';
 import 'providers/pomodoro_provider.dart';
 import 'providers/scratch_provider.dart';
+import 'providers/statistics_provider.dart';
 import 'modules/tasks/pages/tasks_home_page.dart';
 
 /// 应用程序入口
@@ -45,6 +46,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TagProvider()),
         ChangeNotifierProvider(create: (_) => PomodoroProvider()),
         ChangeNotifierProvider(create: (_) => ScratchProvider()),
+        ChangeNotifierProvider(create: (_) => StatisticsProvider()),
         ChangeNotifierProxyProvider<PointsProvider, ShopProvider>(
           create: (context) => ShopProvider(context.read<PointsProvider>()),
           update: (context, pointsProvider, shopProvider) =>

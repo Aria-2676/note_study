@@ -15,14 +15,16 @@ class ScratchActionButtonsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ElevatedButton(
           onPressed: onTogglePrizePool,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF6B6B),
-            foregroundColor: Colors.white,
+            backgroundColor: colorScheme.primary,
+            foregroundColor: colorScheme.onPrimary,
           ),
           child: const Text('自定义抽奖池'),
         ),
@@ -30,8 +32,8 @@ class ScratchActionButtonsWidget extends StatelessWidget {
         ElevatedButton(
           onPressed: onToggleRecords,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey.shade200,
-            foregroundColor: Colors.black,
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            foregroundColor: colorScheme.onSurface,
           ),
           child: const Text('抽奖记录'),
         ),

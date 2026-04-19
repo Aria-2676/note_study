@@ -141,6 +141,28 @@ class StatisticKeys {
   /// 番茄钟历史记录访问
   static const pageViewPomodoroHistory = 'page_view_pomodoro_history';
 
+  // ========== Scratch模块 ==========
+  /// 刮刮乐页面访问
+  static const pageViewScratchHome = 'page_view_scratch_home';
+
+  /// 购买彩票点击
+  static const clickScratchBuyTicket = 'click_scratch_buy_ticket';
+
+  /// 开始刮奖点击
+  static const clickScratchStart = 'click_scratch_start';
+
+  /// 中奖计数
+  static const countScratchWin = 'count_scratch_win';
+
+  /// 消耗积分计数
+  static const countScratchCost = 'count_scratch_cost';
+
+  /// 彩票夹访问
+  static const pageViewScratchWallet = 'page_view_scratch_wallet';
+
+  /// 抽奖记录访问
+  static const pageViewScratchRecords = 'page_view_scratch_records';
+
   // ========== System系统 ==========
   /// App崩溃信息
   static const systemAppCrash = 'system_app_crash';

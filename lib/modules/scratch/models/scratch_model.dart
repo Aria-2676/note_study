@@ -4,14 +4,16 @@ class PrizeItem {
   final String name;
   final String type;
   final int value;
-  final double probability;
+  final double weight;
+  final bool isDefault;
 
   PrizeItem({
     required this.id,
     required this.name,
     required this.type,
     required this.value,
-    this.probability = 0.0,
+    this.weight = 1.0,
+    this.isDefault = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,7 +22,8 @@ class PrizeItem {
       'name': name,
       'type': type,
       'value': value,
-      'probability': probability,
+      'weight': weight,
+      'isDefault': isDefault ? 1 : 0,
     };
   }
 
@@ -30,18 +33,48 @@ class PrizeItem {
       name: map['name'] as String,
       type: map['type'] as String,
       value: map['value'] as int,
-      probability: (map['probability'] as num?)?.toDouble() ?? 0.0,
+      weight: (map['weight'] as num?)?.toDouble() ?? 1.0,
+      isDefault: (map['isDefault'] as int?) == 1,
     );
   }
 
   factory PrizeItem.fromShopItem(dynamic shopItem) {
     return PrizeItem(
-      id: shopItem.id.toString(),
+      id: 'goods_${shopItem.id}',
       name: shopItem.name,
       type: 'goods',
       value: shopItem.price,
+      weight: 100.0 / (shopItem.price + 10),
+      isDefault: false,
     );
   }
+
+  PrizeItem copyWith({
+    String? id,
+    String? name,
+    String? type,
+    int? value,
+    double? weight,
+    bool? isDefault,
+  }) {
+    return PrizeItem(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      value: value ?? this.value,
+      weight: weight ?? this.weight,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is PrizeItem && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 /// 刮刮卡彩票模型（彩票夹）

@@ -14,27 +14,37 @@ class CostSelectorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isDisabled = !scratchProvider.state.canChangeCost;
+
+    final probabilities = scratchProvider.getPrizeProbabilities();
+    double actualExpected = 0;
+    probabilities.forEach((prize, prob) {
+      actualExpected += prize.value * prob;
+    });
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
-          BoxShadow(color: Colors.grey.withValues(alpha: 10), blurRadius: 10),
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.1),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Stack(
         children: [
           Column(
             children: [
-              const Text(
+              Text(
                 '选择彩票档位',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: Color(0xFFFF6B6B),
+                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 12),
@@ -47,42 +57,51 @@ class CostSelectorWidget extends StatelessWidget {
                     : (index) =>
                           onCostChanged(ScratchProvider.costOptions[index]),
                 borderRadius: BorderRadius.circular(20),
-                selectedColor: Colors.white,
-                fillColor: const Color(0xFFFF6B6B),
-                disabledColor: Colors.grey.shade300,
+                selectedColor: colorScheme.onPrimary,
+                fillColor: colorScheme.primary,
+                disabledColor: colorScheme.surfaceContainerHighest,
                 children: ScratchProvider.costOptions
                     .map(
-                      (cost) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('$cost积分'),
-                            Text(
-                              '${cost ~/ 10}倍概率',
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                          ],
-                        ),
-                      ),
+                      (cost) {
+                        final maxAllowed = cost * ScratchProvider.maxPrizeValueMultiplier;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('$cost积分'),
+                              Text(
+                                '上限$maxAllowed',
+                                style: const TextStyle(fontSize: 9),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     )
                     .toList(),
               ),
               const SizedBox(height: 8),
               Text(
-                '当前选择: ${scratchProvider.selectedCost}积分档位',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                '期望收益: ${actualExpected.toStringAsFixed(1)}积分',
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
           if (isDisabled)
             Positioned.fill(
               child: Container(
-                color: Colors.white.withValues(alpha: 180),
-                child: const Center(
+                color: colorScheme.surface.withValues(alpha: 0.8),
+                child: Center(
                   child: Text(
                     '刮奖中不可切换档位',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    style: TextStyle(
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),

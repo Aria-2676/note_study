@@ -5,24 +5,31 @@ import '../../models/scratch_model.dart';
 class TicketWalletWidget extends StatelessWidget {
   final ScratchProvider scratchProvider;
   final VoidCallback onStartScratch;
+  final VoidCallback onClose;
   final void Function(ScratchTicket) onSelectTicket;
 
   const TicketWalletWidget({
     super.key,
     required this.scratchProvider,
     required this.onStartScratch,
+    required this.onClose,
     required this.onSelectTicket,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
-          BoxShadow(color: Colors.grey.withValues(alpha: 10), blurRadius: 10),
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.1),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Column(
@@ -31,26 +38,48 @@ class TicketWalletWidget extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 '🎫 彩票夹',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: Color(0xFFFF6B6B),
+                  color: colorScheme.primary,
                 ),
               ),
-              Text(
-                '共 ${scratchProvider.unscratchedTickets.length} 张',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '共 ${scratchProvider.unscratchedTickets.length} 张',
+                    style: TextStyle(
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: onClose,
+                    icon: Icon(
+                      Icons.close,
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                    tooltip: '关闭',
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 12),
           if (scratchProvider.unscratchedTickets.isEmpty)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('暂无彩票，请购买', style: TextStyle(color: Colors.grey)),
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  '暂无彩票，请购买',
+                  style: TextStyle(
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
               ),
             )
           else
@@ -60,7 +89,7 @@ class TicketWalletWidget extends StatelessWidget {
               itemCount: scratchProvider.unscratchedTickets.length,
               itemBuilder: (context, index) {
                 final ticket = scratchProvider.unscratchedTickets[index];
-                return _buildTicketCard(context, ticket);
+                return _buildTicketCard(context, ticket, colorScheme);
               },
             ),
         ],
@@ -68,67 +97,110 @@ class TicketWalletWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTicketCard(BuildContext context, ScratchTicket ticket) {
+  Widget _buildTicketCard(
+    BuildContext context,
+    ScratchTicket ticket,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.confirmation_num, color: Color(0xFFFF6B6B)),
-        ),
-        title: Text('${ticket.costPoints}积分档位'),
-        subtitle: Text(
-          '购买时间: ${_formatDateTime(ticket.createdAt)}',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ElevatedButton(
-              onPressed: () {
-                onSelectTicket(ticket);
-                onStartScratch();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B6B),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('刮奖'),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('确认删除'),
-                    content: const Text('确定要删除这张彩票吗？'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('取消'),
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.confirmation_num,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${ticket.costPoints}积分档位',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        child: const Text('确认'),
+                      const SizedBox(height: 4),
+                      Text(
+                        '购买时间: ${_formatDateTime(ticket.createdAt)}',
+                        style: const TextStyle(fontSize: 12),
                       ),
                     ],
                   ),
-                );
-                if (confirmed == true && ticket.id != null) {
-                  await scratchProvider.deleteTicket(ticket.id!);
-                }
-              },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    onSelectTicket(ticket);
+                    onStartScratch();
+                    onClose();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                  ),
+                  child: const Text('刮奖'),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.delete, color: colorScheme.error),
+                  onPressed: () => _confirmDelete(context, ticket),
+                  tooltip: '删除',
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    ScratchTicket ticket,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除这张彩票吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && ticket.id != null) {
+      await scratchProvider.deleteTicket(ticket.id!);
+    }
   }
 
   String _formatDateTime(DateTime dateTime) {

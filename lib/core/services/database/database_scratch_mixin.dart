@@ -12,7 +12,8 @@ mixin DatabaseScratchMixin {
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         value INTEGER NOT NULL,
-        probability REAL DEFAULT 0.0
+        weight REAL DEFAULT 1.0,
+        isDefault INTEGER DEFAULT 0
       )
     ''');
 

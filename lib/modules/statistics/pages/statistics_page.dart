@@ -2,9 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/points_provider.dart';
+import '../../../providers/pomodoro_provider.dart';
+import '../../../providers/scratch_provider.dart';
 import '../../tasks/models/task_model.dart';
+import '../../scratch/models/scratch_model.dart';
+import '../../calendar/pages/calendar_page.dart';
+import './widgets/today_overview_widget.dart';
+import './widgets/view_selector_widget.dart';
+import './widgets/task_statistics_widget.dart';
+import './widgets/points_statistics_widget.dart';
+import './widgets/pomodoro_statistics_widget.dart';
+import './widgets/scratch_statistics_widget.dart';
 
-enum StatisticsView { day, threeDays, week, month, year }
+enum StatisticsModule { task, points, pomodoro, scratch }
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage({super.key});
@@ -14,268 +24,307 @@ class StatisticsPage extends StatefulWidget {
 }
 
 class _StatisticsPageState extends State<StatisticsPage> {
+  StatisticsModule _currentModule = StatisticsModule.task;
   StatisticsView _currentView = StatisticsView.day;
+
+  final Map<StatisticsModule, String> _moduleNames = {
+    StatisticsModule.task: '任务',
+    StatisticsModule.points: '积分',
+    StatisticsModule.pomodoro: '番茄',
+    StatisticsModule.scratch: '刮刮卡',
+  };
 
   @override
   Widget build(BuildContext context) {
     final taskProvider = context.watch<TaskProvider>();
     final pointsProvider = context.watch<PointsProvider>();
-    final allTasks = taskProvider.tasks;
-
-    final completedTasks = allTasks.where((t) => t.isOK).length;
-    final totalTasks = allTasks.length;
-    final completionRate = totalTasks == 0 ? 0.0 : completedTasks / totalTasks;
-
-    final wordTasks = allTasks.where((t) => t.isWord).length;
-    final recurringTasks = allTasks.where((t) => t.recurrence != 'none').length;
+    final pomodoroProvider = context.watch<PomodoroProvider>();
+    final scratchProvider = context.watch<ScratchProvider>();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text(
-          '统计',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        _buildHeader(),
+        const SizedBox(height: 16),
+        TodayOverviewWidget(
+          completedToday: _getTodayCompletedTasks(taskProvider.rawTasks),
+          totalToday: _getTodayTasks(taskProvider.rawTasks).length,
+          todayPoints: _getTodayPoints(taskProvider.rawTasks),
+          todayPomodoros: pomodoroProvider.statistics.todayPomodoros,
+          todayScratchCount: _getTodayScratchCount(
+            scratchProvider.lotteryRecords,
+          ),
         ),
         const SizedBox(height: 16),
-        _buildViewSelector(),
+        ViewSelectorWidget(
+          currentView: _currentView,
+          onViewChanged: (view) => setState(() => _currentView = view),
+        ),
         const SizedBox(height: 16),
-        _buildOverviewCard(completedTasks, totalTasks, completionRate),
-        const SizedBox(height: 16),
-        _buildTaskTypeCard(allTasks.length, wordTasks, recurringTasks),
-        const SizedBox(height: 16),
-        _buildStatisticsChart(allTasks),
-        const SizedBox(height: 16),
-        _buildPointsCard(pointsProvider.currentPoints),
+        _buildModuleContent(
+          taskProvider,
+          pointsProvider,
+          pomodoroProvider,
+          scratchProvider,
+        ),
       ],
     );
   }
 
-  Widget _buildViewSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Row(
-          children: [
-            _buildViewButton('单日', StatisticsView.day),
-            const SizedBox(width: 8),
-            _buildViewButton('三日', StatisticsView.threeDays),
-            const SizedBox(width: 8),
-            _buildViewButton('周', StatisticsView.week),
-            const SizedBox(width: 8),
-            _buildViewButton('月', StatisticsView.month),
-            const SizedBox(width: 8),
-            _buildViewButton('年', StatisticsView.year),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildViewButton(String label, StatisticsView view) {
-    final isSelected = _currentView == view;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _currentView = view),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.blue : Colors.grey[100],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(color: isSelected ? Colors.white : Colors.black),
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        InkWell(
+          onTap: _showModuleSelector,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${_moduleNames[_currentModule]}统计',
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
+              ],
+            ),
           ),
         ),
-      ),
+        TextButton.icon(
+          onPressed: () {
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CalendarPage()));
+          },
+          icon: const Icon(Icons.calendar_today, size: 18),
+          label: const Text('日历'),
+        ),
+      ],
     );
   }
 
-  Widget _buildOverviewCard(int completed, int total, double rate) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+  void _showModuleSelector() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Column(
-                  children: [
-                    Text(
-                      '$completed/$total',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                const Text(
+                  '选择统计模块',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                ...StatisticsModule.values.map((module) {
+                  final isSelected = module == _currentModule;
+                  return ListTile(
+                    leading: Icon(
+                      _getModuleIcon(module),
+                      color: isSelected ? Colors.blue : null,
+                    ),
+                    title: Text(
+                      _moduleNames[module]!,
+                      style: TextStyle(
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isSelected ? Colors.blue : null,
                       ),
                     ),
-                    const Text('完成/总数'),
-                  ],
-                ),
-                Column(
-                  children: [
-                    Text(
-                      '${(rate * 100).toStringAsFixed(1)}%',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Text('完成率'),
-                  ],
-                ),
+                    trailing: isSelected
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
+                    onTap: () {
+                      setState(() => _currentModule = module);
+                      Navigator.of(context).pop();
+                    },
+                  );
+                }),
               ],
             ),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(value: rate),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTaskTypeCard(int total, int word, int recurring) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Column(
-              children: [
-                Text(
-                  '$total',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Text('总任务'),
-              ],
-            ),
-            Column(
-              children: [
-                Text(
-                  '$word',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Text('单词任务'),
-              ],
-            ),
-            Column(
-              children: [
-                Text(
-                  '$recurring',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Text('循环任务'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatisticsChart(List<Task> tasks) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '完成趋势',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(height: 100, child: _buildSimpleChart(tasks)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSimpleChart(List<Task> tasks) {
-    return ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: 7,
-      itemBuilder: (context, index) {
-        final date = DateTime.now().subtract(Duration(days: 6 - index));
-        final dayTasks = tasks
-            .where((t) => _isSameDay(t.cplTime, date))
-            .toList();
-        final completed = dayTasks.where((t) => t.isOK).length;
-        final maxHeight = 80.0;
-        final height =
-            (dayTasks.isEmpty ? 10 : (completed / dayTasks.length) * maxHeight)
-                .toDouble();
-
-        return Container(
-          width: 40,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(4),
-                    ),
-                  ),
-                  height: height,
-                ),
-              ),
-              Text(_getDayLabel(date)),
-            ],
           ),
         );
       },
     );
   }
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+  IconData _getModuleIcon(StatisticsModule module) {
+    switch (module) {
+      case StatisticsModule.task:
+        return Icons.task_alt;
+      case StatisticsModule.points:
+        return Icons.stars;
+      case StatisticsModule.pomodoro:
+        return Icons.timer;
+      case StatisticsModule.scratch:
+        return Icons.casino;
+    }
   }
 
-  String _getDayLabel(DateTime date) {
-    const days = ['日', '一', '二', '三', '四', '五', '六'];
-    return days[date.weekday % 7];
+  Widget _buildModuleContent(
+    TaskProvider taskProvider,
+    PointsProvider pointsProvider,
+    PomodoroProvider pomodoroProvider,
+    ScratchProvider scratchProvider,
+  ) {
+    switch (_currentModule) {
+      case StatisticsModule.task:
+        return _buildTaskContent(taskProvider);
+      case StatisticsModule.points:
+        return _buildPointsContent(pointsProvider);
+      case StatisticsModule.pomodoro:
+        return _buildPomodoroContent(pomodoroProvider);
+      case StatisticsModule.scratch:
+        return _buildScratchContent(scratchProvider);
+    }
   }
 
-  Widget _buildPointsCard(int points) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const Icon(Icons.stars, color: Colors.amber, size: 32),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('当前积分'),
-                Text(
-                  '$points',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _buildTaskContent(TaskProvider taskProvider) {
+    final allTasks = taskProvider.rawTasks;
+    final dateRange = _getDateRange();
+    final tasksInRange = _getTasksInRange(allTasks, dateRange);
+    final completedTasks = tasksInRange.where((t) => t.isOK).length;
+    final totalTasks = tasksInRange.length;
+    final completionRate = totalTasks == 0 ? 0.0 : completedTasks / totalTasks;
+
+    return TaskStatisticsWidget(
+      tasks: tasksInRange,
+      completedTasks: completedTasks,
+      totalTasks: totalTasks,
+      completionRate: completionRate,
+      isDayView: _currentView == StatisticsView.day,
+      currentView: _currentView,
+      dateRange: dateRange,
     );
+  }
+
+  Widget _buildPointsContent(PointsProvider pointsProvider) {
+    final records = pointsProvider.records;
+    final totalEarned = records
+        .where((r) => r.points > 0)
+        .fold<int>(0, (sum, r) => sum + r.points);
+    final totalSpent = records
+        .where((r) => r.points < 0)
+        .fold<int>(0, (sum, r) => sum + r.points.abs());
+
+    return PointsStatisticsWidget(
+      currentPoints: pointsProvider.currentPoints,
+      totalEarned: totalEarned,
+      totalSpent: totalSpent,
+    );
+  }
+
+  Widget _buildPomodoroContent(PomodoroProvider pomodoroProvider) {
+    final stats = pomodoroProvider.statistics;
+    return PomodoroStatisticsWidget(
+      todayFocusMinutes: stats.todayFocusMinutes,
+      todayPomodoros: stats.todayPomodoros,
+      totalFocusMinutes: stats.totalFocusMinutes,
+      totalPomodoros: stats.totalPomodoros,
+    );
+  }
+
+  Widget _buildScratchContent(ScratchProvider scratchProvider) {
+    final records = scratchProvider.lotteryRecords;
+    final totalScratchCount = records.length;
+    final winCount = records.where((r) => r.prizeValue > 0).length;
+    final totalCost = records.fold<int>(0, (sum, r) => sum + r.costPoints);
+    final totalWinValue = records.fold<int>(0, (sum, r) => sum + r.prizeValue);
+
+    return ScratchStatisticsWidget(
+      totalScratchCount: totalScratchCount,
+      winCount: winCount,
+      totalCost: totalCost,
+      totalWinValue: totalWinValue,
+    );
+  }
+
+  List<Task> _getTodayTasks(List<Task> tasks) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return tasks.where((task) {
+      final taskDate = DateTime(
+        task.cplTime.year,
+        task.cplTime.month,
+        task.cplTime.day,
+      );
+      return taskDate == today;
+    }).toList();
+  }
+
+  int _getTodayCompletedTasks(List<Task> tasks) {
+    return _getTodayTasks(tasks).where((t) => t.isOK).length;
+  }
+
+  int _getTodayPoints(List<Task> tasks) {
+    return _getTodayTasks(
+      tasks,
+    ).where((t) => t.isOK).fold<int>(0, (sum, t) => sum + t.rewardPoints);
+  }
+
+  int _getTodayScratchCount(List<LotteryRecord> records) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return records.where((r) {
+      final recordDate = DateTime(
+        r.drawTime.year,
+        r.drawTime.month,
+        r.drawTime.day,
+      );
+      return recordDate == today;
+    }).length;
+  }
+
+  DateTimeRange _getDateRange() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    switch (_currentView) {
+      case StatisticsView.day:
+        return DateTimeRange(start: today, end: today);
+      case StatisticsView.threeDays:
+        return DateTimeRange(
+          start: today.subtract(const Duration(days: 2)),
+          end: today,
+        );
+      case StatisticsView.week:
+        return DateTimeRange(
+          start: today.subtract(const Duration(days: 6)),
+          end: today,
+        );
+      case StatisticsView.month:
+        return DateTimeRange(
+          start: today.subtract(const Duration(days: 29)),
+          end: today,
+        );
+      case StatisticsView.year:
+        return DateTimeRange(
+          start: DateTime(now.year - 1, now.month, now.day),
+          end: today,
+        );
+    }
+  }
+
+  List<Task> _getTasksInRange(List<Task> tasks, DateTimeRange range) {
+    return tasks.where((task) {
+      final taskDate = DateTime(
+        task.cplTime.year,
+        task.cplTime.month,
+        task.cplTime.day,
+      );
+      return !taskDate.isBefore(range.start) && !taskDate.isAfter(range.end);
+    }).toList();
   }
 }

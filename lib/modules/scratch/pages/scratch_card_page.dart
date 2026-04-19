@@ -8,6 +8,7 @@ import '../../../providers/points_provider.dart';
 import '../../../providers/scratch_provider.dart';
 import '../models/scratch_model.dart';
 import '../models/scratch_state.dart';
+import '../adapters/scratch_statistic_adapter.dart';
 import './mixins/scratch_card_logic_mixin.dart';
 import './widgets/ticket_wallet_widget.dart';
 import './widgets/lottery_records_widget.dart';
@@ -15,6 +16,8 @@ import './widgets/prize_pool_editor_widget.dart';
 import './widgets/probability_info_widget.dart';
 import './widgets/cost_selector_widget.dart';
 import './widgets/scratch_action_buttons_widget.dart';
+import './widgets/points_display_widget.dart';
+import './widgets/scratch_card_widget.dart';
 
 class ScratchCardPage extends StatefulWidget {
   const ScratchCardPage({super.key});
@@ -27,6 +30,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     with WidgetsBindingObserver, ScratchCardLogicMixin {
   final GlobalKey _scratchKey = GlobalKey();
   final List<Offset> _scratchPoints = [];
+  final ScratchStatisticAdapter _statisticAdapter = ScratchStatisticAdapter();
   Offset? _lastPosition;
   bool _showPrizePool = false;
   bool _showRecords = false;
@@ -41,6 +45,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _statisticAdapter.reportPageViewHome();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeProvider();
     });
@@ -91,6 +96,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
       _lastPosition = null;
     });
     scratchProvider.startScratching();
+    _statisticAdapter.reportStartScratch();
     HapticFeedback.mediumImpact();
   }
 
@@ -272,6 +278,9 @@ class _ScratchCardPageState extends State<ScratchCardPage>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+
     return Consumer3<PointsProvider, ScratchProvider, ShopProvider>(
       builder: (context, pointsProvider, scratchProvider, shopProvider, _) {
         final isScratching = scratchProvider.state.isScratching;
@@ -280,7 +289,6 @@ class _ScratchCardPageState extends State<ScratchCardPage>
           appBar: AppBar(
             title: const Text('刮刮乐'),
             centerTitle: true,
-            backgroundColor: const Color(0xFFFF6B6B),
             actions: [
               Stack(
                 alignment: Alignment.center,
@@ -293,6 +301,9 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                         _showPrizePool = false;
                         _showRecords = false;
                       });
+                      if (!_showTicketWallet) {
+                        _statisticAdapter.reportPageViewWallet();
+                      }
                     },
                   ),
                   if (scratchProvider.unscratchedCount > 0)
@@ -301,14 +312,14 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                       top: 8,
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
+                        decoration: BoxDecoration(
+                          color: colorScheme.error,
                           shape: BoxShape.circle,
                         ),
                         child: Text(
                           '${scratchProvider.unscratchedCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: colorScheme.onError,
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
@@ -326,9 +337,19 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                     ? const NeverScrollableScrollPhysics()
                     : const AlwaysScrollableScrollPhysics(),
                 child: Container(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFFE6E6), Color(0xFFFFF5F5)],
+                      colors: isDark
+                          ? [
+                              colorScheme.surface,
+                              colorScheme.surfaceContainerHighest,
+                            ]
+                          : [
+                              colorScheme.primaryContainer.withValues(
+                                alpha: 0.3,
+                              ),
+                              colorScheme.surface,
+                            ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -336,31 +357,55 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      _buildPointsDisplay(pointsProvider),
+                      PointsDisplayWidget(
+                        currentPoints: pointsProvider.currentPoints,
+                      ),
                       const SizedBox(height: 30),
                       if (_showTicketWallet)
                         TicketWalletWidget(
                           scratchProvider: scratchProvider,
                           onStartScratch: _startScratching,
+                          onClose: () {
+                            setState(() {
+                              _showTicketWallet = false;
+                            });
+                          },
                           onSelectTicket: _selectTicket,
                         ),
                       if (!_showTicketWallet) ...[
-                        _buildScratchCard(scratchProvider),
+                        ScratchCardWidget(
+                          scratchKey: _scratchKey,
+                          ticket: scratchProvider.currentTicket,
+                          isScratching: scratchProvider.state.isScratching,
+                          isRevealed: scratchProvider.state.isRevealed,
+                          scratchPoints: _scratchPoints,
+                          onPanStart: _handleScratchStart,
+                          onPanUpdate: _handleScratch,
+                          onPanEnd: _handleScratchEnd,
+                        ),
                         const SizedBox(height: 20),
-                        if (isScratching) _buildExitButton(),
+                        if (isScratching) ...[
+                          _buildExitButton(colorScheme),
+                          const SizedBox(height: 8),
+                          _buildQuickRevealButton(scratchProvider, colorScheme),
+                        ],
+                        if (scratchProvider.state.isRevealed)
+                          _buildContinueButton(colorScheme),
                         if (!isScratching &&
+                            !scratchProvider.state.isRevealed &&
                             scratchProvider.currentTicket != null)
-                          _buildStartScratchButton(),
-                        if (!isScratching &&
-                            scratchProvider.currentTicket == null)
-                          _buildQuickRevealButton(scratchProvider),
+                          _buildStartScratchButton(colorScheme),
                         const SizedBox(height: 20),
                         CostSelectorWidget(
                           scratchProvider: scratchProvider,
                           onCostChanged: _setCost,
                         ),
                         const SizedBox(height: 20),
-                        _buildMainButton(pointsProvider, scratchProvider),
+                        _buildMainButton(
+                          pointsProvider,
+                          scratchProvider,
+                          colorScheme,
+                        ),
                         const SizedBox(height: 20),
                         ProbabilityInfoWidget(scratchProvider: scratchProvider),
                         const SizedBox(height: 20),
@@ -379,6 +424,9 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                               _showPrizePool = false;
                               _showTicketWallet = false;
                             });
+                            if (_showRecords) {
+                              _statisticAdapter.reportPageViewRecords();
+                            }
                           },
                         ),
                         const SizedBox(height: 20),
@@ -406,13 +454,23 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                       vertical: 8,
                       horizontal: 16,
                     ),
-                    color: Colors.orange.shade100,
-                    child: const Row(
+                    color: colorScheme.primaryContainer,
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.info_outline, size: 16),
-                        SizedBox(width: 8),
-                        Text('刮奖模式：滑动刮开遮罩', style: TextStyle(fontSize: 12)),
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '刮奖模式：滑动刮开遮罩',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -424,158 +482,21 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     );
   }
 
-  Widget _buildPointsDisplay(PointsProvider pointsProvider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.amber.withValues(alpha: 30),
-            blurRadius: 10,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.stars, color: Colors.amber, size: 24),
-          const SizedBox(width: 10),
-          Text(
-            '当前积分: ${pointsProvider.currentPoints}',
-            style: const TextStyle(
-              color: Color(0xFFFF6B35),
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScratchCard(ScratchProvider scratchProvider) {
-    final ticket = scratchProvider.currentTicket;
-    final isScratching = scratchProvider.state.isScratching;
-    final isRevealed = scratchProvider.state.isRevealed;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        key: _scratchKey,
-        width: 300,
-        height: 200,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.grey.shade300),
-          boxShadow: [
-            BoxShadow(color: Colors.grey.withValues(alpha: 30), blurRadius: 10),
-          ],
-        ),
-        child: Stack(
-          children: [
-            if (ticket != null) _buildPrizeContent(ticket),
-            if (!isRevealed && ticket != null)
-              Positioned.fill(
-                child: GestureDetector(
-                  onPanStart: isScratching ? _handleScratchStart : null,
-                  onPanUpdate: isScratching ? _handleScratch : null,
-                  onPanEnd: isScratching ? _handleScratchEnd : null,
-                  child: ClipPath(
-                    clipper: ScratchClipper(_scratchPoints),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.grey.shade400, Colors.grey.shade300],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 48,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              isScratching ? '刮开这里' : '准备刮奖',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPrizeContent(ScratchTicket ticket) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        color: Color(0xFFE8F5E9),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(15),
-          topRight: Radius.circular(15),
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            ticket.prizeType == 'integral' ? Icons.star : Icons.card_giftcard,
-            size: 64,
-            color: Colors.amber,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            ticket.prizeName,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1B5E20),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            ticket.prizeType == 'integral' ? '积分奖励' : '商品奖励',
-            style: const TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExitButton() {
+  Widget _buildExitButton(ColorScheme colorScheme) {
     return ElevatedButton.icon(
       onPressed: _exitScratching,
       icon: const Icon(Icons.exit_to_app),
       label: const Text('退出刮奖'),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.secondary,
+        foregroundColor: colorScheme.onSecondary,
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
       ),
     );
   }
 
-  Widget _buildStartScratchButton() {
+  Widget _buildStartScratchButton(ColorScheme colorScheme) {
     return Column(
       children: [
         ElevatedButton.icon(
@@ -583,8 +504,8 @@ class _ScratchCardPageState extends State<ScratchCardPage>
           icon: const Icon(Icons.touch_app),
           label: const Text('开始刮奖'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF6B6B),
-            foregroundColor: Colors.white,
+            backgroundColor: colorScheme.primary,
+            foregroundColor: colorScheme.onPrimary,
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30),
@@ -594,33 +515,57 @@ class _ScratchCardPageState extends State<ScratchCardPage>
         const SizedBox(height: 8),
         TextButton(
           onPressed: _resetScratchCard,
-          child: const Text('取消选择', style: TextStyle(color: Colors.grey)),
+          child: Text(
+            '取消选择',
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildQuickRevealButton(ScratchProvider scratchProvider) {
-    if (!scratchProvider.state.isScratching) return const SizedBox.shrink();
-
+  Widget _buildQuickRevealButton(
+    ScratchProvider scratchProvider,
+    ColorScheme colorScheme,
+  ) {
     return TextButton.icon(
       onPressed: _quickReveal,
       icon: const Icon(Icons.visibility),
       label: const Text('一键揭晓'),
-      style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF6B6B)),
+      style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
+    );
+  }
+
+  Widget _buildContinueButton(ColorScheme colorScheme) {
+    return ElevatedButton.icon(
+      onPressed: _resetScratchCard,
+      icon: const Icon(Icons.check_circle),
+      label: const Text('继续'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+      ),
     );
   }
 
   Widget _buildMainButton(
     PointsProvider pointsProvider,
     ScratchProvider scratchProvider,
+    ColorScheme colorScheme,
   ) {
     final canAfford = scratchProvider.canAfford(pointsProvider.currentPoints);
     final isProcessing = scratchProvider.isProcessing;
     final hasTicket = scratchProvider.currentTicket != null;
+    final isRevealed = scratchProvider.state.isRevealed;
 
     String buttonText;
-    if (hasTicket && !scratchProvider.state.isScratching) {
+    if (isRevealed) {
+      buttonText = '刮奖完成';
+    } else if (hasTicket && !scratchProvider.state.isScratching) {
       buttonText = '已选择彩票，点击开始刮奖';
     } else {
       buttonText = '购买彩票';
@@ -630,59 +575,49 @@ class _ScratchCardPageState extends State<ScratchCardPage>
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        onPressed: (canAfford && !isProcessing && !hasTicket)
-            ? () => buyTicket(
-                context: context,
-                scratchProvider: scratchProvider,
-                pointsProvider: pointsProvider,
-              )
+        onPressed: (canAfford && !isProcessing && !hasTicket && !isRevealed)
+            ? () async {
+                final success = await scratchProvider.buyTicket(
+                  pointsProvider.currentPoints,
+                );
+                if (success) {
+                  await pointsProvider.deductPointsWithRecord(
+                    points: scratchProvider.selectedCost,
+                    type: 'scratch_cost',
+                    description: '购买刮刮卡',
+                  );
+                  _startScratching();
+                }
+              }
             : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFF6B6B),
-          disabledBackgroundColor: Colors.grey.shade300,
-          foregroundColor: Colors.white,
-          disabledForegroundColor: Colors.grey,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          disabledBackgroundColor: colorScheme.surfaceContainerHighest,
+          disabledForegroundColor: colorScheme.onSurface.withValues(
+            alpha: 0.38,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
-          elevation: canAfford ? 8 : 0,
         ),
-        child: Text(
-          isProcessing ? '处理中...' : buttonText,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        child: isProcessing
+            ? SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colorScheme.onPrimary,
+                ),
+              )
+            : Text(
+                buttonText,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
       ),
     );
-  }
-}
-
-class ScratchClipper extends CustomClipper<Path> {
-  final List<Offset> points;
-  static const double scratchRadius = 20;
-
-  ScratchClipper(this.points);
-
-  @override
-  Path getClip(Size size) {
-    Path fullPath = Path();
-    fullPath.addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    if (points.isEmpty) {
-      return fullPath;
-    }
-
-    Path scratchPath = Path();
-    for (final point in points) {
-      scratchPath.addOval(
-        Rect.fromCircle(center: point, radius: scratchRadius),
-      );
-    }
-
-    return Path.combine(PathOperation.difference, fullPath, scratchPath);
-  }
-
-  @override
-  bool shouldReclip(covariant ScratchClipper oldClipper) {
-    return true;
   }
 }

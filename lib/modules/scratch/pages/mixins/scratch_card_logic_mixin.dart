@@ -6,10 +6,12 @@ import '../../../../providers/shop_provider.dart';
 import '../../../shop/models/shop_model.dart';
 import '../../models/scratch_model.dart';
 import '../../models/scratch_state.dart';
+import '../../adapters/scratch_statistic_adapter.dart';
 
 mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
   static const int _debounceMs = 500;
   DateTime? _lastTapTime;
+  final ScratchStatisticAdapter _statisticAdapter = ScratchStatisticAdapter();
 
   bool isDebounced() {
     final now = DateTime.now();
@@ -114,6 +116,8 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
         type: 'scratch_cost',
         description: '购买刮刮卡',
       );
+      _statisticAdapter.reportBuyTicket(scratchProvider.selectedCost);
+      _statisticAdapter.reportCost(scratchProvider.selectedCost);
       HapticFeedback.mediumImpact();
       // ignore: use_build_context_synchronously
       showBuySuccessDialog(context);
@@ -136,6 +140,7 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
           type: 'scratch_win',
           description: '刮刮乐中奖: ${ticket.prizeName}',
         );
+        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
         if (mounted) {
           // ignore: use_build_context_synchronously
           showPrizeDialog(context, ticket, true);
@@ -160,6 +165,18 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
           colorValue: item.colorValue,
         );
         await shopProvider.addPurchasedItem(purchasedItem);
+        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
+        if (mounted) {
+          // ignore: use_build_context_synchronously
+          showPrizeDialog(context, ticket, true);
+        }
+      } else {
+        await pointsProvider.addPointsWithRecord(
+          points: ticket.prizeValue,
+          type: 'scratch_win',
+          description: '刮刮乐中奖: ${ticket.prizeName}',
+        );
+        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
         if (mounted) {
           // ignore: use_build_context_synchronously
           showPrizeDialog(context, ticket, true);

@@ -41,12 +41,7 @@ class StatisticService {
 
     try {
       await _cacheData(data);
-
-      if (kReleaseMode) {
-        await _uploadToServer(data);
-      } else {
-        debugPrint('Statistic report (debug): ${data.key} - ${data.type}');
-      }
+      debugPrint('Statistic report: ${data.key} - ${data.type}');
     } catch (e, stack) {
       debugPrint('Statistic report failed: $e\n$stack');
       await _reportStatisticFail(e.toString(), stack.toString());
@@ -94,29 +89,6 @@ class StatisticService {
     }
   }
 
-  /// 上传统计数据到服务器
-  /// 仅在release模式下执行
-  Future<void> _uploadToServer(StatisticData data) async {
-    // TODO: 实现服务端上报逻辑
-    // 上报接口地址应配置在config/env.dart中
-  }
-
-  /// 同步缓存的统计数据到服务器
-  /// App启动时调用
-  Future<void> syncCache() async {
-    if (!_initialized || !kReleaseMode) return;
-
-    try {
-      final cache = await _getCache();
-      if (cache.isEmpty) return;
-
-      // TODO: 批量上传到服务器
-      debugPrint('Syncing ${cache.length} cached statistics');
-    } catch (e) {
-      debugPrint('Sync cache failed: $e');
-    }
-  }
-
   /// 清空本地缓存
   Future<void> clearCache() async {
     if (_prefs == null) return;
@@ -138,11 +110,13 @@ class StatisticService {
   /// 上报统计失败
   Future<void> _reportStatisticFail(String error, String stack) async {
     try {
-      await report(StatisticData(
-        key: StatisticKeys.systemStatisticFail,
-        type: StatisticType.system,
-        value: {'error': error, 'stack': stack},
-      ));
+      await report(
+        StatisticData(
+          key: StatisticKeys.systemStatisticFail,
+          type: StatisticType.system,
+          value: {'error': error, 'stack': stack},
+        ),
+      );
     } catch (_) {
       // 避免无限循环
     }

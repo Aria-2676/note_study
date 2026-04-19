@@ -22,7 +22,7 @@ class DatabaseService
   static final DatabaseService instance = DatabaseService._init();
   static Database? _database;
   static const String _dbName = 'v5_tasks.db';
-  static const int _databaseVersion = 6;
+  static const int _databaseVersion = 7;
 
   @override
   String get dbName => _dbName;
@@ -143,7 +143,8 @@ class DatabaseService
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         value INTEGER NOT NULL,
-        probability REAL NOT NULL DEFAULT 0.0
+        weight REAL NOT NULL DEFAULT 1.0,
+        isDefault INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -354,7 +355,8 @@ class DatabaseService
           name TEXT NOT NULL,
           type TEXT NOT NULL,
           value INTEGER NOT NULL,
-          probability REAL NOT NULL DEFAULT 0.0
+          weight REAL NOT NULL DEFAULT 1.0,
+          isDefault INTEGER NOT NULL DEFAULT 0
         )
       ''');
 
@@ -368,6 +370,15 @@ class DatabaseService
           costPoints INTEGER NOT NULL,
           createdAt TEXT NOT NULL
         )
+      ''');
+    }
+
+    if (oldVersion < 7) {
+      await db.execute('''
+        ALTER TABLE custom_prize_pool ADD COLUMN weight REAL DEFAULT 1.0
+      ''');
+      await db.execute('''
+        ALTER TABLE custom_prize_pool ADD COLUMN isDefault INTEGER DEFAULT 0
       ''');
     }
   }
