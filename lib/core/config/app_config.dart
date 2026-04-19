@@ -1,8 +1,5 @@
-import '../utils/version_utils.dart';
-
 class AppConfig {
   static String get appName => '任务管家';
-  static String get version => VersionUtils.version;
 
   static const int defaultPoints = 0;
   static const int dailyTaskReward = 10;

@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../../config/app_config.dart';
 import 'database_task_mixin.dart';
 import 'database_shop_mixin.dart';
 import 'database_points_mixin.dart';
@@ -21,8 +22,7 @@ class DatabaseService
         DatabaseSettingsMixin {
   static final DatabaseService instance = DatabaseService._init();
   static Database? _database;
-  static const String _dbName = 'v5_tasks.db';
-  static const int _databaseVersion = 1;
+  static const String _dbName = AppConfig.dbName;
 
   @override
   String get dbName => _dbName;
@@ -42,7 +42,7 @@ class DatabaseService
 
     return await openDatabase(
       path,
-      version: _databaseVersion,
+      version: AppConfig.dbVersion,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );

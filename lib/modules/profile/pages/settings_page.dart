@@ -70,19 +70,12 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
             context,
             icon: Icons.info_outline,
             title: '关于',
-            subtitle: '版本信息、检查更新',
+            subtitle: '了解任务管家',
             color: Colors.orange,
             onTap: () => _showAboutDialog(context),
           ),
           const SizedBox(height: 16),
           _buildEditPinnedCard(context, colorScheme),
-          const SizedBox(height: 20),
-          Center(
-            child: Text(
-              '任务管家 V$version',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-            ),
-          ),
         ],
       ),
     );
@@ -314,33 +307,26 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
             Text('关于'),
           ],
         ),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('任务管家 V$version'),
-            const SizedBox(height: 16),
-            const Text('一款带积分系统的任务管理应用'),
-            const SizedBox(height: 8),
-            const Text('功能亮点：'),
-            const SizedBox(height: 4),
-            const Text('• 任务管理与追踪'),
-            const Text('• 积分奖励系统'),
-            const Text('• 积分商城兑换'),
-            const Text('• 桌面小组件支持'),
+            Text('任务管家'),
+            SizedBox(height: 16),
+            Text('一款带积分系统的任务管理应用'),
+            SizedBox(height: 8),
+            Text('功能亮点：'),
+            SizedBox(height: 4),
+            Text('• 任务管理与追踪'),
+            Text('• 积分奖励系统'),
+            Text('• 积分商城兑换'),
+            Text('• 桌面小组件支持'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('关闭'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              showUpdateDialog(context);
-            },
-            child: const Text('检查更新'),
           ),
         ],
       ),

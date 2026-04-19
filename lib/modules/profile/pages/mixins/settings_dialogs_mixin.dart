@@ -2,26 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../core/services/database/database_service.dart';
-import '../../../../core/utils/version_utils.dart';
 
 mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
-  String version = '1.0.0';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadVersion();
-  }
-
-  Future<void> _loadVersion() async {
-    await VersionUtils.loadVersion();
-    if (mounted) {
-      setState(() {
-        version = VersionUtils.version;
-      });
-    }
-  }
-
   Future<void> clearCache(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -69,11 +51,6 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
           children: [
             const Text('任务管家是一款帮助您管理日常任务的应用。'),
             const SizedBox(height: 16),
-            Text(
-              '版本: V$version',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
             const Text('功能亮点:', style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
             const Text('• 任务管理与追踪'),
@@ -81,40 +58,6 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
             const Text('• 积分商城兑换'),
             const Text('• 桌面小组件支持'),
             const Text('• 循环任务设置'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void showUpdateDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.update, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('检查更新'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              '当前已是最新版本',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            Text('版本: V$version'),
           ],
         ),
         actions: [
