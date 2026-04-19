@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:v5_app/modules/shop/models/shop_model.dart';
+import 'package:v5_app/providers/shop_provider.dart';
+import 'package:v5_app/providers/points_provider.dart';
 
 void main() {
   group('ShopItem', () {
@@ -225,6 +227,34 @@ void main() {
       );
 
       expect(item.color.toARGB32(), 0xFF00BCD4);
+    });
+  });
+
+  group('ShopProvider', () {
+    test('should have correct initial values', () {
+      final pointsProvider = PointsProvider();
+      final shopProvider = ShopProvider(pointsProvider);
+
+      expect(shopProvider.shopItems, isEmpty);
+      expect(shopProvider.purchasedItems, isEmpty);
+      expect(shopProvider.isInitialized, false);
+    });
+
+    test('should update points provider correctly', () {
+      final pointsProvider1 = PointsProvider();
+      final pointsProvider2 = PointsProvider();
+      final shopProvider = ShopProvider(pointsProvider1);
+
+      shopProvider.updatePointsProvider(pointsProvider2);
+
+      expect(shopProvider, isNotNull);
+    });
+
+    test('getPurchasedItemCount should return correct count', () {
+      final pointsProvider = PointsProvider();
+      final shopProvider = ShopProvider(pointsProvider);
+
+      expect(shopProvider.getPurchasedItemCount(1), 0);
     });
   });
 }

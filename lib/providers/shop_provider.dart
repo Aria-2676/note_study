@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import '../modules/shop/models/shop_model.dart';
-import '../core/services/database/database_service.dart';
+import '../modules/shop/repositories/shop_repository.dart';
+import '../modules/shop/adapters/shop_statistic_adapter.dart';
 import 'points_provider.dart';
 
 /// 商城状态管理Provider
 /// 负责商城商品和兑换逻辑
 class ShopProvider extends ChangeNotifier {
-  final DatabaseService _db = DatabaseService.instance;
+  final ShopRepository _repository = ShopRepository();
+  final ShopStatisticAdapter _statisticAdapter = ShopStatisticAdapter();
   PointsProvider _pointsProvider;
 
   List<ShopItem> _shopItems = [];
   List<PurchasedItem> _purchasedItems = [];
+  bool _isInitialized = false;
 
   List<ShopItem> get shopItems => _shopItems;
   List<PurchasedItem> get purchasedItems => _purchasedItems;
+  bool get isInitialized => _isInitialized;
 
   ShopProvider(this._pointsProvider);
 
@@ -25,10 +29,11 @@ class ShopProvider extends ChangeNotifier {
     await _loadShopItems();
     await _loadPurchasedItems();
     await _initDefaultData();
+    _isInitialized = true;
   }
 
   Future<void> _initDefaultData() async {
-    final existingItems = await _db.getAllShopItems();
+    final existingItems = await _repository.getAllShopItems();
     if (existingItems.isEmpty) {
       await _initDefaultShopItems();
     }
@@ -95,33 +100,33 @@ class ShopProvider extends ChangeNotifier {
     ];
 
     for (final item in defaultItems) {
-      await _db.createShopItem(item);
+      await _repository.createShopItem(item);
     }
     await _loadShopItems();
   }
 
   Future<void> _loadShopItems() async {
-    _shopItems = await _db.getAllShopItems();
+    _shopItems = await _repository.getAllShopItems();
     notifyListeners();
   }
 
   Future<void> _loadPurchasedItems() async {
-    _purchasedItems = await _db.getAllPurchasedItems();
+    _purchasedItems = await _repository.getAllPurchasedItems();
     notifyListeners();
   }
 
   Future<void> addShopItem(ShopItem item) async {
-    await _db.createShopItem(item);
+    await _repository.createShopItem(item);
     await _loadShopItems();
   }
 
   Future<void> updateShopItem(ShopItem item) async {
-    await _db.updateShopItem(item);
+    await _repository.updateShopItem(item);
     await _loadShopItems();
   }
 
   Future<void> deleteShopItem(int id) async {
-    await _db.deleteShopItem(id);
+    await _repository.deleteShopItem(id);
     await _loadShopItems();
   }
 
@@ -148,18 +153,33 @@ class ShopProvider extends ChangeNotifier {
       iconName: item.iconName,
       colorValue: item.colorValue,
     );
-    await _db.addPurchasedItem(purchasedItem);
+    await _repository.addPurchasedItem(purchasedItem);
     await _loadPurchasedItems();
+
+    await _statisticAdapter.reportExchange(item.id!, item.name, item.price);
+
     return null;
   }
 
   Future<void> deletePurchasedItem(int id) async {
-    await _db.deletePurchasedItem(id);
+    await _repository.deletePurchasedItem(id);
     await _loadPurchasedItems();
   }
 
   Future<void> addPurchasedItem(PurchasedItem purchasedItem) async {
-    await _db.addPurchasedItem(purchasedItem);
+    await _repository.addPurchasedItem(purchasedItem);
     await _loadPurchasedItems();
+  }
+
+  Future<void> reportPageViewHome() async {
+    await _statisticAdapter.reportPageViewHome();
+  }
+
+  Future<void> reportPageViewWarehouse() async {
+    await _statisticAdapter.reportPageViewWarehouse();
+  }
+
+  int getPurchasedItemCount(int shopItemId) {
+    return _purchasedItems.where((item) => item.shopItemId == shopItemId).length;
   }
 }
