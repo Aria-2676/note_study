@@ -12,6 +12,8 @@ class Game2048Page extends StatefulWidget {
 
 class _Game2048PageState extends State<Game2048Page> {
   late Game2048Provider _provider;
+  Offset? _startPosition;
+  static const double _minSwipeDistance = 30.0;
 
   @override
   void initState() {
@@ -24,6 +26,34 @@ class _Game2048PageState extends State<Game2048Page> {
   void dispose() {
     _provider.dispose();
     super.dispose();
+  }
+
+  void _handlePanStart(DragStartDetails details) {
+    _startPosition = details.localPosition;
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    if (_startPosition == null) return;
+
+    final endPosition = details.velocity.pixelsPerSecond;
+    final dx = endPosition.dx;
+    final dy = endPosition.dy;
+
+    if (dx.abs() > dy.abs()) {
+      if (dx > _minSwipeDistance) {
+        _provider.move(MoveDirection.right);
+      } else if (dx < -_minSwipeDistance) {
+        _provider.move(MoveDirection.left);
+      }
+    } else {
+      if (dy > _minSwipeDistance) {
+        _provider.move(MoveDirection.down);
+      } else if (dy < -_minSwipeDistance) {
+        _provider.move(MoveDirection.up);
+      }
+    }
+
+    _startPosition = null;
   }
 
   @override
@@ -51,7 +81,12 @@ class _Game2048PageState extends State<Game2048Page> {
               children: [
                 _buildScoreBoard(provider),
                 Expanded(
-                  child: _buildGameBoard(provider),
+                  child: GestureDetector(
+                    onPanStart: _handlePanStart,
+                    onPanEnd: _handlePanEnd,
+                    behavior: HitTestBehavior.opaque,
+                    child: _buildGameBoard(provider),
+                  ),
                 ),
                 _buildInstructions(),
               ],
@@ -112,21 +147,23 @@ class _Game2048PageState extends State<Game2048Page> {
         final size = constraints.maxWidth < constraints.maxHeight
             ? constraints.maxWidth - 32
             : constraints.maxHeight - 32;
-        final cellSize = (size - 12) / 4;
+        const double gap = 4;
+        const double padding = 6;
+        final cellSize = (size - padding * 2 - gap * 3) / 4;
 
         return Center(
           child: Container(
             width: size,
             height: size,
-            padding: const EdgeInsets.all(6),
+            padding: EdgeInsets.all(padding),
             decoration: BoxDecoration(
               color: Colors.grey.shade300,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Stack(
               children: [
-                _buildGridBackground(cellSize),
-                _buildGridTiles(provider, cellSize),
+                _buildGridBackground(cellSize, gap),
+                _buildGridTiles(provider, cellSize, gap, padding),
                 if (provider.gameOver || provider.won)
                   _buildGameOverlay(provider),
               ],
@@ -137,27 +174,30 @@ class _Game2048PageState extends State<Game2048Page> {
     );
   }
 
-  Widget _buildGridBackground(double cellSize) {
-    return GridView.count(
-      crossAxisCount: 4,
-      mainAxisSpacing: 4,
-      crossAxisSpacing: 4,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: List.generate(16, (_) {
-        return Container(
-          width: cellSize,
-          height: cellSize,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(8),
-          ),
-        );
-      }),
+  Widget _buildGridBackground(double cellSize, double gap) {
+    return SizedBox.expand(
+      child: GridView.count(
+        crossAxisCount: 4,
+        mainAxisSpacing: gap,
+        crossAxisSpacing: gap,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: List.generate(16, (_) {
+          return Container(
+            width: cellSize,
+            height: cellSize,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          );
+        }),
+      ),
     );
   }
 
-  Widget _buildGridTiles(Game2048Provider provider, double cellSize) {
+  Widget _buildGridTiles(Game2048Provider provider, double cellSize, double gap, double padding) {
     final tiles = <Widget>[];
 
     for (int i = 0; i < 4; i++) {
@@ -166,8 +206,10 @@ class _Game2048PageState extends State<Game2048Page> {
         if (value != 0) {
           tiles.add(
             Positioned(
-              left: j * (cellSize + 4) + 6,
-              top: i * (cellSize + 4) + 6,
+              left: j * (cellSize + gap),
+              top: i * (cellSize + gap),
+              width: cellSize,
+              height: cellSize,
               child: _buildTile(value, cellSize),
             ),
           );

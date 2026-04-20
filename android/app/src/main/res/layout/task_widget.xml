@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@drawable/widget_background"
+    android:background="@drawable/widget_background_rounded"
     android:padding="14dp">
 
     <LinearLayout
@@ -14,61 +14,39 @@
         android:gravity="center_vertical"
         android:paddingBottom="10dp">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/widget_date"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:text="今日任务"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#1A1A1A" />
 
-            <TextView
-                android:id="@+id/widget_date"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="今日任务"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                android:textColor="#1A1A1A" />
-
-            <TextView
-                android:id="@+id/widget_progress"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0/0 完成"
-                android:textSize="11sp"
-                android:textColor="#888888"
-                android:layout_marginTop="2dp" />
-        </LinearLayout>
-
-        <LinearLayout
+        <TextView
+            android:id="@+id/widget_points"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="@drawable/points_background"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp">
-
-            <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:src="@drawable/ic_star"
-                android:layout_marginEnd="4dp" />
-
-            <TextView
-                android:id="@+id/widget_points"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="#FF9800" />
-        </LinearLayout>
+            android:text="★ 0"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#FF9800" />
     </LinearLayout>
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="#F0F0F0" />
+
+    <TextView
+        android:id="@+id/widget_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0/0 完成"
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:layout_marginTop="8dp" />
 
     <LinearLayout
         android:id="@+id/widget_task_list"
@@ -93,13 +71,6 @@
                 android:layout_height="18dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_checkbox_unchecked" />
-
-            <View
-                android:id="@+id/widget_task_1_priority"
-                android:layout_width="3dp"
-                android:layout_height="14dp"
-                android:layout_marginEnd="8dp"
-                android:background="#CCCCCC" />
 
             <TextView
                 android:id="@+id/widget_task_1_text"
@@ -137,13 +108,6 @@
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_checkbox_unchecked" />
 
-            <View
-                android:id="@+id/widget_task_2_priority"
-                android:layout_width="3dp"
-                android:layout_height="14dp"
-                android:layout_marginEnd="8dp"
-                android:background="#CCCCCC" />
-
             <TextView
                 android:id="@+id/widget_task_2_text"
                 android:layout_width="0dp"
@@ -179,13 +143,6 @@
                 android:layout_height="18dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_checkbox_unchecked" />
-
-            <View
-                android:id="@+id/widget_task_3_priority"
-                android:layout_width="3dp"
-                android:layout_height="14dp"
-                android:layout_marginEnd="8dp"
-                android:background="#CCCCCC" />
 
             <TextView
                 android:id="@+id/widget_task_3_text"
@@ -223,13 +180,6 @@
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_checkbox_unchecked" />
 
-            <View
-                android:id="@+id/widget_task_4_priority"
-                android:layout_width="3dp"
-                android:layout_height="14dp"
-                android:layout_marginEnd="8dp"
-                android:background="#CCCCCC" />
-
             <TextView
                 android:id="@+id/widget_task_4_text"
                 android:layout_width="0dp"
@@ -266,13 +216,6 @@
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_checkbox_unchecked" />
 
-            <View
-                android:id="@+id/widget_task_5_priority"
-                android:layout_width="3dp"
-                android:layout_height="14dp"
-                android:layout_marginEnd="8dp"
-                android:background="#CCCCCC" />
-
             <TextView
                 android:id="@+id/widget_task_5_text"
                 android:layout_width="0dp"
@@ -292,50 +235,31 @@
                 android:textColor="#FF9800"
                 android:textStyle="bold" />
         </LinearLayout>
+
     </LinearLayout>
 
-    <LinearLayout
+    <TextView
         android:id="@+id/widget_empty"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="visible">
+        android:text="暂无任务"
+        android:textSize="13sp"
+        android:textColor="#AAAAAA"
+        android:visibility="gone" />
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_checkbox_unchecked"
-            android:alpha="0.3" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="暂无任务"
-            android:textSize="13sp"
-            android:textColor="#AAAAAA"
-            android:layout_marginTop="8dp" />
-    </LinearLayout>
-
-    <LinearLayout
+    <TextView
+        android:id="@+id/widget_open_app"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:id="@+id/widget_open_app"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:paddingVertical="10dp"
-            android:background="@drawable/button_background"
-            android:text="打开应用"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="#FFFFFF" />
-    </LinearLayout>
+        android:gravity="center"
+        android:paddingVertical="10dp"
+        android:background="@drawable/button_background"
+        android:text="打开应用"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="8dp" />
 
 </LinearLayout>

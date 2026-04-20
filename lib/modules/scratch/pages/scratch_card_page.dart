@@ -35,6 +35,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
   bool _showPrizePool = false;
   bool _showRecords = false;
   bool _showTicketWallet = false;
+  bool _showCenteredOverlay = false;
 
   static const int _gridSize = 30;
   static const double _revealThreshold = 0.4;
@@ -94,6 +95,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     setState(() {
       _scratchPoints.clear();
       _lastPosition = null;
+      _showCenteredOverlay = true;
     });
     scratchProvider.startScratching();
     _statisticAdapter.reportStartScratch();
@@ -108,6 +110,9 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     _scratchPoints.clear();
     _lastPosition = null;
     scratchProvider.exitScratching();
+    setState(() {
+      _showCenteredOverlay = false;
+    });
   }
 
   void _handleScratchStart(DragStartDetails details) {
@@ -248,18 +253,6 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     );
   }
 
-  void _resetScratchCard() {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    setState(() {
-      _scratchPoints.clear();
-      _lastPosition = null;
-    });
-    scratchProvider.resetScratchCard();
-  }
-
   void _setCost(int cost) {
     final scratchProvider = Provider.of<ScratchProvider>(
       context,
@@ -373,28 +366,6 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                           onSelectTicket: _selectTicket,
                         ),
                       if (!_showTicketWallet) ...[
-                        ScratchCardWidget(
-                          scratchKey: _scratchKey,
-                          ticket: scratchProvider.currentTicket,
-                          isScratching: scratchProvider.state.isScratching,
-                          isRevealed: scratchProvider.state.isRevealed,
-                          scratchPoints: _scratchPoints,
-                          onPanStart: _handleScratchStart,
-                          onPanUpdate: _handleScratch,
-                          onPanEnd: _handleScratchEnd,
-                        ),
-                        const SizedBox(height: 20),
-                        if (isScratching) ...[
-                          _buildExitButton(colorScheme),
-                          const SizedBox(height: 8),
-                          _buildQuickRevealButton(scratchProvider, colorScheme),
-                        ],
-                        if (scratchProvider.state.isRevealed)
-                          _buildContinueButton(colorScheme),
-                        if (!isScratching &&
-                            !scratchProvider.state.isRevealed &&
-                            scratchProvider.currentTicket != null)
-                          _buildStartScratchButton(colorScheme),
                         const SizedBox(height: 20),
                         CostSelectorWidget(
                           scratchProvider: scratchProvider,
@@ -444,7 +415,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                   ),
                 ),
               ),
-              if (isScratching)
+              if (isScratching && !scratchProvider.state.isRevealed)
                 Positioned(
                   top: 0,
                   left: 0,
@@ -475,6 +446,8 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                     ),
                   ),
                 ),
+              if (_showCenteredOverlay && scratchProvider.currentTicket != null)
+                _buildCenteredOverlay(scratchProvider, colorScheme),
             ],
           ),
         );
@@ -482,72 +455,71 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     );
   }
 
-  Widget _buildExitButton(ColorScheme colorScheme) {
-    return ElevatedButton.icon(
-      onPressed: _exitScratching,
-      icon: const Icon(Icons.exit_to_app),
-      label: const Text('退出刮奖'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: colorScheme.secondary,
-        foregroundColor: colorScheme.onSecondary,
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-      ),
-    );
-  }
-
-  Widget _buildStartScratchButton(ColorScheme colorScheme) {
-    return Column(
-      children: [
-        ElevatedButton.icon(
-          onPressed: _startScratching,
-          icon: const Icon(Icons.touch_app),
-          label: const Text('开始刮奖'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: colorScheme.primary,
-            foregroundColor: colorScheme.onPrimary,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: _resetScratchCard,
-          child: Text(
-            '取消选择',
-            style: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickRevealButton(
+  Widget _buildCenteredOverlay(
     ScratchProvider scratchProvider,
     ColorScheme colorScheme,
   ) {
-    return TextButton.icon(
-      onPressed: _quickReveal,
-      icon: const Icon(Icons.visibility),
-      label: const Text('一键揭晓'),
-      style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
-    );
-  }
+    final isDark = colorScheme.brightness == Brightness.dark;
 
-  Widget _buildContinueButton(ColorScheme colorScheme) {
-    return ElevatedButton.icon(
-      onPressed: _resetScratchCard,
-      icon: const Icon(Icons.check_circle),
-      label: const Text('继续'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: () {},
+        child: Container(
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.7)
+              : Colors.black.withValues(alpha: 0.5),
+          child: SafeArea(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '滑动卡片调整位置',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ScratchCardWidget(
+                  scratchKey: _scratchKey,
+                  ticket: scratchProvider.currentTicket,
+                  isScratching: scratchProvider.state.isScratching,
+                  isRevealed: scratchProvider.state.isRevealed,
+                  scratchPoints: _scratchPoints,
+                  onPanStart: _handleScratchStart,
+                  onPanUpdate: _handleScratch,
+                  onPanEnd: _handleScratchEnd,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _exitScratching,
+                      icon: const Icon(
+                        Icons.exit_to_app,
+                        color: Colors.white70,
+                      ),
+                      label: const Text(
+                        '退出',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    TextButton.icon(
+                      onPressed: _quickReveal,
+                      icon: const Icon(Icons.visibility, color: Colors.white70),
+                      label: const Text(
+                        '一键揭晓',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -613,7 +585,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
             : Text(
                 buttonText,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),

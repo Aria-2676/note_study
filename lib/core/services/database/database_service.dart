@@ -262,7 +262,7 @@ class DatabaseService
         'rewardPoints': 0,
         'isDeducted': 0,
         'createdAt': now.toIso8601String(),
-        'priority': 'green',
+        'priority': 'white',
       },
       {
         'title': '试试下拉菜单',

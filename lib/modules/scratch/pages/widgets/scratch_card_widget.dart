@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/scratch_model.dart';
 
-class ScratchCardWidget extends StatelessWidget {
+class ScratchCardWidget extends StatefulWidget {
   final GlobalKey scratchKey;
   final ScratchTicket? ticket;
   final bool isScratching;
@@ -24,6 +24,11 @@ class ScratchCardWidget extends StatelessWidget {
   });
 
   @override
+  State<ScratchCardWidget> createState() => _ScratchCardWidgetState();
+}
+
+class _ScratchCardWidgetState extends State<ScratchCardWidget> {
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
@@ -31,7 +36,7 @@ class ScratchCardWidget extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(15),
       child: Container(
-        key: scratchKey,
+        key: widget.scratchKey,
         width: 300,
         height: 200,
         decoration: BoxDecoration(
@@ -46,57 +51,18 @@ class ScratchCardWidget extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            if (ticket != null)
-              _PrizeContentWidget(ticket: ticket!, isDark: isDark),
-            if (!isRevealed && ticket != null)
+            if (widget.ticket != null)
+              _PrizeContentWidget(ticket: widget.ticket!, isDark: isDark),
+            if (!widget.isRevealed && widget.ticket != null)
               Positioned.fill(
                 child: GestureDetector(
-                  onPanStart: isScratching ? onPanStart : null,
-                  onPanUpdate: isScratching ? onPanUpdate : null,
-                  onPanEnd: isScratching ? onPanEnd : null,
-                  child: ClipPath(
-                    clipper: ScratchClipper(scratchPoints),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isDark
-                              ? [
-                                  colorScheme.surfaceContainerHigh,
-                                  colorScheme.surfaceContainerHighest,
-                                ]
-                              : [
-                                  colorScheme.surfaceContainerHigh,
-                                  colorScheme.surfaceContainerHighest,
-                                ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 48,
-                              color: colorScheme.onSurface.withValues(
-                                alpha: 0.6,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              isScratching ? '刮开这里' : '准备刮奖',
-                              style: TextStyle(
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.6,
-                                ),
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  onPanStart: widget.isScratching ? widget.onPanStart : null,
+                  onPanUpdate: widget.isScratching ? widget.onPanUpdate : null,
+                  onPanEnd: widget.isScratching ? widget.onPanEnd : null,
+                  child: ScratchLayer(
+                    scratchPoints: widget.scratchPoints,
+                    isDark: isDark,
+                    colorScheme: colorScheme,
                   ),
                 ),
               ),
@@ -104,6 +70,109 @@ class ScratchCardWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class ScratchLayer extends StatelessWidget {
+  final List<Offset> scratchPoints;
+  final bool isDark;
+  final ColorScheme colorScheme;
+
+  const ScratchLayer({
+    super.key,
+    required this.scratchPoints,
+    required this.isDark,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: ScratchLayerPainter(
+        scratchPoints: scratchPoints,
+        isDark: isDark,
+        colorScheme: colorScheme,
+      ),
+    );
+  }
+}
+
+class ScratchLayerPainter extends CustomPainter {
+  final List<Offset> scratchPoints;
+  final bool isDark;
+  final ColorScheme colorScheme;
+
+  ScratchLayerPainter({
+    required this.scratchPoints,
+    required this.isDark,
+    required this.colorScheme,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final maskPaint = Paint()
+      ..color = isDark
+          ? colorScheme.surfaceContainerHighest
+          : const Color(0xFFD0D0D0)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), maskPaint);
+
+    if (scratchPoints.isEmpty) {
+      final center = Offset(size.width / 2, size.height / 2);
+
+      final iconPainter = TextPainter(
+        text: const TextSpan(text: '👆'),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      iconPainter.paint(canvas, Offset(center.dx - 24, center.dy - 24));
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: '刮开这里',
+          style: TextStyle(
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
+            fontSize: 16,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      textPainter.paint(
+        canvas,
+        Offset(center.dx - textPainter.width / 2, center.dy + 32),
+      );
+    }
+
+    if (scratchPoints.isNotEmpty) {
+      final path = Path();
+      for (int i = 0; i < scratchPoints.length; i++) {
+        if (i == 0) {
+          path.moveTo(scratchPoints[i].dx, scratchPoints[i].dy);
+        } else {
+          path.lineTo(scratchPoints[i].dx, scratchPoints[i].dy);
+        }
+      }
+
+      final pathPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 40
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = BlendMode.clear;
+
+      canvas.drawPath(path, pathPaint);
+
+      for (final point in scratchPoints) {
+        canvas.drawCircle(point, 20, pathPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ScratchLayerPainter oldDelegate) {
+    return scratchPoints.length != oldDelegate.scratchPoints.length;
   }
 }
 
@@ -158,34 +227,5 @@ class _PrizeContentWidget extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class ScratchClipper extends CustomClipper<Path> {
-  final List<Offset> points;
-  final double radius;
-
-  ScratchClipper(this.points, [this.radius = 20]);
-
-  @override
-  Path getClip(Size size) {
-    final rectPath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    if (points.isEmpty) {
-      return rectPath;
-    }
-
-    final scratchPath = Path();
-    for (final point in points) {
-      scratchPath.addOval(Rect.fromCircle(center: point, radius: radius));
-    }
-
-    return Path.combine(PathOperation.difference, rectPath, scratchPath);
-  }
-
-  @override
-  bool shouldReclip(covariant ScratchClipper oldClipper) {
-    return points.length != oldClipper.points.length;
   }
 }

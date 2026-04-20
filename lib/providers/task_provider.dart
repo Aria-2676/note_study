@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import '../modules/tasks/models/task_model.dart';
 import '../modules/tasks/repositories/task_repository.dart';
 import '../core/services/widget_service.dart';
@@ -69,6 +72,9 @@ class TaskProvider extends ChangeNotifier {
     return count;
   }
 
+  // 防抖计时器，用于优化小组件更新频率
+  Timer? _updateWidgetTimer;
+
   TaskProvider(this._pointsProvider, {TaskRepository? taskRepository})
     : _taskRepository = taskRepository ?? TaskRepository();
 
@@ -82,7 +88,7 @@ class TaskProvider extends ChangeNotifier {
     await _checkOverdueTasks();
     await loadTasksByDate(DateTime.now());
     await autoCheckRecurringTasks();
-    await _updateWidget();
+    _debouncedUpdateWidget();
   }
 
   Future<void> _loadRecycledTasks() async {
@@ -149,7 +155,7 @@ class TaskProvider extends ChangeNotifier {
     if (!_selectedDates.any((d) => _sameDay(d, date))) _selectedDates = [date];
     _tasks = await _taskRepository.getTasksForDate(date);
     notifyListeners();
-    await _updateWidget();
+    _debouncedUpdateWidget();
   }
 
   Future<void> loadTodayTasks() async => await loadTasksByDate(DateTime.now());
@@ -195,14 +201,14 @@ class TaskProvider extends ChangeNotifier {
   Future<void> deleteTask(int id, {bool deleteAll = false}) async {
     await _taskRepository.deleteTask(id, deleteAll: deleteAll);
     await loadTasksByDate(_selectedDate);
-    await _updateWidget();
+    _debouncedUpdateWidget();
   }
 
   Future<void> updateTask(Task task, {bool updateAll = false}) async {
     await _taskRepository.updateTask(task, updateAll: updateAll);
     await loadTasksByDate(task.cplTime);
     notifyListeners();
-    await _updateWidget();
+    _debouncedUpdateWidget();
   }
 
   void selectDate(DateTime date) {
@@ -293,12 +299,56 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _updateWidget() async {
-    await WidgetService.updateWidgetData(
-      tasks: _tasks,
-      points: _pointsProvider.currentPoints,
-      date: _selectedDate,
-    );
+  // 防抖更新小组件
+  void _debouncedUpdateWidget() {
+    // 取消之前的定时器
+    _updateWidgetTimer?.cancel();
+    // 设置新的定时器，300ms后执行更新
+    _updateWidgetTimer = Timer(const Duration(milliseconds: 300), () async {
+      await _performWidgetUpdate();
+    });
+  }
+
+  // 实际执行小组件更新的方法
+  Future<void> _performWidgetUpdate() async {
+    try {
+      final tasks = _tasks
+          .take(5)
+          .map(
+            (task) => {
+              'id': task.id.toString(),
+              'title': task.title,
+              'isOK': task.isOK,
+              'rewardPoints': task.rewardPoints,
+              'priority': task.priority,
+            },
+          )
+          .toList();
+
+      final completedCount = _tasks.where((t) => t.isOK).length;
+      final totalCount = _tasks.length;
+      final currentDate = DateTime.now();
+      final dateStr =
+          '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
+
+      await HomeWidget.saveWidgetData('widget_tasks', jsonEncode(tasks));
+      await HomeWidget.saveWidgetData(
+        'widget_points',
+        _pointsProvider.currentPoints.toString(),
+      );
+      await HomeWidget.saveWidgetData('widget_date', dateStr);
+      await HomeWidget.saveWidgetData(
+        'widget_progress',
+        '$completedCount/$totalCount 完成',
+      );
+
+      await HomeWidget.updateWidget(
+        name: 'TaskWidget',
+        androidName: 'TaskWidgetProvider',
+      );
+    } catch (e) {
+      // Widget update failed, ignore
+    }
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
@@ -549,6 +599,8 @@ class TaskProvider extends ChangeNotifier {
         }
       }
       _clearBatchSelection();
+      // 批量操作完成后只更新一次小组件
+      _debouncedUpdateWidget();
       return count > 0 ? '成功$actionName $count 个任务' : null;
     } catch (e) {
       return '批量$actionName失败: $e';
@@ -566,6 +618,8 @@ class TaskProvider extends ChangeNotifier {
         await updateTask(updateFn(task));
       }
       _clearBatchSelection();
+      // 批量操作完成后只更新一次小组件
+      _debouncedUpdateWidget();
       return '成功更新 $count 个任务$updateName';
     } catch (e) {
       return '批量更新$updateName失败: $e';
