@@ -16,6 +16,11 @@ class TodayOverviewWidget extends StatelessWidget {
     required this.todayScratchCount,
   });
 
+  String _getTitle() {
+    final now = DateTime.now();
+    return '今日概览（${now.month}.${now.day}）';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -25,7 +30,7 @@ class TodayOverviewWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '今日概览',
+              _getTitle(),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,

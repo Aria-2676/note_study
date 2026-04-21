@@ -29,7 +29,7 @@ class _CalendarPageState extends State<CalendarPage> {
             icon: const Icon(Icons.bar_chart),
             tooltip: '统计',
             onPressed: () {
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(_selectedDate);
               context.read<AppStateProvider>().setCurrentTab(1);
             },
           ),

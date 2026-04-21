@@ -17,7 +17,9 @@ import './widgets/scratch_statistics_widget.dart';
 enum StatisticsModule { task, points, pomodoro, scratch }
 
 class StatisticsPage extends StatefulWidget {
-  const StatisticsPage({super.key});
+  final DateTime? selectedDate;
+
+  const StatisticsPage({super.key, this.selectedDate});
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -26,6 +28,7 @@ class StatisticsPage extends StatefulWidget {
 class _StatisticsPageState extends State<StatisticsPage> {
   StatisticsModule _currentModule = StatisticsModule.task;
   StatisticsView _currentView = StatisticsView.day;
+  DateTime? _displayDate;
 
   final Map<StatisticsModule, String> _moduleNames = {
     StatisticsModule.task: '任务',
@@ -33,6 +36,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
     StatisticsModule.pomodoro: '番茄',
     StatisticsModule.scratch: '刮刮卡',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _displayDate = widget.selectedDate;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +67,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
         const SizedBox(height: 16),
         ViewSelectorWidget(
           currentView: _currentView,
-          onViewChanged: (view) => setState(() => _currentView = view),
+          onViewChanged: (view) => setState(() {
+            _currentView = view;
+            _displayDate = null;
+          }),
         ),
         const SizedBox(height: 16),
         _buildModuleContent(
@@ -84,7 +96,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${_moduleNames[_currentModule]}统计',
+                  _buildTitleText(),
                   style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
@@ -97,16 +109,32 @@ class _StatisticsPageState extends State<StatisticsPage> {
           ),
         ),
         TextButton.icon(
-          onPressed: () {
-            Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const CalendarPage()));
+          onPressed: () async {
+            final result = await Navigator.of(context).push<DateTime>(
+              MaterialPageRoute(builder: (_) => const CalendarPage()),
+            );
+            if (result != null) {
+              setState(() {
+                _displayDate = result;
+                _currentView = StatisticsView.day;
+              });
+            }
           },
           icon: const Icon(Icons.calendar_today, size: 18),
           label: const Text('日历'),
         ),
       ],
     );
+  }
+
+  String _buildTitleText() {
+    final moduleName = _moduleNames[_currentModule]!;
+    if (_displayDate != null) {
+      final month = _displayDate!.month;
+      final day = _displayDate!.day;
+      return '$moduleName统计-$month.$day';
+    }
+    return '$moduleName统计';
   }
 
   void _showModuleSelector() {
@@ -288,6 +316,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   DateTimeRange _getDateRange() {
+    if (_displayDate != null) {
+      return DateTimeRange(start: _displayDate!, end: _displayDate!);
+    }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
