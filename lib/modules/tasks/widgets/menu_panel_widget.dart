@@ -210,36 +210,43 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
   }
 
   Widget _buildAdvancedSearchPanel(ColorScheme colorScheme) {
-    return AdvancedSearchPanelWidget(
-      searchStartDate: _searchStartDate,
-      searchEndDate: _searchEndDate,
-      searchCompletionStatus: _searchCompletionStatus,
-      onStartDateSelected: (date) {
-        setState(() {
-          _searchStartDate = date;
-        });
-        _performAdvancedSearch();
-      },
-      onEndDateSelected: (date) {
-        setState(() {
-          _searchEndDate = date;
-        });
-        _performAdvancedSearch();
-      },
-      onCompletionStatusChanged: (status) {
-        setState(() {
-          _searchCompletionStatus = status;
-        });
-        _performAdvancedSearch();
-      },
-      onClear: () {
-        setState(() {
-          _searchStartDate = null;
-          _searchEndDate = null;
-          _searchCompletionStatus = null;
-        });
-        _performAdvancedSearch();
-      },
+    final screenHeight = MediaQuery.of(context).size.height;
+    
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: screenHeight * 0.35),
+      child: SingleChildScrollView(
+        child: AdvancedSearchPanelWidget(
+          searchStartDate: _searchStartDate,
+          searchEndDate: _searchEndDate,
+          searchCompletionStatus: _searchCompletionStatus,
+          onStartDateSelected: (date) {
+            setState(() {
+              _searchStartDate = date;
+            });
+            _performAdvancedSearch();
+          },
+          onEndDateSelected: (date) {
+            setState(() {
+              _searchEndDate = date;
+            });
+            _performAdvancedSearch();
+          },
+          onCompletionStatusChanged: (status) {
+            setState(() {
+              _searchCompletionStatus = status;
+            });
+            _performAdvancedSearch();
+          },
+          onClear: () {
+            setState(() {
+              _searchStartDate = null;
+              _searchEndDate = null;
+              _searchCompletionStatus = null;
+            });
+            _performAdvancedSearch();
+          },
+        ),
+      ),
     );
   }
 
@@ -253,59 +260,69 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
   }
 
   Widget _buildMenuButtons(TaskProvider taskProvider) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          GridView.count(
-            crossAxisCount: 4,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            children: [
-              _buildMenuButton(
-                context,
-                icon: Icons.sort,
-                label: _getSortLabel(taskProvider.sortOption),
-                onTap: () {
-                  widget.onClose();
-                  _showSortOptions(context, taskProvider);
-                },
-              ),
-              _buildMenuButton(
-                context,
-                icon: Icons.checklist,
-                label: '批量操作',
-                isToggled: taskProvider.batchMode,
-                onTap: () {
-                  taskProvider.setBatchMode(!taskProvider.batchMode);
-                  widget.onClose();
-                },
-              ),
-              _buildMenuButton(
-                context,
-                icon: Icons.filter_list,
-                label: '筛选',
-                isToggled: _isFilterExpanded,
-                onTap: () {
-                  setState(() {
-                    _isFilterExpanded = !_isFilterExpanded;
-                  });
-                },
-              ),
-              _buildMenuButton(
-                context,
-                icon: Icons.refresh,
-                label: '刷新',
-                onTap: () {
-                  taskProvider.loadTasksByDate(taskProvider.selectedDate);
-                  widget.onClose();
-                },
-              ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                _buildMenuButton(
+                  context,
+                  icon: Icons.sort,
+                  label: _getSortLabel(taskProvider.sortOption),
+                  onTap: () {
+                    widget.onClose();
+                    _showSortOptions(context, taskProvider);
+                  },
+                ),
+                const SizedBox(width: 16),
+                _buildMenuButton(
+                  context,
+                  icon: Icons.checklist,
+                  label: '批量操作',
+                  isToggled: taskProvider.batchMode,
+                  onTap: () {
+                    taskProvider.setBatchMode(!taskProvider.batchMode);
+                    widget.onClose();
+                  },
+                ),
+                const SizedBox(width: 16),
+                _buildMenuButton(
+                  context,
+                  icon: Icons.filter_list,
+                  label: '筛选',
+                  isToggled: _isFilterExpanded,
+                  onTap: () {
+                    setState(() {
+                      _isFilterExpanded = !_isFilterExpanded;
+                    });
+                  },
+                ),
+                const SizedBox(width: 16),
+                _buildMenuButton(
+                  context,
+                  icon: Icons.refresh,
+                  label: '刷新',
+                  onTap: () {
+                    taskProvider.loadTasksByDate(taskProvider.selectedDate);
+                    widget.onClose();
+                  },
+                ),
+              ],
+            ),
           ),
-          if (_isFilterExpanded) _buildFilterPanel(taskProvider),
+          if (_isFilterExpanded)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: screenHeight * 0.4),
+              child: SingleChildScrollView(
+                child: _buildFilterPanel(taskProvider),
+              ),
+            ),
         ],
       ),
     );
