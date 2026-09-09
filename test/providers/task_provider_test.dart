@@ -22,6 +22,7 @@ void main() {
       taskRepository: mockTaskRepository,
     );
     when(mockPointsProvider.currentPoints).thenReturn(0);
+    when(mockTaskRepository.getAllTasks()).thenAnswer((_) async => []);
   });
 
   group('selectDate', () {

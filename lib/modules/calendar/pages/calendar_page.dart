@@ -5,7 +5,9 @@ import '../../../providers/app_state_provider.dart';
 import '../../tasks/models/task_model.dart';
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({super.key});
+  final DateTime? initialDate;
+
+  const CalendarPage({super.key, this.initialDate});
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -16,15 +18,53 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDate;
 
   @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialDate ?? DateTime.now();
+    _selectedDate = initial;
+    _currentMonth = DateTime(initial.year, initial.month);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final taskProvider = context.watch<TaskProvider>();
-    final tasks = taskProvider.rawTasks;
+    final tasks = taskProvider.allTasks;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('日历'),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.today),
+            tooltip: '回到当天',
+            onPressed: () {
+              final now = DateTime.now();
+              setState(() {
+                _selectedDate = now;
+                _currentMonth = DateTime(now.year, now.month);
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: '选择日期',
+            onPressed: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate ?? now,
+                firstDate: DateTime(now.year - 5),
+                lastDate: DateTime(now.year + 5),
+              );
+              if (picked != null && mounted) {
+                setState(() {
+                  _selectedDate = picked;
+                  _currentMonth = DateTime(picked.year, picked.month);
+                });
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart),
             tooltip: '统计',

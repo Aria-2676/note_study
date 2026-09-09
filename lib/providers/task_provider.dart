@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
@@ -21,6 +21,7 @@ class TaskProvider extends ChangeNotifier {
   PointsProvider _pointsProvider;
 
   List<Task> _tasks = [];
+  List<Task> _allTasks = [];
   List<RecycledTask> _recycledTasks = [];
   DateTime _selectedDate = DateTime.now();
   List<DateTime> _selectedDates = [DateTime.now()];
@@ -42,6 +43,7 @@ class TaskProvider extends ChangeNotifier {
 
   List<Task> get tasks => _getFilteredAndSortedTasks();
   List<Task> get rawTasks => _tasks;
+  List<Task> get allTasks => _allTasks;
   List<RecycledTask> get recycledTasks => _recycledTasks;
   DateTime get selectedDate => _selectedDate;
   List<DateTime> get selectedDates => _selectedDates;
@@ -154,8 +156,13 @@ class TaskProvider extends ChangeNotifier {
     _selectedDate = date;
     if (!_selectedDates.any((d) => _sameDay(d, date))) _selectedDates = [date];
     _tasks = await _taskRepository.getTasksForDate(date);
+    await _loadAllTasks();
     notifyListeners();
     _debouncedUpdateWidget();
+  }
+
+  Future<void> _loadAllTasks() async {
+    _allTasks = await _taskRepository.getAllTasks();
   }
 
   Future<void> loadTodayTasks() async => await loadTasksByDate(DateTime.now());

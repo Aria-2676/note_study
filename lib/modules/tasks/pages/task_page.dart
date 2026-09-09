@@ -138,7 +138,13 @@ class _TaskPageState extends State<TaskPage>
   Widget build(BuildContext context) {
     final taskProvider = context.watch<TaskProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
-    final today = DateTime.now();
+    final selectedDate = taskProvider.selectedDate;
+    final now = DateTime.now();
+    final isToday = selectedDate.year == now.year &&
+        selectedDate.month == now.month &&
+        selectedDate.day == now.day;
+    final dateStr =
+        '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
 
     return Column(
       children: [
@@ -150,7 +156,7 @@ class _TaskPageState extends State<TaskPage>
               GestureDetector(
                 onDoubleTap: widget.onResetToToday ?? () {},
                 child: Text(
-                  '今日任务 (${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')})',
+                  '${isToday ? '今日任务' : '任务'} ($dateStr)',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

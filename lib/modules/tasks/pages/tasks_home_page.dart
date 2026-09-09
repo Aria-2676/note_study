@@ -198,12 +198,22 @@ class _TasksHomePageState extends State<TasksHomePage>
     final offset =
         (targetIndex * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
 
+    void animate() {
+      if (_calendarController.hasClients) {
+        _calendarController.animateTo(
+          offset.clamp(0.0, _calendarController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
     if (_calendarController.hasClients) {
-      _calendarController.animateTo(
-        offset.clamp(0.0, _calendarController.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      animate();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) animate();
+      });
     }
   }
 

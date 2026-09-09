@@ -4,6 +4,7 @@ import '../../../providers/task_provider.dart';
 import '../../../providers/points_provider.dart';
 import '../../../providers/pomodoro_provider.dart';
 import '../../../providers/scratch_provider.dart';
+import '../../../providers/app_state_provider.dart';
 import '../../tasks/models/task_model.dart';
 import '../../scratch/models/scratch_model.dart';
 import '../../calendar/pages/calendar_page.dart';
@@ -17,9 +18,7 @@ import './widgets/scratch_statistics_widget.dart';
 enum StatisticsModule { task, points, pomodoro, scratch }
 
 class StatisticsPage extends StatefulWidget {
-  final DateTime? selectedDate;
-
-  const StatisticsPage({super.key, this.selectedDate});
+  const StatisticsPage({super.key});
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -40,7 +39,27 @@ class _StatisticsPageState extends State<StatisticsPage> {
   @override
   void initState() {
     super.initState();
-    _displayDate = widget.selectedDate;
+    _displayDate = null;
+    final appState = context.read<AppStateProvider>();
+    appState.addListener(_onTabChanged);
+  }
+
+  @override
+  void dispose() {
+    context.read<AppStateProvider>().removeListener(_onTabChanged);
+    super.dispose();
+  }
+
+  int _lastTab = 0;
+
+  void _onTabChanged() {
+    final currentTab = context.read<AppStateProvider>().currentTab;
+    if (currentTab == 1 && _lastTab != 1) {
+      setState(() {
+        _displayDate = null;
+      });
+    }
+    _lastTab = currentTab;
   }
 
   @override
@@ -56,9 +75,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
         _buildHeader(),
         const SizedBox(height: 16),
         TodayOverviewWidget(
-          completedToday: _getTodayCompletedTasks(taskProvider.rawTasks),
-          totalToday: _getTodayTasks(taskProvider.rawTasks).length,
-          todayPoints: _getTodayPoints(taskProvider.rawTasks),
+          completedToday: _getTodayCompletedTasks(taskProvider.allTasks),
+          totalToday: _getTodayTasks(taskProvider.allTasks).length,
+          todayPoints: _getTodayPoints(taskProvider.allTasks),
           todayPomodoros: pomodoroProvider.statistics.todayPomodoros,
           todayScratchCount: _getTodayScratchCount(
             scratchProvider.lotteryRecords,
@@ -111,7 +130,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
         TextButton.icon(
           onPressed: () async {
             final result = await Navigator.of(context).push<DateTime>(
-              MaterialPageRoute(builder: (_) => const CalendarPage()),
+              MaterialPageRoute(
+                builder: (_) => CalendarPage(initialDate: _displayDate),
+              ),
             );
             if (result != null) {
               setState(() {
@@ -220,7 +241,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   Widget _buildTaskContent(TaskProvider taskProvider) {
-    final allTasks = taskProvider.rawTasks;
+    final allTasks = taskProvider.allTasks;
     final dateRange = _getDateRange();
     final tasksInRange = _getTasksInRange(allTasks, dateRange);
     final completedTasks = tasksInRange.where((t) => t.isOK).length;

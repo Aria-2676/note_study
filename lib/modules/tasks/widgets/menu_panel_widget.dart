@@ -107,10 +107,10 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
   }
 
   void _navigateToTaskDetail(Task task) {
-    widget.onClose();
     final taskProvider = context.read<TaskProvider>();
     taskProvider.selectDate(task.cplTime);
     widget.scrollCalendarToDate(task.cplTime);
+    widget.onClose();
   }
 
   @override
