@@ -27,20 +27,6 @@ class SearchResultsWidget extends StatelessWidget {
       );
     }
 
-    if (currentSearchQuery.isEmpty) {
-      return SizedBox(
-        height: 100,
-        child: Center(
-          child: Text(
-            '输入关键词搜索所有任务',
-            style: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-            ),
-          ),
-        ),
-      );
-    }
-
     final results = taskProvider.searchResults;
 
     if (results.isEmpty) {
@@ -51,7 +37,9 @@ class SearchResultsWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                '未找到匹配的任务',
+                currentSearchQuery.isEmpty
+                    ? '当前条件下无任务'
+                    : '未找到匹配的任务',
                 style: TextStyle(
                   color: colorScheme.onSurface.withValues(alpha: 0.5),
                 ),

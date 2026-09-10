@@ -14,6 +14,7 @@ class TaskCalendarWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final taskProvider = context.watch<TaskProvider>();
+    final center = taskProvider.selectedDate;
     final now = DateTime.now();
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -31,7 +32,7 @@ class TaskCalendarWidget extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         itemCount: 31,
         itemBuilder: (context, index) {
-          final date = now.add(Duration(days: index - 15));
+          final date = center.add(Duration(days: index - 15));
           final selected = taskProvider.selectedDates.any(
             (d) => _sameDay(d, date),
           );

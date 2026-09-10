@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/task_model.dart';
+import '../../../core/utils/date_picker_utils.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/tag_provider.dart';
@@ -146,8 +147,8 @@ class _TaskFormWidgetState extends State<TaskFormWidget> {
   }
 
   Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await DatePickerUtils.showThreeBoxDatePicker(
+      context,
       initialDate: _selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365)),

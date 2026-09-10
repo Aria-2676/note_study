@@ -37,6 +37,7 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
   DateTime? _searchStartDate;
   DateTime? _searchEndDate;
   bool? _searchCompletionStatus;
+  String? _dateRangeError;
 
   @override
   void initState() {
@@ -98,6 +99,23 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
   }
 
   void _performAdvancedSearch() {
+    // 日期范围校验
+    if (_searchStartDate != null &&
+        _searchEndDate != null &&
+        _searchEndDate!.isBefore(_searchStartDate!)) {
+      setState(() {
+        _dateRangeError = '结束日期不能早于开始日期';
+      });
+      return;
+    }
+    setState(() {
+      _dateRangeError = null;
+    });
+    // 确保处于搜索模式，让结果区域可见
+    if (!_isSearchMode) {
+      setState(() => _isSearchMode = true);
+      context.read<TaskProvider>().enterSearchMode();
+    }
     context.read<TaskProvider>().advancedSearch(
       query: _currentSearchQuery,
       startDate: _searchStartDate,
@@ -171,19 +189,24 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_currentSearchQuery.isNotEmpty || _showAdvancedSearch)
-                      IconButton(
-                        icon: Icon(
-                          _showAdvancedSearch
-                              ? Icons.filter_list
-                              : Icons.filter_list_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _showAdvancedSearch = !_showAdvancedSearch;
-                          });
-                        },
+                    IconButton(
+                      icon: Icon(
+                        _showAdvancedSearch
+                            ? Icons.filter_list
+                            : Icons.filter_list_outlined,
                       ),
+                      tooltip: '高级搜索',
+                      onPressed: () {
+                        setState(() {
+                          _showAdvancedSearch = !_showAdvancedSearch;
+                        });
+                        // 展开时自动进入搜索模式并执行一次搜索，
+                        // 让用户立即看到当前条件下的结果
+                        if (_showAdvancedSearch) {
+                          _performAdvancedSearch();
+                        }
+                      },
+                    ),
                     if (_currentSearchQuery.isNotEmpty)
                       IconButton(
                         icon: const Icon(Icons.clear),
@@ -211,7 +234,7 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
 
   Widget _buildAdvancedSearchPanel(ColorScheme colorScheme) {
     final screenHeight = MediaQuery.of(context).size.height;
-    
+
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: screenHeight * 0.35),
       child: SingleChildScrollView(
@@ -219,6 +242,7 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
           searchStartDate: _searchStartDate,
           searchEndDate: _searchEndDate,
           searchCompletionStatus: _searchCompletionStatus,
+          dateRangeError: _dateRangeError,
           onStartDateSelected: (date) {
             setState(() {
               _searchStartDate = date;
@@ -242,6 +266,7 @@ class _MenuPanelWidgetState extends State<MenuPanelWidget> {
               _searchStartDate = null;
               _searchEndDate = null;
               _searchCompletionStatus = null;
+              _dateRangeError = null;
             });
             _performAdvancedSearch();
           },

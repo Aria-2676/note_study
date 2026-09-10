@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../core/utils/date_picker_utils.dart';
 import '../../../providers/pomodoro_provider.dart';
 import '../models/pomodoro_model.dart';
 import '../adapters/pomodoro_statistic_adapter.dart';
@@ -47,8 +48,8 @@ class _PomodoroHistoryPageState extends State<PomodoroHistoryPage> {
   }
 
   Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await DatePickerUtils.showThreeBoxDatePicker(
+      context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),

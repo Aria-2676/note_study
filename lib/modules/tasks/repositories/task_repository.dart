@@ -188,10 +188,6 @@ class TaskRepository {
   }
 
   Future<String?> completeTask(Task task) async {
-    final now = DateTime.now();
-    if (!DateUtils.isSameDay(task.cplTime, now)) {
-      return '当前日期不是任务日期，不能完成任务';
-    }
     await _dbService.completeTask(task.id!);
     return null;
   }

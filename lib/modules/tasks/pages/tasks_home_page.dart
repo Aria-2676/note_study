@@ -162,41 +162,13 @@ class _TasksHomePageState extends State<TasksHomePage>
     }
   }
 
-  void _scrollToToday() {
+  /// 滚动日历条，使中心项（index=15，即选中日期）位于屏幕中央
+  void _scrollCalendarToCenter() {
     const double itemWidth = 66.0;
-    const int todayIndex = 15;
+    const int centerIndex = 15;
     final screenWidth = MediaQuery.of(context).size.width;
     final offset =
-        (todayIndex * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
-
-    if (_calendarController.hasClients) {
-      _calendarController.animateTo(
-        offset.clamp(0.0, _calendarController.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _calendarController.hasClients) {
-          _calendarController.animateTo(
-            offset.clamp(0.0, _calendarController.position.maxScrollExtent),
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
-  }
-
-  void _scrollCalendarToDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = date.difference(now).inDays;
-    const double itemWidth = 66.0;
-    const int todayIndex = 15;
-    final targetIndex = todayIndex + diff;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final offset =
-        (targetIndex * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
+        (centerIndex * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
 
     void animate() {
       if (_calendarController.hasClients) {
@@ -216,6 +188,10 @@ class _TasksHomePageState extends State<TasksHomePage>
       });
     }
   }
+
+  void _scrollToToday() => _scrollCalendarToCenter();
+
+  void _scrollCalendarToDate(DateTime date) => _scrollCalendarToCenter();
 
   void _resetToToday() {
     context.read<TaskProvider>().selectDate(DateTime.now());

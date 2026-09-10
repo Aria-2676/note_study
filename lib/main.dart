@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'core/services/widget_service.dart';
 import 'core/services/statistic_service.dart';
@@ -66,6 +67,13 @@ class MyApp extends StatelessWidget {
             theme: ThemeData.light(useMaterial3: true),
             darkTheme: ThemeData.dark(useMaterial3: true),
             themeMode: settingsProvider.themeMode,
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+            locale: const Locale('zh', 'CN'),
             home: const TasksHomePage(),
           );
         },

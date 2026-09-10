@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/app_state_provider.dart';
+import '../../../core/utils/date_picker_utils.dart';
 import '../../tasks/models/task_model.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -51,8 +52,8 @@ class _CalendarPageState extends State<CalendarPage> {
             tooltip: '选择日期',
             onPressed: () async {
               final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: context,
+              final picked = await DatePickerUtils.showThreeBoxDatePicker(
+                context,
                 initialDate: _selectedDate ?? now,
                 firstDate: DateTime(now.year - 5),
                 lastDate: DateTime(now.year + 5),
