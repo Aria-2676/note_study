@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/models/base_model.dart';
 
 /// 番茄钟模式枚举
 enum PomodoroMode { work, shortBreak, longBreak }
@@ -29,7 +30,7 @@ extension PomodoroModeExtension on PomodoroMode {
 }
 
 /// 番茄钟设置模型
-class PomodoroSettings {
+class PomodoroSettings with DbSerializable {
   final int workDuration;
   final int shortBreakDuration;
   final int longBreakDuration;
@@ -78,29 +79,32 @@ class PomodoroSettings {
 
   Map<String, dynamic> toMap() {
     return {
-      'workDuration': workDuration,
-      'shortBreakDuration': shortBreakDuration,
-      'longBreakDuration': longBreakDuration,
-      'longBreakInterval': longBreakInterval,
-      'soundEnabled': soundEnabled ? 1 : 0,
-      'vibrationEnabled': vibrationEnabled ? 1 : 0,
-      'notificationEnabled': notificationEnabled ? 1 : 0,
-      'autoStartBreak': autoStartBreak ? 1 : 0,
-      'autoStartWork': autoStartWork ? 1 : 0,
+      'work_duration': workDuration,
+      'short_break_duration': shortBreakDuration,
+      'long_break_duration': longBreakDuration,
+      'long_break_interval': longBreakInterval,
+      'sound_enabled': soundEnabled ? 1 : 0,
+      'vibration_enabled': vibrationEnabled ? 1 : 0,
+      'notification_enabled': notificationEnabled ? 1 : 0,
+      'auto_start_break': autoStartBreak ? 1 : 0,
+      'auto_start_work': autoStartWork ? 1 : 0,
     };
   }
 
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
+
   factory PomodoroSettings.fromMap(Map<String, dynamic> map) {
     return PomodoroSettings(
-      workDuration: map['workDuration'] as int? ?? 25,
-      shortBreakDuration: map['shortBreakDuration'] as int? ?? 5,
-      longBreakDuration: map['longBreakDuration'] as int? ?? 15,
-      longBreakInterval: map['longBreakInterval'] as int? ?? 4,
-      soundEnabled: (map['soundEnabled'] as int? ?? 1) == 1,
-      vibrationEnabled: (map['vibrationEnabled'] as int? ?? 1) == 1,
-      notificationEnabled: (map['notificationEnabled'] as int? ?? 1) == 1,
-      autoStartBreak: (map['autoStartBreak'] as int? ?? 0) == 1,
-      autoStartWork: (map['autoStartWork'] as int? ?? 0) == 1,
+      workDuration: map['work_duration'] as int? ?? 25,
+      shortBreakDuration: map['short_break_duration'] as int? ?? 5,
+      longBreakDuration: map['long_break_duration'] as int? ?? 15,
+      longBreakInterval: map['long_break_interval'] as int? ?? 4,
+      soundEnabled: (map['sound_enabled'] as int? ?? 1) == 1,
+      vibrationEnabled: (map['vibration_enabled'] as int? ?? 1) == 1,
+      notificationEnabled: (map['notification_enabled'] as int? ?? 1) == 1,
+      autoStartBreak: (map['auto_start_break'] as int? ?? 0) == 1,
+      autoStartWork: (map['auto_start_work'] as int? ?? 0) == 1,
     );
   }
 
@@ -117,7 +121,7 @@ class PomodoroSettings {
 }
 
 /// 番茄钟记录模型
-class PomodoroRecord {
+class PomodoroRecord with DbSerializable {
   final int? id;
   final PomodoroMode mode;
   final int durationSeconds;
@@ -172,16 +176,19 @@ class PomodoroRecord {
     return {
       'id': id,
       'mode': mode.name,
-      'durationSeconds': durationSeconds,
-      'actualSeconds': actualSeconds,
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime?.toIso8601String(),
-      'relatedTaskId': relatedTaskId,
-      'relatedTaskTitle': relatedTaskTitle,
-      'isCompleted': isCompleted ? 1 : 0,
-      'createdAt': createdAt.toIso8601String(),
+      'duration_seconds': durationSeconds,
+      'actual_seconds': actualSeconds,
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'related_task_id': relatedTaskId,
+      'related_task_title': relatedTaskTitle,
+      'is_completed': isCompleted ? 1 : 0,
+      'created_at': createdAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory PomodoroRecord.fromMap(Map<String, dynamic> map) {
     return PomodoroRecord(
@@ -190,17 +197,17 @@ class PomodoroRecord {
         (e) => e.name == map['mode'],
         orElse: () => PomodoroMode.work,
       ),
-      durationSeconds: map['durationSeconds'] as int? ?? 0,
-      actualSeconds: map['actualSeconds'] as int? ?? 0,
-      startTime: DateTime.parse(map['startTime'] as String),
-      endTime: map['endTime'] != null
-          ? DateTime.parse(map['endTime'] as String)
+      durationSeconds: map['duration_seconds'] as int? ?? 0,
+      actualSeconds: map['actual_seconds'] as int? ?? 0,
+      startTime: DateTime.parse(map['start_time'] as String),
+      endTime: map['end_time'] != null
+          ? DateTime.parse(map['end_time'] as String)
           : null,
-      relatedTaskId: map['relatedTaskId'] as int?,
-      relatedTaskTitle: map['relatedTaskTitle'] as String?,
-      isCompleted: (map['isCompleted'] as int? ?? 0) == 1,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String)
+      relatedTaskId: map['related_task_id'] as int?,
+      relatedTaskTitle: map['related_task_title'] as String?,
+      isCompleted: (map['is_completed'] as int? ?? 0) == 1,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : DateTime.now(),
     );
   }

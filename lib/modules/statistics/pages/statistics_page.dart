@@ -28,6 +28,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
   StatisticsModule _currentModule = StatisticsModule.task;
   StatisticsView _currentView = StatisticsView.day;
   DateTime? _displayDate;
+  List<Task> _monthTasks = [];
+  late final TaskProvider _taskProvider;
 
   final Map<StatisticsModule, String> _moduleNames = {
     StatisticsModule.task: '任务',
@@ -42,12 +44,27 @@ class _StatisticsPageState extends State<StatisticsPage> {
     _displayDate = null;
     final appState = context.read<AppStateProvider>();
     appState.addListener(_onTabChanged);
+    _taskProvider = context.read<TaskProvider>();
+    _taskProvider.addListener(_loadMonthTasks);
+    _loadMonthTasks();
   }
 
   @override
   void dispose() {
     context.read<AppStateProvider>().removeListener(_onTabChanged);
+    _taskProvider.removeListener(_loadMonthTasks);
     super.dispose();
+  }
+
+  /// 加载当前展示月份的任务（SQL 下推按月查询，替代全表 allTasks）
+  Future<void> _loadMonthTasks() async {
+    final month = _displayDate ?? DateTime.now();
+    final tasks = await _taskProvider.getTasksForMonth(month);
+    if (mounted) {
+      setState(() {
+        _monthTasks = tasks;
+      });
+    }
   }
 
   int _lastTab = 0;
@@ -58,13 +75,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
       setState(() {
         _displayDate = null;
       });
+      _loadMonthTasks();
     }
     _lastTab = currentTab;
   }
 
   @override
   Widget build(BuildContext context) {
-    final taskProvider = context.watch<TaskProvider>();
     final pointsProvider = context.watch<PointsProvider>();
     final pomodoroProvider = context.watch<PomodoroProvider>();
     final scratchProvider = context.watch<ScratchProvider>();
@@ -75,9 +92,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
         _buildHeader(),
         const SizedBox(height: 16),
         TodayOverviewWidget(
-          completedToday: _getTodayCompletedTasks(taskProvider.allTasks),
-          totalToday: _getTodayTasks(taskProvider.allTasks).length,
-          todayPoints: _getTodayPoints(taskProvider.allTasks),
+          completedToday: _getTodayCompletedTasks(_monthTasks),
+          totalToday: _getTodayTasks(_monthTasks).length,
+          todayPoints: _getTodayPoints(_monthTasks),
           todayPomodoros: pomodoroProvider.statistics.todayPomodoros,
           todayScratchCount: _getTodayScratchCount(
             scratchProvider.lotteryRecords,
@@ -89,11 +106,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
           onViewChanged: (view) => setState(() {
             _currentView = view;
             _displayDate = null;
+            _loadMonthTasks();
           }),
         ),
         const SizedBox(height: 16),
         _buildModuleContent(
-          taskProvider,
           pointsProvider,
           pomodoroProvider,
           scratchProvider,
@@ -139,6 +156,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 _displayDate = result;
                 _currentView = StatisticsView.day;
               });
+              _loadMonthTasks();
             }
           },
           icon: const Icon(Icons.calendar_today, size: 18),
@@ -223,14 +241,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   Widget _buildModuleContent(
-    TaskProvider taskProvider,
     PointsProvider pointsProvider,
     PomodoroProvider pomodoroProvider,
     ScratchProvider scratchProvider,
   ) {
     switch (_currentModule) {
       case StatisticsModule.task:
-        return _buildTaskContent(taskProvider);
+        return _buildTaskContent();
       case StatisticsModule.points:
         return _buildPointsContent(pointsProvider);
       case StatisticsModule.pomodoro:
@@ -240,8 +257,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
     }
   }
 
-  Widget _buildTaskContent(TaskProvider taskProvider) {
-    final allTasks = taskProvider.allTasks;
+  Widget _buildTaskContent() {
+    final allTasks = _monthTasks;
     final dateRange = _getDateRange();
     final tasksInRange = _getTasksInRange(allTasks, dateRange);
     final completedTasks = tasksInRange.where((t) => t.isOK).length;

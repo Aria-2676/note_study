@@ -64,6 +64,48 @@ mixin DatabaseBackupMixin {
     }
   }
 
+  /// 重命名备份文件，保留时间戳不变，仅更新小名部分。
+  ///
+  /// 文件名格式：`noteapp_backup_[小名_]时间戳.db`
+  /// 传入 [backupName] 为 null 或空时，去除小名，仅保留时间戳。
+  Future<String?> renameBackup(
+    String oldPath, {
+    String? backupName,
+  }) async {
+    try {
+      final file = File(oldPath);
+      if (!await file.exists()) return null;
+
+      final dir = file.parent;
+      final oldFileName = file.uri.pathSegments.last;
+
+      // 提取时间戳（ISO 格式片段）
+      final timestampMatch = RegExp(
+        r'(\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2})',
+      ).firstMatch(oldFileName);
+      if (timestampMatch == null) return null;
+      final timestamp = timestampMatch.group(1)!;
+
+      // 生成新文件名
+      String newFileName;
+      if (backupName != null && backupName.trim().isNotEmpty) {
+        final safeName = backupName.trim().replaceAll(
+          RegExp(r'[^\w\u4e00-\u9fa5]'),
+          '_',
+        );
+        newFileName = 'noteapp_backup_${safeName}_$timestamp.db';
+      } else {
+        newFileName = 'noteapp_backup_$timestamp.db';
+      }
+
+      final newPath = join(dir.path, newFileName);
+      await file.rename(newPath);
+      return newPath;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<String>> getBackupFiles({String? customPath}) async {
     try {
       final backupDir = await _getBackupDirectory(customPath);

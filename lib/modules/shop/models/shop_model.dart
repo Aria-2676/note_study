@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/models/base_model.dart';
 
 /// 商城商品数据模型
-class ShopItem {
+class ShopItem with DbSerializable {
   final int? id;
   final String name;
   final String description;
@@ -82,11 +83,14 @@ class ShopItem {
       'name': name,
       'description': description,
       'price': price,
-      'createdAt': createdAt.toIso8601String(),
-      'iconName': iconName,
-      'colorValue': colorValue,
+      'created_at': createdAt.toIso8601String(),
+      'icon_name': iconName,
+      'color_value': colorValue,
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory ShopItem.fromMap(Map<String, dynamic> map) {
     return ShopItem(
@@ -94,15 +98,15 @@ class ShopItem {
       name: map['name'] as String,
       description: map['description'] as String,
       price: map['price'] as int,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      iconName: map['iconName'] as String? ?? 'shopping_bag',
-      colorValue: map['colorValue'] as int? ?? 0xFF9C27B0,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      iconName: map['icon_name'] as String? ?? 'shopping_bag',
+      colorValue: map['color_value'] as int? ?? 0xFF9C27B0,
     );
   }
 }
 
 /// 已购买商品数据模型
-class PurchasedItem {
+class PurchasedItem with DbSerializable {
   final int? id;
   final int shopItemId;
   final String name;
@@ -162,26 +166,29 @@ class PurchasedItem {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'shopItemId': shopItemId,
+      'shop_item_id': shopItemId,
       'name': name,
       'description': description,
       'price': price,
-      'purchasedAt': purchasedAt.toIso8601String(),
-      'iconName': iconName,
-      'colorValue': colorValue,
+      'purchased_at': purchasedAt.toIso8601String(),
+      'icon_name': iconName,
+      'color_value': colorValue,
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory PurchasedItem.fromMap(Map<String, dynamic> map) {
     return PurchasedItem(
       id: map['id'] as int?,
-      shopItemId: map['shopItemId'] as int,
+      shopItemId: map['shop_item_id'] as int,
       name: map['name'] as String,
       description: map['description'] as String,
       price: map['price'] as int,
-      purchasedAt: DateTime.parse(map['purchasedAt'] as String),
-      iconName: map['iconName'] as String? ?? 'shopping_bag',
-      colorValue: map['colorValue'] as int? ?? 0xFF9C27B0,
+      purchasedAt: DateTime.parse(map['purchased_at'] as String),
+      iconName: map['icon_name'] as String? ?? 'shopping_bag',
+      colorValue: map['color_value'] as int? ?? 0xFF9C27B0,
     );
   }
 

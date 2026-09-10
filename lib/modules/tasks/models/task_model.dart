@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../../core/models/base_model.dart';
 
 /// 任务数据模型
 /// 包含任务的所有属性和序列化方法
-class Task {
+class Task with DbSerializable {
   final int? id;
   final String? loopId;
   final String title;
@@ -67,38 +68,41 @@ class Task {
 
   Map<String, dynamic> toMap() {
     return {
-      'loopId': loopId,
+      'loop_id': loopId,
       'title': title,
       'description': description,
-      'isWord': isWord ? 1 : 0,
-      'isOK': isOK ? 1 : 0,
-      'cplTime': cplTime.toIso8601String(),
+      'is_word': isWord ? 1 : 0,
+      'is_ok': isOK ? 1 : 0,
+      'cpl_time': cplTime.toIso8601String(),
       'recurrence': recurrence,
-      'completedAt': completedAt?.toIso8601String(),
-      'rewardPoints': rewardPoints,
-      'isDeducted': isDeducted ? 1 : 0,
-      'createdAt': createdAt.toIso8601String(),
+      'completed_at': completedAt?.toIso8601String(),
+      'reward_points': rewardPoints,
+      'is_deducted': isDeducted ? 1 : 0,
+      'created_at': createdAt.toIso8601String(),
       'priority': priority,
     };
   }
 
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
+
   factory Task.fromMap(Map<String, dynamic> map) {
     return Task(
       id: map['id'] as int?,
-      loopId: map['loopId'] as String?,
+      loopId: map['loop_id'] as String?,
       title: map['title'] as String,
       description: map['description'] as String?,
-      isWord: (map['isWord'] as int? ?? 0) == 1,
-      isOK: (map['isOK'] as int? ?? 0) == 1,
-      cplTime: DateTime.parse(map['cplTime'] as String),
+      isWord: (map['is_word'] as int? ?? 0) == 1,
+      isOK: (map['is_ok'] as int? ?? 0) == 1,
+      cplTime: DateTime.parse(map['cpl_time'] as String),
       recurrence: map['recurrence'] as String? ?? 'none',
-      completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'] as String)
+      completedAt: map['completed_at'] != null
+          ? DateTime.parse(map['completed_at'] as String)
           : null,
-      rewardPoints: map['rewardPoints'] as int? ?? 0,
-      isDeducted: (map['isDeducted'] as int? ?? 0) == 1,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String)
+      rewardPoints: map['reward_points'] as int? ?? 0,
+      isDeducted: (map['is_deducted'] as int? ?? 0) == 1,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : DateTime.now(),
       priority: map['priority'] as String? ?? 'white',
     );
@@ -139,7 +143,7 @@ class Task {
 
 /// 回收站任务数据模型
 /// 用于存储已删除的任务信息
-class RecycledTask {
+class RecycledTask with DbSerializable {
   final int id;
   final Task task;
   final DateTime deletedAt;
@@ -164,6 +168,9 @@ class RecycledTask {
       'deleted_at': deletedAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory RecycledTask.fromMap(Map<String, dynamic> map) {
     return RecycledTask(

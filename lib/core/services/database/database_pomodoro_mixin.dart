@@ -13,7 +13,7 @@ mixin DatabasePomodoroMixin {
     final db = await database;
     final result = await db.query(
       'pomodoro_records',
-      orderBy: 'startTime DESC',
+      orderBy: 'start_time DESC',
     );
     return result.map((m) => PomodoroRecord.fromMap(m)).toList();
   }
@@ -24,9 +24,9 @@ mixin DatabasePomodoroMixin {
     final end = start.add(const Duration(days: 1));
     final result = await db.query(
       'pomodoro_records',
-      where: 'startTime >= ? AND startTime < ?',
+      where: 'start_time >= ? AND start_time < ?',
       whereArgs: [start.toIso8601String(), end.toIso8601String()],
-      orderBy: 'startTime DESC',
+      orderBy: 'start_time DESC',
     );
     return result.map((m) => PomodoroRecord.fromMap(m)).toList();
   }
@@ -38,9 +38,9 @@ mixin DatabasePomodoroMixin {
     final db = await database;
     final result = await db.query(
       'pomodoro_records',
-      where: 'startTime >= ? AND startTime < ?',
+      where: 'start_time >= ? AND start_time < ?',
       whereArgs: [start.toIso8601String(), end.toIso8601String()],
-      orderBy: 'startTime DESC',
+      orderBy: 'start_time DESC',
     );
     return result.map((m) => PomodoroRecord.fromMap(m)).toList();
   }
@@ -49,9 +49,9 @@ mixin DatabasePomodoroMixin {
     final db = await database;
     final result = await db.query(
       'pomodoro_records',
-      where: 'relatedTaskId = ?',
+      where: 'related_task_id = ?',
       whereArgs: [taskId],
-      orderBy: 'startTime DESC',
+      orderBy: 'start_time DESC',
     );
     return result.map((m) => PomodoroRecord.fromMap(m)).toList();
   }
@@ -69,7 +69,7 @@ mixin DatabasePomodoroMixin {
   Future<int> getTotalPomodoroCount() async {
     final db = await database;
     final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND isCompleted = 1',
+      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND is_completed = 1',
       ['work'],
     );
     return Sqflite.firstIntValue(result) ?? 0;
@@ -81,7 +81,7 @@ mixin DatabasePomodoroMixin {
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
     final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND isCompleted = 1 AND startTime >= ? AND startTime < ?',
+      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND is_completed = 1 AND start_time >= ? AND start_time < ?',
       ['work', start.toIso8601String(), end.toIso8601String()],
     );
     return Sqflite.firstIntValue(result) ?? 0;
@@ -90,7 +90,7 @@ mixin DatabasePomodoroMixin {
   Future<int> getTotalFocusMinutes() async {
     final db = await database;
     final result = await db.rawQuery(
-      'SELECT SUM(actualSeconds) as total FROM pomodoro_records WHERE mode = ? AND isCompleted = 1',
+      'SELECT SUM(actual_seconds) as total FROM pomodoro_records WHERE mode = ? AND is_completed = 1',
       ['work'],
     );
     final totalSeconds = result.first['total'] as int? ?? 0;
@@ -103,7 +103,7 @@ mixin DatabasePomodoroMixin {
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
     final result = await db.rawQuery(
-      'SELECT SUM(actualSeconds) as total FROM pomodoro_records WHERE mode = ? AND isCompleted = 1 AND startTime >= ? AND startTime < ?',
+      'SELECT SUM(actual_seconds) as total FROM pomodoro_records WHERE mode = ? AND is_completed = 1 AND start_time >= ? AND start_time < ?',
       ['work', start.toIso8601String(), end.toIso8601String()],
     );
     final totalSeconds = result.first['total'] as int? ?? 0;
@@ -117,7 +117,7 @@ mixin DatabasePomodoroMixin {
     final weekStart = DateTime(start.year, start.month, start.day);
     final weekEnd = weekStart.add(const Duration(days: 7));
     final result = await db.rawQuery(
-      'SELECT SUM(actualSeconds) as total FROM pomodoro_records WHERE mode = ? AND isCompleted = 1 AND startTime >= ? AND startTime < ?',
+      'SELECT SUM(actual_seconds) as total FROM pomodoro_records WHERE mode = ? AND is_completed = 1 AND start_time >= ? AND start_time < ?',
       ['work', weekStart.toIso8601String(), weekEnd.toIso8601String()],
     );
     final totalSeconds = result.first['total'] as int? ?? 0;
@@ -131,7 +131,7 @@ mixin DatabasePomodoroMixin {
     final weekStart = DateTime(start.year, start.month, start.day);
     final weekEnd = weekStart.add(const Duration(days: 7));
     final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND isCompleted = 1 AND startTime >= ? AND startTime < ?',
+      'SELECT COUNT(*) as count FROM pomodoro_records WHERE mode = ? AND is_completed = 1 AND start_time >= ? AND start_time < ?',
       ['work', weekStart.toIso8601String(), weekEnd.toIso8601String()],
     );
     return Sqflite.firstIntValue(result) ?? 0;
@@ -140,12 +140,12 @@ mixin DatabasePomodoroMixin {
   Future<Map<String, int>> getTaskFocusMinutes() async {
     final db = await database;
     final result = await db.rawQuery(
-      'SELECT relatedTaskTitle, SUM(actualSeconds) as total FROM pomodoro_records WHERE mode = ? AND isCompleted = 1 AND relatedTaskTitle IS NOT NULL GROUP BY relatedTaskTitle',
+      'SELECT related_task_title, SUM(actual_seconds) as total FROM pomodoro_records WHERE mode = ? AND is_completed = 1 AND related_task_title IS NOT NULL GROUP BY related_task_title',
       ['work'],
     );
     final map = <String, int>{};
     for (final row in result) {
-      final title = row['relatedTaskTitle'] as String?;
+      final title = row['related_task_title'] as String?;
       final totalSeconds = row['total'] as int? ?? 0;
       if (title != null) {
         map[title] = totalSeconds ~/ 60;

@@ -12,7 +12,7 @@ mixin DatabaseShopMixin {
 
   Future<List<ShopItem>> getAllShopItems() async {
     final db = await database;
-    final result = await db.query('shop_items', orderBy: 'createdAt DESC');
+    final result = await db.query('shop_items', orderBy: 'created_at DESC');
     return result.map((m) => ShopItem.fromMap(m)).toList();
   }
 
@@ -41,7 +41,7 @@ mixin DatabaseShopMixin {
     final db = await database;
     final result = await db.query(
       'purchased_items',
-      orderBy: 'purchasedAt DESC',
+      orderBy: 'purchased_at DESC',
     );
     return result.map((m) => PurchasedItem.fromMap(m)).toList();
   }

@@ -13,33 +13,33 @@ mixin DatabaseScratchMixin {
         type TEXT NOT NULL,
         value INTEGER NOT NULL,
         weight REAL DEFAULT 1.0,
-        isDefault INTEGER DEFAULT 0
+        is_default INTEGER DEFAULT 0
       )
     ''');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS lottery_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        drawTime TEXT NOT NULL,
-        prizeName TEXT NOT NULL,
-        prizeType TEXT NOT NULL,
-        prizeValue INTEGER NOT NULL,
-        costPoints INTEGER NOT NULL,
-        createdAt TEXT NOT NULL
+        draw_time TEXT NOT NULL,
+        prize_name TEXT NOT NULL,
+        prize_type TEXT NOT NULL,
+        prize_value INTEGER NOT NULL,
+        cost_points INTEGER NOT NULL,
+        created_at TEXT NOT NULL
       )
     ''');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS scratch_tickets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        costPoints INTEGER NOT NULL,
-        prizeId TEXT NOT NULL,
-        prizeName TEXT NOT NULL,
-        prizeType TEXT NOT NULL,
-        prizeValue INTEGER NOT NULL,
-        createdAt TEXT NOT NULL,
-        isScratched INTEGER DEFAULT 0,
-        isRevealed INTEGER DEFAULT 0
+        cost_points INTEGER NOT NULL,
+        prize_id TEXT NOT NULL,
+        prize_name TEXT NOT NULL,
+        prize_type TEXT NOT NULL,
+        prize_value INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        is_scratched INTEGER DEFAULT 0,
+        is_revealed INTEGER DEFAULT 0
       )
     ''');
   }
@@ -69,7 +69,7 @@ mixin DatabaseScratchMixin {
 
   Future<List<LotteryRecord>> getLotteryRecords() async {
     final db = await database;
-    final result = await db.query('lottery_records', orderBy: 'drawTime DESC');
+    final result = await db.query('lottery_records', orderBy: 'draw_time DESC');
     return result.map((m) => LotteryRecord.fromMap(m)).toList();
   }
 
@@ -106,16 +106,16 @@ mixin DatabaseScratchMixin {
     final db = await database;
     final result = await db.query(
       'scratch_tickets',
-      where: 'isRevealed = ?',
+      where: 'is_revealed = ?',
       whereArgs: [0],
-      orderBy: 'createdAt DESC',
+      orderBy: 'created_at DESC',
     );
     return result.map((m) => ScratchTicket.fromMap(m)).toList();
   }
 
   Future<List<ScratchTicket>> getAllScratchTickets() async {
     final db = await database;
-    final result = await db.query('scratch_tickets', orderBy: 'createdAt DESC');
+    final result = await db.query('scratch_tickets', orderBy: 'created_at DESC');
     return result.map((m) => ScratchTicket.fromMap(m)).toList();
   }
 
@@ -138,7 +138,7 @@ mixin DatabaseScratchMixin {
     final db = await database;
     return await db.delete(
       'scratch_tickets',
-      where: 'isRevealed = ?',
+      where: 'is_revealed = ?',
       whereArgs: [1],
     );
   }

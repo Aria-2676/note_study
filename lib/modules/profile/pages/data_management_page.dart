@@ -60,23 +60,30 @@ class _DataManagementPageState extends State<DataManagementPage>
                   title: const Text('导出备份'),
                   subtitle: const Text('将数据备份到设置的目录'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => exportDatabase(context),
-                ),
-                const Divider(height: 1, indent: 72),
-                ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.download, color: Colors.blue),
-                  ),
-                  title: const Text('恢复备份'),
-                  subtitle: const Text('从备份文件恢复数据'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showBackupListDialog(context),
+                  onTap: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogCtx) => AlertDialog(
+                        title: const Text('确认导出'),
+                        content: const Text('确定要导出数据吗？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.of(dialogCtx).pop(false),
+                            child: const Text('取消'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogCtx).pop(true),
+                            child: const Text('确定'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true && context.mounted) {
+                      exportDatabase(context);
+                    }
+                  },
                 ),
                 const Divider(height: 1, indent: 72),
                 ListTile(
@@ -191,8 +198,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                   Text(
                     '• 数据导出：选择性导出特定数据\n'
                     '• 导出备份：完整备份所有数据\n'
-                    '• 恢复备份：从备份文件恢复数据\n'
-                    '• 备份管理：管理备份文件\n'
+                    '• 备份管理：查看、恢复和删除备份文件\n'
                     '• 清除缓存：删除所有数据，此操作不可恢复',
                     style: TextStyle(
                       fontSize: 13,

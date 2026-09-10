@@ -113,8 +113,7 @@ class _PinnedSettingsEditPageState extends State<PinnedSettingsEditPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: pinnedList.length,
-                onReorder: (oldIndex, newIndex) {
-                  if (newIndex > oldIndex) newIndex--;
+                onReorderItem: (oldIndex, newIndex) {
                   settingsProvider.reorderPinnedSettings(
                     oldIndex,
                     newIndex,

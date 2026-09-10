@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/models/base_model.dart';
 
 /// 标签数据模型
-class Tag {
+class Tag with DbSerializable {
   final int? id;
   final String name;
   final String color;
@@ -42,10 +43,13 @@ class Tag {
       'name': name,
       'color': color,
       'icon': icon,
-      'isSystem': isSystem ? 1 : 0,
-      'createdAt': createdAt.toIso8601String(),
+      'is_system': isSystem ? 1 : 0,
+      'created_at': createdAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory Tag.fromMap(Map<String, dynamic> map) {
     return Tag(
@@ -53,9 +57,9 @@ class Tag {
       name: map['name'] as String,
       color: map['color'] as String? ?? '#2196F3',
       icon: map['icon'] as String?,
-      isSystem: (map['isSystem'] as int? ?? 0) == 1,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String)
+      isSystem: (map['is_system'] as int? ?? 0) == 1,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
           : DateTime.now(),
     );
   }
@@ -78,7 +82,7 @@ class Tag {
 }
 
 /// 任务标签关联数据模型
-class TaskTag {
+class TaskTag with DbSerializable {
   final int taskId;
   final int tagId;
 
@@ -86,15 +90,18 @@ class TaskTag {
 
   Map<String, dynamic> toMap() {
     return {
-      'taskId': taskId,
-      'tagId': tagId,
+      'task_id': taskId,
+      'tag_id': tagId,
     };
   }
 
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
+
   factory TaskTag.fromMap(Map<String, dynamic> map) {
     return TaskTag(
-      taskId: map['taskId'] as int,
-      tagId: map['tagId'] as int,
+      taskId: map['task_id'] as int,
+      tagId: map['tag_id'] as int,
     );
   }
 }

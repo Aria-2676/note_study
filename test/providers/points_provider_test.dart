@@ -57,14 +57,14 @@ void main() {
 
       expect(map['id'], 1);
       expect(map['points'], 50);
-      expect(map['updatedAt'], isNotNull);
+      expect(map['updated_at'], isNotNull);
     });
 
     test('should create from Map correctly', () {
       final map = {
         'id': 2,
         'points': 200,
-        'updatedAt': '2024-01-01T12:00:00.000',
+        'updated_at': '2024-01-01T12:00:00.000',
       };
 
       final userPoints = UserPoints.fromMap(map);
@@ -141,8 +141,8 @@ void main() {
       expect(map['points'], 15);
       expect(map['type'], 'bonus');
       expect(map['description'], '奖励');
-      expect(map['relatedId'], 10);
-      expect(map['createdAt'], isNotNull);
+      expect(map['related_id'], 10);
+      expect(map['created_at'], isNotNull);
     });
 
     test('should create from Map correctly', () {
@@ -151,8 +151,8 @@ void main() {
         'points': -10,
         'type': 'scratch_cost',
         'description': '刮刮卡消费',
-        'relatedId': 3,
-        'createdAt': '2024-01-01T12:00:00.000',
+        'related_id': 3,
+        'created_at': '2024-01-01T12:00:00.000',
       };
 
       final record = PointsRecord.fromMap(map);

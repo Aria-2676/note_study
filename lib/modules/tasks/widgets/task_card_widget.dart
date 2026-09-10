@@ -5,7 +5,8 @@ class TaskCardWidget extends StatefulWidget {
   final Task task;
   final Function(bool?) onTaskCheckChanged;
   final VoidCallback onEdit;
-  final Function(BuildContext) onDelete;
+  /// 删除回调，返回是否确认删除（true 触发 Dismissible 移除，false 取消）
+  final Future<bool> Function(BuildContext) onDelete;
 
   const TaskCardWidget({
     super.key,
@@ -41,9 +42,7 @@ class _TaskCardWidgetState extends State<TaskCardWidget> {
           padding: const EdgeInsets.only(right: 20),
           child: const Icon(Icons.delete, color: Colors.white),
         ),
-        onDismissed: (direction) {
-          widget.onDelete(context);
-        },
+        confirmDismiss: (direction) => widget.onDelete(context),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(

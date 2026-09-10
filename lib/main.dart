@@ -3,8 +3,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'core/services/widget_service.dart';
 import 'core/services/statistic_service.dart';
+import 'core/services/database/database_service.dart';
 import 'modules/pomodoro/services/pomodoro_notification_service.dart';
 import 'modules/pomodoro/services/pomodoro_background_service.dart';
+import 'modules/tasks/repositories/task_repository.dart';
+import 'modules/tasks/services/task_scheduler_service.dart';
+import 'modules/statistics/repositories/statistics_repository.dart';
 import 'providers/app_state_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/points_provider.dart';
@@ -39,6 +43,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 数据网关 + 仓储实现 + 调度服务，构造注入到 Provider
+    final databaseGateway = DatabaseService.instance;
+    final taskRepository = TaskRepositoryImpl(databaseGateway);
+    final statisticsRepository = StatisticsRepositoryImpl(databaseGateway);
+    final taskSchedulerService = TaskSchedulerService(
+      taskRepository,
+      databaseGateway,
+    );
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: settingsProvider),
@@ -47,14 +60,20 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TagProvider()),
         ChangeNotifierProvider(create: (_) => PomodoroProvider()),
         ChangeNotifierProvider(create: (_) => ScratchProvider()),
-        ChangeNotifierProvider(create: (_) => StatisticsProvider()),
+        ChangeNotifierProvider(
+          create: (_) => StatisticsProvider(repository: statisticsRepository),
+        ),
         ChangeNotifierProxyProvider<PointsProvider, ShopProvider>(
           create: (context) => ShopProvider(context.read<PointsProvider>()),
           update: (context, pointsProvider, shopProvider) =>
               shopProvider!..updatePointsProvider(pointsProvider),
         ),
         ChangeNotifierProxyProvider<PointsProvider, TaskProvider>(
-          create: (context) => TaskProvider(context.read<PointsProvider>()),
+          create: (context) => TaskProvider(
+            context.read<PointsProvider>(),
+            taskRepository: taskRepository,
+            taskSchedulerService: taskSchedulerService,
+          ),
           update: (context, pointsProvider, taskProvider) =>
               taskProvider!..updatePointsProvider(pointsProvider),
         ),

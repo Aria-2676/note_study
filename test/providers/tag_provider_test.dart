@@ -48,7 +48,7 @@ void main() {
       expect(map['name'], '学习');
       expect(map['color'], '#4CAF50');
       expect(map['icon'], 'school');
-      expect(map['isSystem'], 1);
+      expect(map['is_system'], 1);
     });
 
     test('should not include null id in Map', () {
@@ -65,8 +65,8 @@ void main() {
         'name': '生活',
         'color': '#9C27B0',
         'icon': 'home',
-        'isSystem': 1,
-        'createdAt': '2024-01-01T12:00:00.000',
+        'is_system': 1,
+        'created_at': '2024-01-01T12:00:00.000',
       };
 
       final tag = Tag.fromMap(map);
@@ -142,12 +142,12 @@ void main() {
 
       final map = taskTag.toMap();
 
-      expect(map['taskId'], 1);
-      expect(map['tagId'], 2);
+      expect(map['task_id'], 1);
+      expect(map['tag_id'], 2);
     });
 
     test('should create from Map correctly', () {
-      final map = {'taskId': 3, 'tagId': 4};
+      final map = {'task_id': 3, 'tag_id': 4};
 
       final taskTag = TaskTag.fromMap(map);
 

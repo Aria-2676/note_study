@@ -82,6 +82,62 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     }
   }
 
+  Future<void> _renameBackup(String path, String? currentName) async {
+    final controller = TextEditingController(text: currentName ?? '');
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名备份'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('为备份设置小名（时间戳不变，仅添加可读标记）'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: '小名（可选）',
+                hintText: '例如：换机前备份',
+              ),
+              maxLength: 20,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    try {
+      final newPath = await DatabaseService.instance.renameBackup(
+        path,
+        backupName: result.isEmpty ? null : result,
+      );
+      if (newPath != null && mounted) {
+        await _loadBackupFiles();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('重命名成功')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('重命名失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _shareBackup(String path) async {
     try {
       final file = File(path);
@@ -109,6 +165,123 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
         );
       }
     }
+  }
+
+  Future<void> _createBackup() async {
+    final nameController = TextEditingController();
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.backup, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('创建备份'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('为备份起个小名（可选）：'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                hintText: '例如：每日备份',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+              maxLength: 20,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(null),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop(nameController.text.trim());
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    if (!mounted) return;
+
+    try {
+      final backupPath = await DatabaseService.instance.backupDatabase(
+        backupName: result.isEmpty ? null : result,
+      );
+      await _loadBackupFiles();
+      if (mounted) {
+        _showBackupSuccessDialog(backupPath);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('创建备份失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showBackupSuccessDialog(String backupPath) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('备份成功'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('文件已保存到：'),
+            const SizedBox(height: 8),
+            Text(
+              backupPath,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '可通过"分享"将备份文件保存到文件管理器、云盘等位置。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('关闭'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              _shareBackup(backupPath);
+            },
+            child: const Text('分享备份'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _restoreBackup(String path) async {
@@ -197,6 +370,11 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _createBackup,
+        icon: const Icon(Icons.add),
+        label: const Text('创建备份'),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _backupFiles.isEmpty
@@ -216,7 +394,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '在数据管理中创建备份',
+                    '点击右下角按钮创建备份',
                     style: TextStyle(fontSize: 14, color: Colors.grey.shade400),
                   ),
                 ],
@@ -263,7 +441,9 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    displayName ?? _formatTimestamp(timestamp),
+                                    displayName != null
+                                        ? '${_formatTimestamp(timestamp)} ($displayName)'
+                                        : _formatTimestamp(timestamp),
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -314,21 +494,26 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 4,
+                          runSpacing: 4,
                           children: [
                             TextButton.icon(
                               onPressed: () => _restoreBackup(path),
                               icon: const Icon(Icons.restore, size: 18),
                               label: const Text('恢复'),
                             ),
-                            const SizedBox(width: 8),
                             TextButton.icon(
                               onPressed: () => _shareBackup(path),
                               icon: const Icon(Icons.share, size: 18),
                               label: const Text('分享'),
                             ),
-                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: () => _renameBackup(path, displayName),
+                              icon: const Icon(Icons.edit, size: 18),
+                              label: const Text('重命名'),
+                            ),
                             TextButton.icon(
                               onPressed: () => _deleteBackup(path),
                               icon: const Icon(

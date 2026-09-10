@@ -1,13 +1,18 @@
 import 'package:flutter/foundation.dart';
+import '../core/services/database/database_service.dart';
 import '../modules/statistics/repositories/statistics_repository.dart';
 import '../modules/statistics/models/statistics_model.dart';
 
 /// 统计数据状态管理Provider
 /// 负责任务统计数据的加载和展示
 class StatisticsProvider extends ChangeNotifier {
-  final StatisticsRepository _repository = StatisticsRepository();
+  final StatisticsRepository _repository;
   TaskStatistics? _statistics;
   bool _isLoading = false;
+
+  StatisticsProvider({StatisticsRepository? repository})
+    : _repository =
+        repository ?? StatisticsRepositoryImpl(DatabaseService.instance);
 
   TaskStatistics? get statistics => _statistics;
   bool get isLoading => _isLoading;

@@ -1,5 +1,7 @@
+import '../../../core/models/base_model.dart';
+
 /// 抽奖奖品数据模型
-class PrizeItem {
+class PrizeItem with DbSerializable {
   final String id;
   final String name;
   final String type;
@@ -23,9 +25,12 @@ class PrizeItem {
       'type': type,
       'value': value,
       'weight': weight,
-      'isDefault': isDefault ? 1 : 0,
+      'is_default': isDefault ? 1 : 0,
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory PrizeItem.fromMap(Map<String, dynamic> map) {
     return PrizeItem(
@@ -34,7 +39,7 @@ class PrizeItem {
       type: map['type'] as String,
       value: map['value'] as int,
       weight: (map['weight'] as num?)?.toDouble() ?? 1.0,
-      isDefault: (map['isDefault'] as int?) == 1,
+      isDefault: (map['is_default'] as int?) == 1,
     );
   }
 
@@ -78,7 +83,7 @@ class PrizeItem {
 }
 
 /// 刮刮卡彩票模型（彩票夹）
-class ScratchTicket {
+class ScratchTicket with DbSerializable {
   final int? id;
   final int costPoints;
   final String prizeId;
@@ -128,34 +133,37 @@ class ScratchTicket {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'costPoints': costPoints,
-      'prizeId': prizeId,
-      'prizeName': prizeName,
-      'prizeType': prizeType,
-      'prizeValue': prizeValue,
-      'createdAt': createdAt.toIso8601String(),
-      'isScratched': isScratched ? 1 : 0,
-      'isRevealed': isRevealed ? 1 : 0,
+      'cost_points': costPoints,
+      'prize_id': prizeId,
+      'prize_name': prizeName,
+      'prize_type': prizeType,
+      'prize_value': prizeValue,
+      'created_at': createdAt.toIso8601String(),
+      'is_scratched': isScratched ? 1 : 0,
+      'is_revealed': isRevealed ? 1 : 0,
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory ScratchTicket.fromMap(Map<String, dynamic> map) {
     return ScratchTicket(
       id: map['id'] as int?,
-      costPoints: map['costPoints'] as int,
-      prizeId: map['prizeId'] as String,
-      prizeName: map['prizeName'] as String,
-      prizeType: map['prizeType'] as String,
-      prizeValue: map['prizeValue'] as int,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      isScratched: (map['isScratched'] as int?) == 1,
-      isRevealed: (map['isRevealed'] as int?) == 1,
+      costPoints: map['cost_points'] as int,
+      prizeId: map['prize_id'] as String,
+      prizeName: map['prize_name'] as String,
+      prizeType: map['prize_type'] as String,
+      prizeValue: map['prize_value'] as int,
+      createdAt: DateTime.parse(map['created_at'] as String),
+      isScratched: (map['is_scratched'] as int?) == 1,
+      isRevealed: (map['is_revealed'] as int?) == 1,
     );
   }
 }
 
 /// 抽奖记录数据模型
-class LotteryRecord {
+class LotteryRecord with DbSerializable {
   final int? id;
   final DateTime drawTime;
   final String prizeName;
@@ -177,24 +185,27 @@ class LotteryRecord {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'drawTime': drawTime.toIso8601String(),
-      'prizeName': prizeName,
-      'prizeType': prizeType,
-      'prizeValue': prizeValue,
-      'costPoints': costPoints,
-      'createdAt': createdAt.toIso8601String(),
+      'draw_time': drawTime.toIso8601String(),
+      'prize_name': prizeName,
+      'prize_type': prizeType,
+      'prize_value': prizeValue,
+      'cost_points': costPoints,
+      'created_at': createdAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory LotteryRecord.fromMap(Map<String, dynamic> map) {
     return LotteryRecord(
       id: map['id'] as int?,
-      drawTime: DateTime.parse(map['drawTime'] as String),
-      prizeName: map['prizeName'] as String,
-      prizeType: map['prizeType'] as String,
-      prizeValue: map['prizeValue'] as int,
-      costPoints: map['costPoints'] as int,
-      createdAt: DateTime.parse(map['createdAt'] as String),
+      drawTime: DateTime.parse(map['draw_time'] as String),
+      prizeName: map['prize_name'] as String,
+      prizeType: map['prize_type'] as String,
+      prizeValue: map['prize_value'] as int,
+      costPoints: map['cost_points'] as int,
+      createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
 }

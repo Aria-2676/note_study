@@ -123,7 +123,12 @@ class _DataExportPageState extends State<DataExportPage> {
                           subtitle: '结构化数据',
                           icon: Icons.code,
                           color: Colors.green,
-                          onTap: _isExporting ? null : _exportAsJson,
+                          onTap: _isExporting
+                              ? null
+                              : () => _confirmAndExport(
+                                    'JSON',
+                                    _exportAsJson,
+                                  ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -134,7 +139,12 @@ class _DataExportPageState extends State<DataExportPage> {
                           subtitle: '完整备份',
                           icon: Icons.storage,
                           color: Colors.blue,
-                          onTap: _isExporting ? null : _exportAsDatabase,
+                          onTap: _isExporting
+                              ? null
+                              : () => _confirmAndExport(
+                                    '数据库',
+                                    _exportAsDatabase,
+                                  ),
                         ),
                       ),
                     ],
@@ -227,6 +237,32 @@ class _DataExportPageState extends State<DataExportPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmAndExport(
+    String format,
+    Future<void> Function() exportFn,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('确认导出'),
+        content: Text('确定要导出数据为$format格式吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await exportFn();
+    }
   }
 
   Future<void> _exportAsJson() async {

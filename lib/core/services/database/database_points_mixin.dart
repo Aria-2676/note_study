@@ -23,7 +23,7 @@ mixin DatabasePointsMixin {
     final db = await database;
     await db.update(
       'user_points',
-      {'points': points, 'updatedAt': DateTime.now().toIso8601String()},
+      {'points': points, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [1],
     );
@@ -52,7 +52,7 @@ mixin DatabasePointsMixin {
     final db = await database;
     final result = await db.query(
       'points_records',
-      orderBy: 'createdAt DESC',
+      orderBy: 'created_at DESC',
       limit: limit,
     );
     return result.map((m) => PointsRecord.fromMap(m)).toList();
@@ -65,7 +65,7 @@ mixin DatabasePointsMixin {
     final db = await database;
     final result = await db.query(
       'points_records',
-      where: 'type = ? AND relatedId = ?',
+      where: 'type = ? AND related_id = ?',
       whereArgs: [type, relatedId],
       limit: 1,
     );

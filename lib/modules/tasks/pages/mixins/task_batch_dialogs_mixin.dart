@@ -368,60 +368,66 @@ mixin TaskBatchDialogsMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  void showDeleteConfirmDialog(
+  /// 弹出删除确认对话框，返回是否确认删除。
+  ///
+  /// 循环任务提供"仅删除当天"与"删除全部"两个选项；非循环任务直接确认删除。
+  /// 返回 true 表示用户确认删除（并已触发删除操作），false 表示取消。
+  Future<bool> showDeleteConfirmDialog(
     BuildContext context,
     Task task,
     TaskProvider taskProvider,
-  ) {
+  ) async {
     if (task.recurrence == 'none') {
-      showDialog(
+      final result = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('确认删除'),
           content: const Text('确定要删除这个任务吗？'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
+              onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('取消'),
             ),
             TextButton(
               onPressed: () {
                 taskProvider.deleteTask(task.id!);
-                Navigator.of(ctx).pop();
+                Navigator.of(ctx).pop(true);
               },
               child: const Text('删除'),
             ),
           ],
         ),
       );
+      return result ?? false;
     } else {
-      showDialog(
+      final result = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('确认删除'),
           content: const Text('选择删除方式：'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
+              onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('取消'),
             ),
             TextButton(
               onPressed: () {
                 taskProvider.deleteTask(task.id!, deleteAll: false);
-                Navigator.of(ctx).pop();
+                Navigator.of(ctx).pop(true);
               },
               child: const Text('仅删除当天'),
             ),
             TextButton(
               onPressed: () {
                 taskProvider.deleteTask(task.id!, deleteAll: true);
-                Navigator.of(ctx).pop();
+                Navigator.of(ctx).pop(true);
               },
               child: const Text('删除全部'),
             ),
           ],
         ),
       );
+      return result ?? false;
     }
   }
 }

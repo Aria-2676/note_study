@@ -45,19 +45,19 @@ mixin DatabaseTagMixin {
     final db = await database;
     await db.delete(
       'task_tags',
-      where: 'taskId = ? AND tagId = ?',
+      where: 'task_id = ? AND tag_id = ?',
       whereArgs: [taskId, tagId],
     );
   }
 
   Future<void> deleteTaskTagsByTaskId(int taskId) async {
     final db = await database;
-    await db.delete('task_tags', where: 'taskId = ?', whereArgs: [taskId]);
+    await db.delete('task_tags', where: 'task_id = ?', whereArgs: [taskId]);
   }
 
   Future<void> deleteTaskTagsByTagId(int tagId) async {
     final db = await database;
-    await db.delete('task_tags', where: 'tagId = ?', whereArgs: [tagId]);
+    await db.delete('task_tags', where: 'tag_id = ?', whereArgs: [tagId]);
   }
 
   Future<List<Tag>> getTagsForTask(int taskId) async {
@@ -65,8 +65,8 @@ mixin DatabaseTagMixin {
     final result = await db.rawQuery(
       '''
       SELECT t.* FROM tags t
-      INNER JOIN task_tags tt ON t.id = tt.tagId
-      WHERE tt.taskId = ?
+      INNER JOIN task_tags tt ON t.id = tt.tag_id
+      WHERE tt.task_id = ?
       ORDER BY t.name ASC
     ''',
       [taskId],
@@ -78,9 +78,9 @@ mixin DatabaseTagMixin {
     final db = await database;
     final result = await db.query(
       'task_tags',
-      where: 'tagId = ?',
+      where: 'tag_id = ?',
       whereArgs: [tagId],
     );
-    return result.map((m) => m['taskId'] as int).toList();
+    return result.map((m) => m['task_id'] as int).toList();
   }
 }

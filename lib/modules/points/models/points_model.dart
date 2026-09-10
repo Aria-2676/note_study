@@ -1,5 +1,7 @@
+import '../../../core/models/base_model.dart';
+
 /// 用户积分数据模型
-class UserPoints {
+class UserPoints with DbSerializable {
   final int id;
   final int points;
   final DateTime updatedAt;
@@ -26,23 +28,26 @@ class UserPoints {
     return {
       'id': id,
       'points': points,
-      'updatedAt': updatedAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory UserPoints.fromMap(Map<String, dynamic> map) {
     return UserPoints(
       id: map['id'] as int? ?? 1,
       points: map['points'] as int? ?? 0,
-      updatedAt: map['updatedAt'] != null
-          ? DateTime.parse(map['updatedAt'] as String)
+      updatedAt: map['updated_at'] != null
+          ? DateTime.parse(map['updated_at'] as String)
           : DateTime.now(),
     );
   }
 }
 
 /// 积分记录数据模型
-class PointsRecord {
+class PointsRecord with DbSerializable {
   final int? id;
   final int points;
   final String type;
@@ -65,10 +70,13 @@ class PointsRecord {
       'points': points,
       'type': type,
       'description': description,
-      'relatedId': relatedId,
-      'createdAt': createdAt.toIso8601String(),
+      'related_id': relatedId,
+      'created_at': createdAt.toIso8601String(),
     };
   }
+
+  @override
+  Map<String, dynamic> toDbMap() => toMap();
 
   factory PointsRecord.fromMap(Map<String, dynamic> map) {
     return PointsRecord(
@@ -76,8 +84,8 @@ class PointsRecord {
       points: map['points'] as int,
       type: map['type'] as String,
       description: map['description'] as String,
-      relatedId: map['relatedId'] as int?,
-      createdAt: DateTime.parse(map['createdAt'] as String),
+      relatedId: map['related_id'] as int?,
+      createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
 }

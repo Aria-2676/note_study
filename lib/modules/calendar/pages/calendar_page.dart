@@ -17,6 +17,8 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   DateTime _currentMonth = DateTime.now();
   DateTime? _selectedDate;
+  List<Task> _monthTasks = [];
+  late final TaskProvider _taskProvider;
 
   @override
   void initState() {
@@ -24,12 +26,36 @@ class _CalendarPageState extends State<CalendarPage> {
     final initial = widget.initialDate ?? DateTime.now();
     _selectedDate = initial;
     _currentMonth = DateTime(initial.year, initial.month);
+    _taskProvider = context.read<TaskProvider>();
+    _taskProvider.addListener(_loadMonthTasks);
+    _loadMonthTasks();
+  }
+
+  @override
+  void dispose() {
+    _taskProvider.removeListener(_loadMonthTasks);
+    super.dispose();
+  }
+
+  Future<void> _loadMonthTasks() async {
+    final tasks = await _taskProvider.getTasksForMonth(_currentMonth);
+    if (mounted) {
+      setState(() {
+        _monthTasks = tasks;
+      });
+    }
+  }
+
+  void _changeMonth(DateTime newMonth) {
+    setState(() {
+      _currentMonth = newMonth;
+    });
+    _loadMonthTasks();
   }
 
   @override
   Widget build(BuildContext context) {
-    final taskProvider = context.watch<TaskProvider>();
-    final tasks = taskProvider.allTasks;
+    final tasks = _monthTasks;
 
     return Scaffold(
       appBar: AppBar(
@@ -45,6 +71,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 _selectedDate = now;
                 _currentMonth = DateTime(now.year, now.month);
               });
+              _loadMonthTasks();
             },
           ),
           IconButton(
@@ -63,6 +90,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   _selectedDate = picked;
                   _currentMonth = DateTime(picked.year, picked.month);
                 });
+                _loadMonthTasks();
               }
             },
           ),
@@ -97,12 +125,7 @@ class _CalendarPageState extends State<CalendarPage> {
           IconButton(
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
-              setState(() {
-                _currentMonth = DateTime(
-                  _currentMonth.year,
-                  _currentMonth.month - 1,
-                );
-              });
+              _changeMonth(DateTime(_currentMonth.year, _currentMonth.month - 1));
             },
           ),
           Text(
@@ -112,12 +135,7 @@ class _CalendarPageState extends State<CalendarPage> {
           IconButton(
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
-              setState(() {
-                _currentMonth = DateTime(
-                  _currentMonth.year,
-                  _currentMonth.month + 1,
-                );
-              });
+              _changeMonth(DateTime(_currentMonth.year, _currentMonth.month + 1));
             },
           ),
         ],

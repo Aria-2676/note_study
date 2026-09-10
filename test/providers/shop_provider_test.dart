@@ -53,8 +53,8 @@ void main() {
       expect(map['name'], '测试商品');
       expect(map['description'], '描述');
       expect(map['price'], 100);
-      expect(map['iconName'], 'star');
-      expect(map['colorValue'], 0xFFFF9800);
+      expect(map['icon_name'], 'star');
+      expect(map['color_value'], 0xFFFF9800);
     });
 
     test('should create from Map correctly', () {
@@ -63,9 +63,9 @@ void main() {
         'name': '看电影',
         'description': '看一场电影',
         'price': 150,
-        'createdAt': '2024-01-01T12:00:00.000',
-        'iconName': 'movie',
-        'colorValue': 0xFFE91E63,
+        'created_at': '2024-01-01T12:00:00.000',
+        'icon_name': 'movie',
+        'color_value': 0xFFE91E63,
       };
 
       final item = ShopItem.fromMap(map);
@@ -81,7 +81,7 @@ void main() {
         'name': '默认商品',
         'description': '描述',
         'price': 50,
-        'createdAt': '2024-01-01T12:00:00.000',
+        'created_at': '2024-01-01T12:00:00.000',
       };
 
       final item = ShopItem.fromMap(map);
@@ -179,22 +179,22 @@ void main() {
       final map = item.toMap();
 
       expect(map['id'], 1);
-      expect(map['shopItemId'], 2);
+      expect(map['shop_item_id'], 2);
       expect(map['name'], '测试');
       expect(map['price'], 50);
-      expect(map['iconName'], 'book');
+      expect(map['icon_name'], 'book');
     });
 
     test('should create from Map correctly', () {
       final map = {
         'id': 1,
-        'shopItemId': 3,
+        'shop_item_id': 3,
         'name': '旅行',
         'description': '周末旅行',
         'price': 500,
-        'purchasedAt': '2024-01-01T12:00:00.000',
-        'iconName': 'flight',
-        'colorValue': 0xFF2196F3,
+        'purchased_at': '2024-01-01T12:00:00.000',
+        'icon_name': 'flight',
+        'color_value': 0xFF2196F3,
       };
 
       final item = PurchasedItem.fromMap(map);

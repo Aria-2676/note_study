@@ -64,15 +64,6 @@ class MockTaskRepository extends _i1.Mock implements _i4.TaskRepository {
           as _i5.Future<_i2.Task>);
 
   @override
-  _i5.Future<void> generateRecurringTasks(_i2.Task? task) =>
-      (super.noSuchMethod(
-            Invocation.method(#generateRecurringTasks, [task]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
   _i5.Future<void> updateTask(_i2.Task? task, {bool? updateAll = false}) =>
       (super.noSuchMethod(
             Invocation.method(#updateTask, [task], {#updateAll: updateAll}),
@@ -108,38 +99,12 @@ class MockTaskRepository extends _i1.Mock implements _i4.TaskRepository {
           as _i5.Future<void>);
 
   @override
-  _i5.Future<List<_i2.Task>> getAllTasks() =>
-      (super.noSuchMethod(
-            Invocation.method(#getAllTasks, []),
-            returnValue: _i5.Future<List<_i2.Task>>.value(<_i2.Task>[]),
-          )
-          as _i5.Future<List<_i2.Task>>);
-
-  @override
   _i5.Future<List<_i2.Task>> getRecurringTasks() =>
       (super.noSuchMethod(
             Invocation.method(#getRecurringTasks, []),
             returnValue: _i5.Future<List<_i2.Task>>.value(<_i2.Task>[]),
           )
           as _i5.Future<List<_i2.Task>>);
-
-  @override
-  _i5.Future<void> autoCheckRecurringTasks() =>
-      (super.noSuchMethod(
-            Invocation.method(#autoCheckRecurringTasks, []),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<void> checkOverdueTasks() =>
-      (super.noSuchMethod(
-            Invocation.method(#checkOverdueTasks, []),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
 
   @override
   _i5.Future<_i2.Task> restoreTaskFromRecycle(int? recycledTaskId) =>

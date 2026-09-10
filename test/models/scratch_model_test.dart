@@ -39,7 +39,9 @@ void main() {
       expect(map['type'], 'integral');
       expect(map['value'], 10);
       expect(map['weight'], 1.5);
-      expect(map['isDefault'], 1);
+      expect(map['is_default'], 1);
+      // 不应包含驼峰 key
+      expect(map.containsKey('isDefault'), isFalse);
     });
 
     test('should create from Map correctly', () {
@@ -49,7 +51,7 @@ void main() {
         'type': 'goods',
         'value': 50,
         'weight': 0.5,
-        'isDefault': 0,
+        'is_default': 0,
       };
 
       final prize = PrizeItem.fromMap(map);

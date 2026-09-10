@@ -1,9 +1,11 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import '../modules/tasks/models/task_model.dart';
 import '../modules/tasks/repositories/task_repository.dart';
+import '../modules/tasks/services/task_scheduler_service.dart';
+import '../core/services/database/database_service.dart';
 import '../core/services/widget_service.dart';
 import '../core/utils/task_sort_utils.dart';
 import 'points_provider.dart';
@@ -18,10 +20,11 @@ enum TaskSortOption {
 
 class TaskProvider extends ChangeNotifier {
   final TaskRepository _taskRepository;
+  final TaskSchedulerService _taskSchedulerService;
   PointsProvider _pointsProvider;
 
   List<Task> _tasks = [];
-  List<Task> _allTasks = [];
+  final Map<String, List<Task>> _tasksByMonthCache = {};
   List<RecycledTask> _recycledTasks = [];
   DateTime _selectedDate = DateTime.now();
   List<DateTime> _selectedDates = [DateTime.now()];
@@ -43,7 +46,6 @@ class TaskProvider extends ChangeNotifier {
 
   List<Task> get tasks => _getFilteredAndSortedTasks();
   List<Task> get rawTasks => _tasks;
-  List<Task> get allTasks => _allTasks;
   List<RecycledTask> get recycledTasks => _recycledTasks;
   DateTime get selectedDate => _selectedDate;
   List<DateTime> get selectedDates => _selectedDates;
@@ -77,11 +79,41 @@ class TaskProvider extends ChangeNotifier {
   // 防抖计时器，用于优化小组件更新频率
   Timer? _updateWidgetTimer;
 
-  TaskProvider(this._pointsProvider, {TaskRepository? taskRepository})
-    : _taskRepository = taskRepository ?? TaskRepository();
+  TaskProvider(
+    this._pointsProvider, {
+    TaskRepository? taskRepository,
+    TaskSchedulerService? taskSchedulerService,
+  }) : _taskRepository = taskRepository ?? TaskRepositoryImpl(DatabaseService.instance),
+       _taskSchedulerService = taskSchedulerService ??
+           TaskSchedulerService(
+             taskRepository ?? TaskRepositoryImpl(DatabaseService.instance),
+             DatabaseService.instance,
+           );
 
   void updatePointsProvider(PointsProvider pointsProvider) {
     _pointsProvider = pointsProvider;
+  }
+
+  /// 获取指定月份的任务列表（按月懒加载，最多缓存 3 个月）
+  Future<List<Task>> getTasksForMonth(DateTime month) async {
+    final key = '${month.year}-${month.month}';
+    if (_tasksByMonthCache.containsKey(key)) {
+      return _tasksByMonthCache[key]!;
+    }
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    final tasks = await _taskRepository.getTasksByDateRange(start, end);
+    if (_tasksByMonthCache.length >= 3) {
+      _tasksByMonthCache.remove(_tasksByMonthCache.keys.first);
+    }
+    _tasksByMonthCache[key] = tasks;
+    return tasks;
+  }
+
+  /// 使指定月份缓存失效（数据变更后调用）
+  void _invalidateMonthCache(DateTime date) {
+    final key = '${date.year}-${date.month}';
+    _tasksByMonthCache.remove(key);
   }
 
   Future<void> initialize() async {
@@ -108,9 +140,10 @@ class TaskProvider extends ChangeNotifier {
     final restoredTask = await _taskRepository.restoreTaskFromRecycle(
       recycledTaskId,
     );
+    _invalidateMonthCache(originalCplTime);
 
     if (restoredTask.recurrence != 'none') {
-      await _taskRepository.generateRecurringTasks(
+      await _taskSchedulerService.generateRecurringTasks(
         restoredTask.copyWith(cplTime: originalCplTime),
       );
     }
@@ -134,8 +167,8 @@ class TaskProvider extends ChangeNotifier {
   }
 
   Future<void> _checkOverdueTasks() async {
-    await _taskRepository.checkOverdueTasks();
-    final overdueTasks = await _taskRepository.getAllTasks();
+    final overdueTasks = await _taskRepository.getOverdueTasks(DateTime.now());
+    await _taskSchedulerService.checkOverdueTasks();
     for (final task in overdueTasks) {
       if (!task.isOK && task.rewardPoints > 0 && !task.isDeducted) {
         final deductPoints = (task.rewardPoints / 2).floor();
@@ -156,29 +189,33 @@ class TaskProvider extends ChangeNotifier {
     _selectedDate = date;
     if (!_selectedDates.any((d) => _sameDay(d, date))) _selectedDates = [date];
     _tasks = await _taskRepository.getTasksForDate(date);
-    await _loadAllTasks();
     notifyListeners();
     _debouncedUpdateWidget();
-  }
-
-  Future<void> _loadAllTasks() async {
-    _allTasks = await _taskRepository.getAllTasks();
   }
 
   Future<void> loadTodayTasks() async => await loadTasksByDate(DateTime.now());
 
   Future<Task> addTask(Task task) async {
-    final createdTask = await _taskRepository.addTask(task);
+    Task taskToAdd = task;
+    if (task.recurrence != 'none' && task.loopId == null) {
+      taskToAdd = task.copyWith(loopId: _taskSchedulerService.generateLoopId());
+    }
+    final createdTask = await _taskRepository.addTask(taskToAdd);
+    _invalidateMonthCache(task.cplTime);
+    if (taskToAdd.recurrence != 'none') {
+      await _taskSchedulerService.generateRecurringTasks(taskToAdd);
+    }
     await loadTasksByDate(task.cplTime);
     return createdTask;
   }
 
   Future<void> autoCheckRecurringTasks() async =>
-      await _taskRepository.autoCheckRecurringTasks();
+      await _taskSchedulerService.autoCheckRecurringTasks();
 
   Future<String?> completeTask(Task task) async {
     if (task.isOK) return null;
     final result = await _taskRepository.completeTask(task);
+    _invalidateMonthCache(task.cplTime);
     if (result == null && await _shouldHandlePoints(task, 'task_complete')) {
       await _pointsProvider.addPointsWithRecord(
         points: task.rewardPoints,
@@ -194,6 +231,7 @@ class TaskProvider extends ChangeNotifier {
   Future<void> uncompleteTask(Task task) async {
     if (!task.isOK) return;
     await _taskRepository.uncompleteTask(task);
+    _invalidateMonthCache(task.cplTime);
     if (await _shouldHandlePoints(task, 'task_uncomplete')) {
       await _pointsProvider.deductPointsWithRecord(
         points: task.rewardPoints,
@@ -207,12 +245,21 @@ class TaskProvider extends ChangeNotifier {
 
   Future<void> deleteTask(int id, {bool deleteAll = false}) async {
     await _taskRepository.deleteTask(id, deleteAll: deleteAll);
+    _invalidateMonthCache(_selectedDate);
+    // 单次删除会移入回收站，需要刷新回收站列表
+    if (!deleteAll) {
+      await _loadRecycledTasks();
+    }
     await loadTasksByDate(_selectedDate);
     _debouncedUpdateWidget();
   }
 
   Future<void> updateTask(Task task, {bool updateAll = false}) async {
     await _taskRepository.updateTask(task, updateAll: updateAll);
+    _invalidateMonthCache(task.cplTime);
+    if (task.recurrence != 'none') {
+      await _taskSchedulerService.generateRecurringTasks(task);
+    }
     await loadTasksByDate(task.cplTime);
     notifyListeners();
     _debouncedUpdateWidget();
@@ -455,9 +502,7 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final allTasks = await _taskRepository.getAllTasks();
-      _searchResults = TaskSortUtils.filterBySearchQuery(allTasks, query);
-      _searchResults.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _searchResults = await _taskRepository.searchTasks(query);
     } catch (e) {
       _searchResults = [];
     }
@@ -476,30 +521,12 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      var results = await _taskRepository.getAllTasks();
-
-      if (query.isNotEmpty) {
-        results = TaskSortUtils.filterBySearchQuery(results, query);
-      }
-      if (startDate != null) {
-        results = results.where((t) => !t.cplTime.isBefore(startDate)).toList();
-      }
-      if (endDate != null) {
-        results = results.where((t) {
-          return t.cplTime.year < endDate.year ||
-              (t.cplTime.year == endDate.year &&
-                  t.cplTime.month < endDate.month) ||
-              (t.cplTime.year == endDate.year &&
-                  t.cplTime.month == endDate.month &&
-                  t.cplTime.day <= endDate.day);
-        }).toList();
-      }
-      if (completionStatus != null) {
-        results = TaskSortUtils.filterByCompletion(results, completionStatus);
-      }
-
-      results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      _searchResults = results;
+      _searchResults = await _taskRepository.searchTasks(
+        query,
+        startDate: startDate,
+        endDate: endDate,
+        completionStatus: completionStatus,
+      );
     } catch (e) {
       _searchResults = [];
     }
