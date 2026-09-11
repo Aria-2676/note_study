@@ -6,7 +6,7 @@ class AppConfig {
   static const int streakBonus = 5;
 
   static const String dbName = 'v5_tasks.db';
-  static const int dbVersion = 2;
+  static const int dbVersion = 3;
 }
 
 class TaskConfig {

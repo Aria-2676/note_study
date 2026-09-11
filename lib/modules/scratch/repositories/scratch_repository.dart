@@ -41,6 +41,13 @@ class ScratchRepository {
     return await _dbService.insertScratchTicket(ticket);
   }
 
+  /// 原子购买刮刮卡：同一事务内完成「扣积分 + 写积分记录 + 出票」。
+  ///
+  /// 余额不足时返回 null 且不做任何写入。返回新票据 id 表示已整体提交。
+  Future<int?> purchaseTicket(ScratchTicket ticket, int cost) async {
+    return await _dbService.purchaseScratchTicket(ticket: ticket, cost: cost);
+  }
+
   Future<List<ScratchTicket>> getUnscratchedTickets() async {
     return await _dbService.getUnscratchedTickets();
   }

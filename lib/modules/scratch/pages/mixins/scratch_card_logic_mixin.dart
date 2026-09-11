@@ -111,11 +111,10 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
     );
 
     if (success && mounted) {
-      await pointsProvider.deductPointsWithRecord(
-        points: scratchProvider.selectedCost,
-        type: 'scratch_cost',
-        description: '购买刮刮卡',
-      );
+      // 扣分已在购买事务内完成，这里只需刷新积分显示。
+      // （原实现在这里补扣分，一旦等待期间页面被销毁会被 mounted 判定跳过，
+      //   造成「票已入库但积分未扣」的白嫖，因此不再依赖 UI 层扣分。）
+      await pointsProvider.reload();
       _statisticAdapter.reportBuyTicket(scratchProvider.selectedCost);
       _statisticAdapter.reportCost(scratchProvider.selectedCost);
       HapticFeedback.mediumImpact();

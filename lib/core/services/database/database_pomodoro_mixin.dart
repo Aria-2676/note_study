@@ -159,17 +159,27 @@ mixin DatabasePomodoroMixin {
     final result = await db.query('pomodoro_settings', where: 'id = 1');
     if (result.isEmpty) {
       const defaultSettings = PomodoroSettings();
-      await db.insert('pomodoro_settings', defaultSettings.toMap());
+      await db.insert('pomodoro_settings', _settingsRow(defaultSettings));
       return defaultSettings;
     }
     return PomodoroSettings.fromMap(result.first);
   }
 
+  /// 单行表 `pomodoro_settings` 的写入行。
+  ///
+  /// 该表定义为 `id INTEGER PRIMARY KEY CHECK (id = 1)`，而 [PomodoroSettings.toMap]
+  /// 不含 id。若不显式补上 id = 1，插入时 rowid 会自增成 2 而触发 CHECK 约束失败
+  /// （REPLACE 也不会生效，因为 id 不同不构成唯一冲突），导致设置永远存不进库。
+  Map<String, dynamic> _settingsRow(PomodoroSettings settings) => {
+    'id': 1,
+    ...settings.toMap(),
+  };
+
   Future<void> savePomodoroSettings(PomodoroSettings settings) async {
     final db = await database;
     await db.insert(
       'pomodoro_settings',
-      settings.toMap(),
+      _settingsRow(settings),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }

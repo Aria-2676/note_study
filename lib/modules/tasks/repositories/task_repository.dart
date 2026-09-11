@@ -167,6 +167,8 @@ class TaskRepositoryImpl implements TaskRepository {
         final taskMap = taskResult.first;
         final recycledId = await txn.insert('recycled_tasks', {
           'task_id': taskMap['id'],
+          // 保存 loopId，否则循环任务恢复后会丢掉循环链（详见 _migrateV2ToV3）
+          'loop_id': taskMap['loop_id'],
           'title': taskMap['title'],
           'description': taskMap['description'],
           'is_word': taskMap['is_word'] ?? 0,
@@ -345,6 +347,7 @@ class TaskRepositoryImpl implements TaskRepository {
 
       final recycledMap = recycledResult.first;
       final task = Task(
+        loopId: recycledMap['loop_id'] as String?,
         title: recycledMap['title'] as String,
         description: recycledMap['description'] as String?,
         isWord: (recycledMap['is_word'] as int? ?? 0) == 1,

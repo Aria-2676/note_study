@@ -254,6 +254,7 @@ void main() {
         final recycledTasksColumns = [
           'id',
           'task_id',
+          'loop_id',
           'title',
           'description',
           'is_word',
@@ -268,8 +269,10 @@ void main() {
           'deleted_at',
         ];
 
-        expect(recycledTasksColumns.length, 14);
+        expect(recycledTasksColumns.length, 15);
         expect(recycledTasksColumns, contains('task_id'));
+        // v3 起回收站需保留 loop_id，否则恢复循环任务会丢循环链
+        expect(recycledTasksColumns, contains('loop_id'));
         expect(recycledTasksColumns, contains('is_word'));
         expect(recycledTasksColumns, contains('is_ok'));
         expect(recycledTasksColumns, contains('cpl_time'));
@@ -278,13 +281,26 @@ void main() {
     });
 
     group('Database Version', () {
-      test('current database version should be 2', () {
-        expect(AppConfig.dbVersion, equals(2));
+      test('current database version should be 3', () {
+        expect(AppConfig.dbVersion, equals(3));
       });
 
       test('version 2 should migrate v1 camelCase schema to snake_case', () {
         const version2Features = ['_migrateV1ToV2', 'snake_case'];
         expect(version2Features, contains('_migrateV1ToV2'));
+      });
+
+      test('version 3 should add loop_id to recycled_tasks', () {
+        final source = File(
+          'lib/core/services/database/database_service.dart',
+        ).readAsStringSync();
+
+        expect(source, contains('_migrateV2ToV3'));
+        expect(source, contains('await _migrateV2ToV3(db);'));
+        expect(
+          source,
+          contains('ALTER TABLE recycled_tasks ADD COLUMN loop_id TEXT'),
+        );
       });
     });
 

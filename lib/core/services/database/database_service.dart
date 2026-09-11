@@ -132,6 +132,7 @@ class DatabaseService
       CREATE TABLE IF NOT EXISTS recycled_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id INTEGER,
+        loop_id TEXT,
         title TEXT NOT NULL,
         description TEXT,
         is_word INTEGER NOT NULL DEFAULT 0,
@@ -325,6 +326,22 @@ class DatabaseService
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _migrateV1ToV2(db);
+    }
+    if (oldVersion < 3) {
+      await _migrateV2ToV3(db);
+    }
+  }
+
+  /// v2 -> v3 迁移：回收站补 `loop_id` 列。
+  ///
+  /// 原表不记录 loopId，导致循环任务被删除后从回收站恢复时 loopId 丢失，
+  /// 而循环实例生成器（`_insertIfNotExistsTxn`）在 loopId 为空时会直接返回，
+  /// 于是恢复出来的循环任务再也不会生成后续实例。
+  Future<void> _migrateV2ToV3(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(recycled_tasks)');
+    final hasLoopId = columns.any((c) => c['name'] == 'loop_id');
+    if (!hasLoopId) {
+      await db.execute('ALTER TABLE recycled_tasks ADD COLUMN loop_id TEXT');
     }
   }
 

@@ -370,7 +370,14 @@ class ScratchProvider extends ChangeNotifier {
         prizeValue: prize.value,
       );
 
-      final ticketId = await _repository.insertScratchTicket(ticket);
+      final ticketId = await _repository.purchaseTicket(ticket, _selectedCost);
+      // 余额不足：事务内未做任何写入（不会出现「票已出但积分没扣」）
+      if (ticketId == null) {
+        _isProcessing = false;
+        _errorMessage = '积分不足，需要$_selectedCost积分才能购买彩票';
+        notifyListeners();
+        return false;
+      }
       _currentTicket = ticket.copyWith(id: ticketId);
       _ticketWallet = await _repository.getUnscratchedTickets();
 

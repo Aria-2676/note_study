@@ -154,6 +154,7 @@ class RecycledTask with DbSerializable {
     return {
       'id': id,
       'task_id': task.id,
+      'loop_id': task.loopId,
       'title': task.title,
       'description': task.description,
       'is_word': task.isWord ? 1 : 0,
@@ -177,6 +178,7 @@ class RecycledTask with DbSerializable {
       id: map['id'] as int,
       task: Task(
         id: map['task_id'] as int?,
+        loopId: map['loop_id'] as String?,
         title: map['title'] as String,
         description: map['description'] as String?,
         isWord: (map['is_word'] as int? ?? 0) == 1,

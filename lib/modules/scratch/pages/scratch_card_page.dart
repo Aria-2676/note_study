@@ -553,11 +553,8 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                   pointsProvider.currentPoints,
                 );
                 if (success) {
-                  await pointsProvider.deductPointsWithRecord(
-                    points: scratchProvider.selectedCost,
-                    type: 'scratch_cost',
-                    description: '购买刮刮卡',
-                  );
+                  // 扣分已在购买事务内完成，这里只需刷新积分显示
+                  await pointsProvider.reload();
                   _startScratching();
                 }
               }
