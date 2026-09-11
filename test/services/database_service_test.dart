@@ -3,6 +3,22 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:v5_app/core/config/app_config.dart';
 
+/// 读取 `database_service` 这个 library 的全部源码：主文件 + 所有 part 文件。
+///
+/// 规范 6 拆分后，建表与迁移逻辑分散到 `database_service.dart` 的若干 `part` 中，
+/// 这些「源码内容断言」必须面向整个 library 而不是单个文件。
+String _readDatabaseServiceLibrarySource() {
+  const base = 'lib/core/services/database/';
+  final mainSource = File('${base}database_service.dart').readAsStringSync();
+  final buffer = StringBuffer(mainSource);
+  final partPattern = RegExp(r"^part '([^']+)';$", multiLine: true);
+  for (final match in partPattern.allMatches(mainSource)) {
+    buffer.write('\n');
+    buffer.write(File('$base${match.group(1)}').readAsStringSync());
+  }
+  return buffer.toString();
+}
+
 void main() {
   group('DatabaseService', () {
     group('onUpgrade', () {
@@ -291,9 +307,7 @@ void main() {
       });
 
       test('version 3 should add loop_id to recycled_tasks', () {
-        final source = File(
-          'lib/core/services/database/database_service.dart',
-        ).readAsStringSync();
+        final source = _readDatabaseServiceLibrarySource();
 
         expect(source, contains('_migrateV2ToV3'));
         expect(source, contains('await _migrateV2ToV3(db);'));
@@ -306,9 +320,7 @@ void main() {
 
     group('V1 to V2 Migration', () {
       test('should have _migrateV1ToV2 method in DatabaseService', () {
-        final source = File(
-          'lib/core/services/database/database_service.dart',
-        ).readAsStringSync();
+        final source = _readDatabaseServiceLibrarySource();
 
         expect(source, contains('_migrateV1ToV2'));
         // 验证迁移方法被 onUpgrade 调用
@@ -321,9 +333,7 @@ void main() {
       });
 
       test('should migrate tasks camelCase columns to snake_case', () {
-        final source = File(
-          'lib/core/services/database/database_service.dart',
-        ).readAsStringSync();
+        final source = _readDatabaseServiceLibrarySource();
 
         // v1 -> v2 SELECT 从旧驼峰列读取
         expect(
@@ -336,9 +346,7 @@ void main() {
       });
 
       test('should migrate all v1 tables in _migrateV1ToV2', () {
-        final source = File(
-          'lib/core/services/database/database_service.dart',
-        ).readAsStringSync();
+        final source = _readDatabaseServiceLibrarySource();
 
         // 截取 _migrateV1ToV2 方法体片段校验各表迁移
         final migrateStart = source.indexOf('_migrateV1ToV2');

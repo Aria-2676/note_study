@@ -1,7 +1,4 @@
-import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../providers/points_provider.dart';
@@ -10,6 +7,7 @@ import '../models/scratch_model.dart';
 import '../models/scratch_state.dart';
 import '../adapters/scratch_statistic_adapter.dart';
 import './mixins/scratch_card_logic_mixin.dart';
+import './mixins/scratch_card_gesture_mixin.dart';
 import './widgets/ticket_wallet_widget.dart';
 import './widgets/lottery_records_widget.dart';
 import './widgets/prize_pool_editor_widget.dart';
@@ -17,7 +15,8 @@ import './widgets/probability_info_widget.dart';
 import './widgets/cost_selector_widget.dart';
 import './widgets/scratch_action_buttons_widget.dart';
 import './widgets/points_display_widget.dart';
-import './widgets/scratch_card_widget.dart';
+import './widgets/scratch_reveal_overlay_widget.dart';
+import './widgets/scratch_main_button_widget.dart';
 
 class ScratchCardPage extends StatefulWidget {
   const ScratchCardPage({super.key});
@@ -26,21 +25,19 @@ class ScratchCardPage extends StatefulWidget {
   State<ScratchCardPage> createState() => _ScratchCardPageState();
 }
 
+/// 刮刮乐主页面。
+///
+/// 各关注点已经拆分（规范 6：单个 Widget ≤300 行）：
+/// - 弹窗/购买/中奖发放：[ScratchCardLogicMixin]
+/// - 刮奖手势与揭晓：[ScratchCardGestureMixin]
+/// - 居中刮奖浮层：[ScratchRevealOverlayWidget]
+/// - 主操作按钮：[ScratchMainButtonWidget]
 class _ScratchCardPageState extends State<ScratchCardPage>
-    with WidgetsBindingObserver, ScratchCardLogicMixin {
-  final GlobalKey _scratchKey = GlobalKey();
-  final List<Offset> _scratchPoints = [];
+    with WidgetsBindingObserver, ScratchCardLogicMixin, ScratchCardGestureMixin {
   final ScratchStatisticAdapter _statisticAdapter = ScratchStatisticAdapter();
-  Offset? _lastPosition;
   bool _showPrizePool = false;
   bool _showRecords = false;
   bool _showTicketWallet = false;
-  bool _showCenteredOverlay = false;
-
-  static const int _gridSize = 30;
-  static const double _revealThreshold = 0.4;
-  static const double _scratchRadius = 20;
-  static const double _minSwipeDistance = 3.0;
 
   @override
   void initState() {
@@ -72,7 +69,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
   void _restoreState() {
     final provider = Provider.of<ScratchProvider>(context, listen: false);
     if (provider.state.isScratching) {
-      _scratchPoints.clear();
+      scratchPoints.clear();
       provider.exitScratching();
     }
   }
@@ -84,173 +81,6 @@ class _ScratchCardPageState extends State<ScratchCardPage>
       listen: false,
     );
     await scratchProvider.initialize(shopProvider.shopItems);
-  }
-
-  void _startScratching() {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    if (scratchProvider.currentTicket == null) return;
-    setState(() {
-      _scratchPoints.clear();
-      _lastPosition = null;
-      _showCenteredOverlay = true;
-    });
-    scratchProvider.startScratching();
-    _statisticAdapter.reportStartScratch();
-    HapticFeedback.mediumImpact();
-  }
-
-  void _exitScratching() {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    _scratchPoints.clear();
-    _lastPosition = null;
-    scratchProvider.exitScratching();
-    setState(() {
-      _showCenteredOverlay = false;
-    });
-  }
-
-  void _handleScratchStart(DragStartDetails details) {
-    _handleScratchPosition(details.globalPosition);
-  }
-
-  void _handleScratch(DragUpdateDetails details) {
-    _handleScratchPosition(details.globalPosition);
-  }
-
-  void _handleScratchEnd(DragEndDetails details) {
-    _lastPosition = null;
-  }
-
-  void _handleScratchPosition(Offset globalPosition) {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    if (!scratchProvider.state.isScratching) return;
-
-    final box = _scratchKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-
-    final position = box.globalToLocal(globalPosition);
-
-    if (position.dx < 0 ||
-        position.dx > box.size.width ||
-        position.dy < 0 ||
-        position.dy > box.size.height) {
-      return;
-    }
-
-    if (_lastPosition != null) {
-      final distance = (position - _lastPosition!).distance;
-      if (distance < _minSwipeDistance) return;
-    }
-
-    setState(() {
-      _scratchPoints.add(position);
-      _lastPosition = position;
-    });
-
-    _checkReveal();
-  }
-
-  double _calculateScratchedPercentage() {
-    if (_scratchPoints.isEmpty) return 0.0;
-
-    final box = _scratchKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return 0.0;
-
-    final size = box.size;
-    final cellWidth = size.width / _gridSize;
-    final cellHeight = size.height / _gridSize;
-
-    final grid = List.generate(
-      _gridSize,
-      (_) => List.generate(_gridSize, (_) => false),
-    );
-
-    final radiusCells = (_scratchRadius / cellWidth).ceil();
-
-    for (final point in _scratchPoints) {
-      final centerGridX = (point.dx / cellWidth).floor();
-      final centerGridY = (point.dy / cellHeight).floor();
-
-      for (int dx = -radiusCells; dx <= radiusCells; dx++) {
-        for (int dy = -radiusCells; dy <= radiusCells; dy++) {
-          final gridX = (centerGridX + dx).clamp(0, _gridSize - 1);
-          final gridY = (centerGridY + dy).clamp(0, _gridSize - 1);
-
-          final cellCenterX = (gridX + 0.5) * cellWidth;
-          final cellCenterY = (gridY + 0.5) * cellHeight;
-          final distance = sqrt(
-            pow(point.dx - cellCenterX, 2) + pow(point.dy - cellCenterY, 2),
-          );
-
-          if (distance <= _scratchRadius) {
-            grid[gridY][gridX] = true;
-          }
-        }
-      }
-    }
-
-    int scratchedCount = 0;
-    for (final row in grid) {
-      for (final cell in row) {
-        if (cell) scratchedCount++;
-      }
-    }
-
-    return scratchedCount / (_gridSize * _gridSize);
-  }
-
-  void _checkReveal() {
-    final percentage = _calculateScratchedPercentage();
-    if (percentage >= _revealThreshold) {
-      _revealPrize();
-    }
-  }
-
-  void _revealPrize() {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    if (!scratchProvider.state.isScratching) return;
-
-    scratchProvider.revealPrize();
-    scratchProvider.saveLotteryResult();
-    _claimPrize();
-  }
-
-  void _quickReveal() {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    if (!scratchProvider.state.isScratching) return;
-
-    _revealPrize();
-  }
-
-  Future<void> _claimPrize() async {
-    final scratchProvider = Provider.of<ScratchProvider>(
-      context,
-      listen: false,
-    );
-    final pointsProvider = Provider.of<PointsProvider>(context, listen: false);
-    final shopProvider = Provider.of<ShopProvider>(context, listen: false);
-
-    await claimPrize(
-      context: context,
-      scratchProvider: scratchProvider,
-      pointsProvider: pointsProvider,
-      shopProvider: shopProvider,
-    );
   }
 
   void _setCost(int cost) {
@@ -357,7 +187,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                       if (_showTicketWallet)
                         TicketWalletWidget(
                           scratchProvider: scratchProvider,
-                          onStartScratch: _startScratching,
+                          onStartScratch: startScratching,
                           onClose: () {
                             setState(() {
                               _showTicketWallet = false;
@@ -372,11 +202,7 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                           onCostChanged: _setCost,
                         ),
                         const SizedBox(height: 20),
-                        _buildMainButton(
-                          pointsProvider,
-                          scratchProvider,
-                          colorScheme,
-                        ),
+                        _buildMainButton(pointsProvider, scratchProvider),
                         const SizedBox(height: 20),
                         ProbabilityInfoWidget(scratchProvider: scratchProvider),
                         const SizedBox(height: 20),
@@ -446,8 +272,19 @@ class _ScratchCardPageState extends State<ScratchCardPage>
                     ),
                   ),
                 ),
-              if (_showCenteredOverlay && scratchProvider.currentTicket != null)
-                _buildCenteredOverlay(scratchProvider, colorScheme),
+              if (showCenteredOverlay && scratchProvider.currentTicket != null)
+                ScratchRevealOverlayWidget(
+                  scratchKey: scratchKey,
+                  ticket: scratchProvider.currentTicket,
+                  isScratching: scratchProvider.state.isScratching,
+                  isRevealed: scratchProvider.state.isRevealed,
+                  scratchPoints: scratchPoints,
+                  onPanStart: handleScratchStart,
+                  onPanUpdate: handleScratch,
+                  onPanEnd: handleScratchEnd,
+                  onExit: exitScratching,
+                  onQuickReveal: quickReveal,
+                ),
             ],
           ),
         );
@@ -455,79 +292,9 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     );
   }
 
-  Widget _buildCenteredOverlay(
-    ScratchProvider scratchProvider,
-    ColorScheme colorScheme,
-  ) {
-    final isDark = colorScheme.brightness == Brightness.dark;
-
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: () {},
-        child: Container(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.7)
-              : Colors.black.withValues(alpha: 0.5),
-          child: SafeArea(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '滑动卡片调整位置',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                ScratchCardWidget(
-                  scratchKey: _scratchKey,
-                  ticket: scratchProvider.currentTicket,
-                  isScratching: scratchProvider.state.isScratching,
-                  isRevealed: scratchProvider.state.isRevealed,
-                  scratchPoints: _scratchPoints,
-                  onPanStart: _handleScratchStart,
-                  onPanUpdate: _handleScratch,
-                  onPanEnd: _handleScratchEnd,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    TextButton.icon(
-                      onPressed: _exitScratching,
-                      icon: const Icon(
-                        Icons.exit_to_app,
-                        color: Colors.white70,
-                      ),
-                      label: const Text(
-                        '退出',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    TextButton.icon(
-                      onPressed: _quickReveal,
-                      icon: const Icon(Icons.visibility, color: Colors.white70),
-                      label: const Text(
-                        '一键揭晓',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMainButton(
     PointsProvider pointsProvider,
     ScratchProvider scratchProvider,
-    ColorScheme colorScheme,
   ) {
     final canAfford = scratchProvider.canAfford(pointsProvider.currentPoints);
     final isProcessing = scratchProvider.isProcessing;
@@ -543,50 +310,20 @@ class _ScratchCardPageState extends State<ScratchCardPage>
       buttonText = '购买彩票';
     }
 
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: (canAfford && !isProcessing && !hasTicket && !isRevealed)
-            ? () async {
-                final success = await scratchProvider.buyTicket(
-                  pointsProvider.currentPoints,
-                );
-                if (success) {
-                  // 扣分已在购买事务内完成，这里只需刷新积分显示
-                  await pointsProvider.reload();
-                  _startScratching();
-                }
-              }
-            : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-          disabledBackgroundColor: colorScheme.surfaceContainerHighest,
-          disabledForegroundColor: colorScheme.onSurface.withValues(
-            alpha: 0.38,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-        ),
-        child: isProcessing
-            ? SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.onPrimary,
-                ),
-              )
-            : Text(
-                buttonText,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-      ),
+    return ScratchMainButtonWidget(
+      enabled: canAfford && !isProcessing && !hasTicket && !isRevealed,
+      isProcessing: isProcessing,
+      buttonText: buttonText,
+      onPressed: () async {
+        final success = await scratchProvider.buyTicket(
+          pointsProvider.currentPoints,
+        );
+        if (success) {
+          // 扣分已在购买事务内完成，这里只需刷新积分显示
+          await pointsProvider.reload();
+          startScratching();
+        }
+      },
     );
   }
 }
