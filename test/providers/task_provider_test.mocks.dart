@@ -146,6 +146,20 @@ class MockTaskRepository extends _i1.Mock implements _i4.TaskRepository {
             ),
           )
           as _i5.Future<List<_i2.RecycledTask>>);
+
+  @override
+  _i5.Future<List<_i2.Task>> getTasksByDateRange(
+    DateTime? start,
+    DateTime? end,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getTasksByDateRange, [start, end]),
+            returnValue: _i5.Future<List<_i2.Task>>.value(<_i2.Task>[]),
+            returnValueForMissingStub: _i5.Future<List<_i2.Task>>.value(
+              <_i2.Task>[],
+            ),
+          )
+          as _i5.Future<List<_i2.Task>>);
 }
 
 /// A class which mocks [PointsProvider].
@@ -271,6 +285,27 @@ class MockPointsProvider extends _i1.Mock implements _i6.PointsProvider {
   _i5.Future<void> refreshRecords() =>
       (super.noSuchMethod(
             Invocation.method(#refreshRecords, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.PointsRecord?> getLatestRecord(
+    int? relatedId,
+    List<String>? types,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getLatestRecord, [relatedId, types]),
+            returnValue: _i5.Future<_i3.PointsRecord?>.value(),
+            returnValueForMissingStub: _i5.Future<_i3.PointsRecord?>.value(),
+          )
+          as _i5.Future<_i3.PointsRecord?>);
+
+  @override
+  _i5.Future<void> reload() =>
+      (super.noSuchMethod(
+            Invocation.method(#reload, []),
             returnValue: _i5.Future<void>.value(),
             returnValueForMissingStub: _i5.Future<void>.value(),
           )

@@ -26,6 +26,14 @@ class ShopRepository {
     return await _dbService.addPurchasedItem(item);
   }
 
+  /// 原子兑换商品。
+  ///
+  /// 扣积分、写积分记录、写入已购商品在同一事务内完成，避免「扣了分却没拿到商品」。
+  /// 返回 false 表示积分不足，未做任何写入。
+  Future<bool> purchaseItem(ShopItem item) async {
+    return await _dbService.purchaseShopItem(item: item, price: item.price);
+  }
+
   Future<List<PurchasedItem>> getAllPurchasedItems() async {
     return await _dbService.getAllPurchasedItems();
   }

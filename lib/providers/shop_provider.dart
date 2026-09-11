@@ -130,30 +130,25 @@ class ShopProvider extends ChangeNotifier {
     await _loadShopItems();
   }
 
+  /// 兑换商品。
+  ///
+  /// 扣积分、写积分记录与写入已购商品由数据库在同一事务内完成，
+  /// 因此这里不再分开调用「扣分」和「入库」，避免中途失败产生不一致。
   Future<String?> purchaseItem(ShopItem item) async {
-    if (_pointsProvider.currentPoints < item.price) {
-      return '积分不足，无法兑换';
-    }
     if (item.id == null) {
       return '商品信息错误';
     }
+    if (_pointsProvider.currentPoints < item.price) {
+      return '积分不足，无法兑换';
+    }
 
-    await _pointsProvider.deductPointsWithRecord(
-      points: item.price,
-      type: 'shop_purchase',
-      description: '购买商品: ${item.name}',
-      relatedId: item.id,
-    );
+    final success = await _repository.purchaseItem(item);
+    if (!success) {
+      return '积分不足，无法兑换';
+    }
 
-    final purchasedItem = PurchasedItem(
-      shopItemId: item.id!,
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      iconName: item.iconName,
-      colorValue: item.colorValue,
-    );
-    await _repository.addPurchasedItem(purchasedItem);
+    // 积分由数据库事务直接改动，这里同步刷新 Provider 状态
+    await _pointsProvider.reload();
     await _loadPurchasedItems();
 
     await _statisticAdapter.reportExchange(item.id!, item.name, item.price);

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../core/services/database/database_service.dart';
+import '../core/utils/app_logger.dart';
 import '../modules/statistics/repositories/statistics_repository.dart';
 import '../modules/statistics/models/statistics_model.dart';
 
@@ -41,7 +42,11 @@ class StatisticsProvider extends ChangeNotifier {
         earnedPoints: earnedPoints,
         spentPoints: spentPoints,
       );
-    } catch (_) {}
+    } catch (e, st) {
+      // 加载失败时 _statistics 保持原值（首次为 null），页面会显示为空。
+      // 这里必须留下日志，否则「统计页空白」会被误判成没有数据而不是查询失败。
+      AppLogger.warn('StatisticsProvider', '加载统计数据失败', e, st);
+    }
 
     _isLoading = false;
     notifyListeners();

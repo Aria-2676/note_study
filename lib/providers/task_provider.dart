@@ -7,7 +7,9 @@ import '../modules/tasks/repositories/task_repository.dart';
 import '../modules/tasks/services/task_scheduler_service.dart';
 import '../core/services/database/database_service.dart';
 import '../core/services/widget_service.dart';
+import '../core/utils/app_logger.dart';
 import '../core/utils/task_sort_utils.dart';
+import '../modules/points/models/points_model.dart';
 import 'points_provider.dart';
 
 enum TaskSortOption {
@@ -95,10 +97,16 @@ class TaskProvider extends ChangeNotifier {
   }
 
   /// 获取指定月份的任务列表（按月懒加载，最多缓存 3 个月）
+  ///
+  /// 缓存采用 LRU 淘汰：命中时把该月移到队尾，淘汰时移除队首（最近最少使用的月份）。
+  /// 相比 FIFO，频繁访问的月份不会因为「插入得早」被误淘汰。
   Future<List<Task>> getTasksForMonth(DateTime month) async {
-    final key = '${month.year}-${month.month}';
-    if (_tasksByMonthCache.containsKey(key)) {
-      return _tasksByMonthCache[key]!;
+    final key = _monthCacheKey(month);
+    final cached = _tasksByMonthCache.remove(key);
+    if (cached != null) {
+      // Dart 的 Map 保持插入顺序：先移除再插回，即把该 key 置为「最近使用」。
+      _tasksByMonthCache[key] = cached;
+      return cached;
     }
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 1);
@@ -110,10 +118,11 @@ class TaskProvider extends ChangeNotifier {
     return tasks;
   }
 
+  String _monthCacheKey(DateTime date) => '${date.year}-${date.month}';
+
   /// 使指定月份缓存失效（数据变更后调用）
   void _invalidateMonthCache(DateTime date) {
-    final key = '${date.year}-${date.month}';
-    _tasksByMonthCache.remove(key);
+    _tasksByMonthCache.remove(_monthCacheKey(date));
   }
 
   Future<void> initialize() async {
@@ -166,22 +175,76 @@ class TaskProvider extends ChangeNotifier {
     return !await _pointsProvider.hasRecordForTypeAndRelatedId(type, task.id!);
   }
 
+  /// 「完成 / 取消完成」结算涉及的积分流水类型
+  static const List<String> _taskSettlementTypes = [
+    'task_complete',
+    'task_uncomplete',
+  ];
+
+  /// 取任务最近一条结算流水（按写入顺序，最后一条即当前结算状态）。
+  Future<PointsRecord?> _latestTaskSettlement(int taskId) {
+    return _pointsProvider.getLatestRecord(taskId, _taskSettlementTypes);
+  }
+
+  /// 结算「完成任务」的积分。
+  ///
+  /// 仅当任务当前处于「未加分」状态时才加分：取消完成会写入一条冲销流水，
+  /// 因此最后一条流水是扣分记录时，再次完成可以重新加分（状态可逆，
+  /// 不会出现「取消过一次后该任务永久不再给分」）。
+  Future<void> _settleTaskCompleted(Task task, String description) async {
+    final int? taskId = task.id;
+    if (taskId == null || task.rewardPoints <= 0) return;
+
+    final latest = await _latestTaskSettlement(taskId);
+    if (latest?.type == 'task_complete') return;
+
+    await _pointsProvider.addPointsWithRecord(
+      points: task.rewardPoints,
+      type: 'task_complete',
+      description: description,
+      relatedId: taskId,
+    );
+  }
+
+  /// 冲销「完成任务」的积分。
+  ///
+  /// 退还当初实际加过的分数（取加分流水的 points，而非任务当前的 rewardPoints），
+  /// 即使任务在完成期间被改过奖励值，加减依然对称。
+  Future<void> _settleTaskUncompleted(Task task, String description) async {
+    final int? taskId = task.id;
+    if (taskId == null) return;
+
+    final latest = await _latestTaskSettlement(taskId);
+    if (latest == null || latest.type != 'task_complete') return;
+
+    await _pointsProvider.deductPointsWithRecord(
+      points: latest.points,
+      type: 'task_uncomplete',
+      description: description,
+      relatedId: taskId,
+    );
+  }
+
   Future<void> _checkOverdueTasks() async {
     final overdueTasks = await _taskRepository.getOverdueTasks(DateTime.now());
-    await _taskSchedulerService.checkOverdueTasks();
     for (final task in overdueTasks) {
-      if (!task.isOK && task.rewardPoints > 0 && !task.isDeducted) {
-        final deductPoints = (task.rewardPoints / 2).floor();
-        if (deductPoints > 0 &&
-            await _shouldHandlePoints(task, 'overdue_deduct')) {
-          await _pointsProvider.deductPointsWithRecord(
-            points: deductPoints,
-            type: 'overdue_deduct',
-            description: '逾期任务扣除: ${task.title}',
-            relatedId: task.id,
-          );
-        }
+      final int? taskId = task.id;
+      if (taskId == null || task.isOK || task.isDeducted) continue;
+      if (task.rewardPoints <= 0) continue;
+
+      final int deductPoints = (task.rewardPoints / 2).floor();
+      if (deductPoints > 0 &&
+          await _shouldHandlePoints(task, 'overdue_deduct')) {
+        await _pointsProvider.deductPointsWithRecord(
+          points: deductPoints,
+          type: 'overdue_deduct',
+          description: '逾期任务扣除: ${task.title}',
+          relatedId: taskId,
+        );
       }
+      // 扣分成功后再标记「已扣分」。若放在扣分之前，一旦扣分失败，
+      // is_deducted 已置位会导致该任务在后续启动中被永久漏扣。
+      await _taskRepository.markTaskDeducted(taskId);
     }
   }
 
@@ -216,13 +279,8 @@ class TaskProvider extends ChangeNotifier {
     if (task.isOK) return null;
     final result = await _taskRepository.completeTask(task);
     _invalidateMonthCache(task.cplTime);
-    if (result == null && await _shouldHandlePoints(task, 'task_complete')) {
-      await _pointsProvider.addPointsWithRecord(
-        points: task.rewardPoints,
-        type: 'task_complete',
-        description: '完成任务: ${task.title}',
-        relatedId: task.id,
-      );
+    if (result == null) {
+      await _settleTaskCompleted(task, '完成任务: ${task.title}');
     }
     await loadTasksByDate(_selectedDate);
     return result;
@@ -232,20 +290,15 @@ class TaskProvider extends ChangeNotifier {
     if (!task.isOK) return;
     await _taskRepository.uncompleteTask(task);
     _invalidateMonthCache(task.cplTime);
-    if (await _shouldHandlePoints(task, 'task_uncomplete')) {
-      await _pointsProvider.deductPointsWithRecord(
-        points: task.rewardPoints,
-        type: 'task_uncomplete',
-        description: '取消完成: ${task.title}',
-        relatedId: task.id,
-      );
-    }
+    await _settleTaskUncompleted(task, '取消完成: ${task.title}');
     await loadTasksByDate(_selectedDate);
   }
 
   Future<void> deleteTask(int id, {bool deleteAll = false}) async {
     await _taskRepository.deleteTask(id, deleteAll: deleteAll);
-    _invalidateMonthCache(_selectedDate);
+    // 被删任务不一定在「当前选中日期」所在月份（批量删除循环任务时还会跨月），
+    // 因此直接清空月份缓存，避免日历页/统计页仍显示已删除的任务。
+    _tasksByMonthCache.clear();
     // 单次删除会移入回收站，需要刷新回收站列表
     if (!deleteAll) {
       await _loadRecycledTasks();
@@ -288,68 +341,50 @@ class TaskProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 从桌面小组件同步任务勾选状态
+  ///
+  /// 仅同步任务的完成状态，按任务 id 精确匹配（而非列表下标），避免日期切换或
+  /// 列表顺序变化时勾错任务。
+  ///
+  /// 积分始终以数据库为唯一数据源：这里不再使用小组件缓存的积分覆盖本地积分，
+  /// 否则刮刮乐/番茄钟/商城兑换等不经过小组件的积分变动会在应用回到前台时被回滚。
   Future<void> syncFromWidget() async {
     try {
       final widgetData = await WidgetService.readWidgetData();
       if (widgetData == null) return;
 
       final List<dynamic> widgetTasks = widgetData['tasks'] ?? [];
-      final int widgetPoints = widgetData['points'] ?? 0;
       bool hasChanges = false;
 
-      for (int i = 0; i < widgetTasks.length && i < _tasks.length; i++) {
-        final widgetTask = widgetTasks[i];
-        final localTask = _tasks[i];
-        final bool widgetIsOK = widgetTask['isOK'] ?? false;
+      for (final dynamic rawTask in widgetTasks) {
+        if (rawTask is! Map) continue;
+        final int? widgetTaskId = int.tryParse('${rawTask['id']}');
+        if (widgetTaskId == null) continue;
 
+        final localTask = getTaskById(widgetTaskId);
+        if (localTask == null) continue;
+
+        final bool widgetIsOK = rawTask['isOK'] == true;
         if (widgetIsOK != localTask.isOK) {
           await _syncTaskCompletion(localTask, widgetIsOK);
           hasChanges = true;
         }
       }
 
-      if (widgetPoints != _pointsProvider.currentPoints) {
-        await _pointsProvider.updatePoints(widgetPoints);
-        hasChanges = true;
-      }
-
       if (hasChanges) await loadTasksByDate(_selectedDate);
-    } catch (_) {}
+    } catch (e, st) {
+      // 小组件同步失败不应中断前台交互，但必须可见：否则勾选无响应时无从排查。
+      AppLogger.warn('TaskProvider', '从桌面小组件同步任务失败', e, st);
+    }
   }
 
   Future<void> _syncTaskCompletion(Task task, bool isCompleted) async {
     if (isCompleted && !task.isOK) {
       await _taskRepository.completeTask(task);
-      if (task.rewardPoints > 0 && task.id != null) {
-        final hasRecord = await _pointsProvider.hasRecordForTypeAndRelatedId(
-          'task_complete',
-          task.id!,
-        );
-        if (!hasRecord) {
-          await _pointsProvider.addPointsWithRecord(
-            points: task.rewardPoints,
-            type: 'task_complete',
-            description: '完成任务(小组件): ${task.title}',
-            relatedId: task.id,
-          );
-        }
-      }
+      await _settleTaskCompleted(task, '完成任务(小组件): ${task.title}');
     } else if (!isCompleted && task.isOK) {
       await _taskRepository.uncompleteTask(task);
-      if (task.rewardPoints > 0 && task.id != null) {
-        final hasRecord = await _pointsProvider.hasRecordForTypeAndRelatedId(
-          'task_uncomplete',
-          task.id!,
-        );
-        if (!hasRecord) {
-          await _pointsProvider.deductPointsWithRecord(
-            points: task.rewardPoints,
-            type: 'task_uncomplete',
-            description: '取消完成(小组件): ${task.title}',
-            relatedId: task.id,
-          );
-        }
-      }
+      await _settleTaskUncompleted(task, '取消完成(小组件): ${task.title}');
     }
   }
 
@@ -363,10 +398,24 @@ class TaskProvider extends ChangeNotifier {
     });
   }
 
+  /// 小组件要展示的任务列表。
+  ///
+  /// 始终取「真实今天」的任务，与应用内选中的日期无关：应用内切换日期只改变
+  /// 前台列表，不应把小组件也一起切走（否则小组件日期标签是今天、内容却是别的一天）。
+  /// 若当前选中的正好是今天，则直接复用已加载的列表，避免多余查库。
+  @visibleForTesting
+  Future<List<Task>> widgetTasksForToday() async {
+    final today = DateTime.now();
+    if (_sameDay(today, _selectedDate)) return _tasks;
+    return await _taskRepository.getTasksForDate(today);
+  }
+
   // 实际执行小组件更新的方法
   Future<void> _performWidgetUpdate() async {
     try {
-      final tasks = _tasks
+      final todayTasks = await widgetTasksForToday();
+
+      final tasks = todayTasks
           .take(5)
           .map(
             (task) => {
@@ -379,8 +428,8 @@ class TaskProvider extends ChangeNotifier {
           )
           .toList();
 
-      final completedCount = _tasks.where((t) => t.isOK).length;
-      final totalCount = _tasks.length;
+      final completedCount = todayTasks.where((t) => t.isOK).length;
+      final totalCount = todayTasks.length;
       final currentDate = DateTime.now();
       final dateStr =
           '${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}';
@@ -400,8 +449,9 @@ class TaskProvider extends ChangeNotifier {
         name: 'TaskWidget',
         androidName: 'TaskWidgetProvider',
       );
-    } catch (e) {
-      // Widget update failed, ignore
+    } catch (e, st) {
+      // 小组件更新失败不影响前台功能，但必须可见：否则小组件会静默停在旧数据上。
+      AppLogger.warn('TaskProvider', '更新桌面小组件失败', e, st);
     }
   }
 
@@ -564,8 +614,10 @@ class TaskProvider extends ChangeNotifier {
   }
 
   void selectAllTasks() {
-    _selectedTaskIds.clear();
-    _selectedTaskIds.addAll(_tasks.map((t) => t.id!));
+    _selectedTaskIds
+      ..clear()
+      // 任务 id 可空，未落库的任务不能被选中；强解包会抛 UnexpectedNullError。
+      ..addAll(_tasks.map((t) => t.id).whereType<int>());
     notifyListeners();
   }
 
@@ -587,16 +639,15 @@ class TaskProvider extends ChangeNotifier {
   );
 
   Future<String?> batchDeleteTasks() async {
-    try {
-      final count = _selectedTaskIds.length;
-      for (final taskId in _selectedTaskIds.toList()) {
+    return _runBatch(
+      '删除',
+      (taskId) async {
+        final task = _taskByIdInList(taskId);
+        if (task == null) return false;
         await deleteTask(taskId);
-      }
-      _clearBatchSelection();
-      return '成功删除 $count 个任务';
-    } catch (e) {
-      return '批量删除失败: $e';
-    }
+        return true;
+      },
+    );
   }
 
   Future<String?> batchUpdatePriority(String priority) async =>
@@ -606,58 +657,81 @@ class TaskProvider extends ChangeNotifier {
       _executeBatchUpdate((task) => task.copyWith(cplTime: date), '日期');
 
   Future<String?> batchUpdateTags(List<int> tagIds, dynamic tagProvider) async {
-    try {
-      final count = _selectedTaskIds.length;
-      for (final taskId in _selectedTaskIds.toList()) {
+    return _runBatch(
+      '更新标签',
+      (taskId) async {
         await tagProvider.setTagsForTask(taskId, tagIds);
-      }
-      _clearBatchSelection();
-      return '成功更新 $count 个任务标签';
-    } catch (e) {
-      return '批量更新标签失败: $e';
+        return true;
+      },
+    );
+  }
+
+  /// 在当前已加载的任务列表中按 id 查任务。
+  ///
+  /// 不用 `firstWhere`：选中项可能已被删除/移出当前列表，`firstWhere` 会抛
+  /// StateError 直接中断整批操作。这里返回 null 由调用方按「跳过」处理。
+  Task? _taskByIdInList(int id) {
+    for (final task in _tasks) {
+      if (task.id == id) return task;
     }
+    return null;
+  }
+
+  /// 逐项执行批量操作，单项失败不影响其余项。
+  ///
+  /// `action` 返回 false 表示该项被跳过（不满足前置条件/已不在列表中）。
+  /// 无论中途是否出错，都会清空选择并退出批量模式，避免 UI 停留在批量态、
+  /// 而选择集指向已被修改的任务；同时汇报准确的「成功/失败」数量，
+  /// 而不是把一次失败渲染成整体失败（部分任务其实已经改好了）。
+  Future<String?> _runBatch(
+    String actionName,
+    Future<bool> Function(int taskId) action,
+  ) async {
+    int success = 0;
+    int failed = 0;
+    try {
+      for (final taskId in _selectedTaskIds.toList()) {
+        try {
+          if (await action(taskId)) success++;
+        } catch (e, st) {
+          failed++;
+          AppLogger.warn('TaskProvider', '批量$actionName失败 (taskId=$taskId)', e, st);
+        }
+      }
+    } finally {
+      _clearBatchSelection();
+      // 批量操作完成后只更新一次小组件
+      _debouncedUpdateWidget();
+    }
+    return _batchResultMessage(actionName, success, failed);
   }
 
   Future<String?> _executeBatch(
     bool Function(Task) condition,
     Future<void> Function(Task) action,
     String actionName,
-  ) async {
-    try {
-      int count = 0;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        if (condition(task)) {
-          await action(task);
-          count++;
-        }
-      }
-      _clearBatchSelection();
-      // 批量操作完成后只更新一次小组件
-      _debouncedUpdateWidget();
-      return count > 0 ? '成功$actionName $count 个任务' : null;
-    } catch (e) {
-      return '批量$actionName失败: $e';
-    }
-  }
+  ) => _runBatch(actionName, (taskId) async {
+    final task = _taskByIdInList(taskId);
+    if (task == null || !condition(task)) return false;
+    await action(task);
+    return true;
+  });
 
   Future<String?> _executeBatchUpdate(
     Task Function(Task) updateFn,
     String updateName,
-  ) async {
-    try {
-      final count = _selectedTaskIds.length;
-      for (final taskId in _selectedTaskIds.toList()) {
-        final task = _tasks.firstWhere((t) => t.id == taskId);
-        await updateTask(updateFn(task));
-      }
-      _clearBatchSelection();
-      // 批量操作完成后只更新一次小组件
-      _debouncedUpdateWidget();
-      return '成功更新 $count 个任务$updateName';
-    } catch (e) {
-      return '批量更新$updateName失败: $e';
-    }
+  ) => _runBatch('更新$updateName', (taskId) async {
+    final task = _taskByIdInList(taskId);
+    if (task == null) return false;
+    await updateTask(updateFn(task));
+    return true;
+  });
+
+  String? _batchResultMessage(String actionName, int success, int failed) {
+    if (success == 0 && failed == 0) return null;
+    final buffer = StringBuffer('成功$actionName $success 个任务');
+    if (failed > 0) buffer.write('，$failed 个失败');
+    return buffer.toString();
   }
 
   void _clearBatchSelection() {

@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../utils/app_logger.dart';
 
 mixin DatabaseBackupMixin {
   static const String _backupPathKey = 'backup_storage_path';
@@ -210,7 +211,11 @@ mixin DatabaseBackupMixin {
           'displayName': displayName,
         });
       }
-    } catch (_) {}
+    } catch (e, st) {
+      // 目录不存在/无权限/遍历失败都会走到这里。若不记录，界面只会显示
+      // 「没有备份」，用户与开发者都无法区分是真没有还是读取失败。
+      AppLogger.warn('Backup', '扫描备份目录失败 ($locationName)', e, st);
+    }
 
     return backups;
   }

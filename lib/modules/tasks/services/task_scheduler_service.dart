@@ -123,14 +123,4 @@ class TaskSchedulerService {
     }
     await Future.wait(futures);
   }
-
-  /// 检查逾期任务并标记扣分状态
-  Future<void> checkOverdueTasks() async {
-    final overdueTasks = await _repository.getOverdueTasks(DateTime.now());
-    for (final task in overdueTasks) {
-      if (task.rewardPoints > 0 && !task.isDeducted) {
-        await _repository.markTaskDeducted(task.id!);
-      }
-    }
-  }
 }

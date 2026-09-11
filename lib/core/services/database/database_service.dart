@@ -5,6 +5,7 @@ import 'database_gateway.dart';
 import 'database_task_mixin.dart';
 import 'database_shop_mixin.dart';
 import 'database_points_mixin.dart';
+import 'database_purchase_mixin.dart';
 import 'database_tag_mixin.dart';
 import 'database_pomodoro_mixin.dart';
 import 'database_scratch_mixin.dart';
@@ -16,6 +17,7 @@ class DatabaseService
         DatabaseTaskMixin,
         DatabaseShopMixin,
         DatabasePointsMixin,
+        DatabasePurchaseMixin,
         DatabaseTagMixin,
         DatabasePomodoroMixin,
         DatabaseScratchMixin,
