@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>扫雷</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#607d8b; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .stats { display:flex; gap:8px; }
+  .stat { background:var(--panel); border-radius:8px; padding:6px 12px; text-align:center; min-width:62px; }
+  .stat span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .stat strong { display:block; font-size:clamp(15px,4.2vw,20px); }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  .grid {
+    width:100%; aspect-ratio:1/1; display:grid;
+    grid-template-columns:repeat(9,1fr); grid-template-rows:repeat(9,1fr);
+    gap:3px; background:#0b1220; padding:5px; border-radius:12px;
+    touch-action:manipulation;
+  }
+  .cell {
+    border:0; padding:0; border-radius:5px; background:#334155; color:var(--text);
+    font-size:clamp(12px,3.6vw,18px); font-weight:700; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cell:active { background:#475569; }
+  .cell.revealed { background:#1e293b; }
+  .cell.flagged { background:#b45309; }
+  .cell.mine { background:#7f1d1d; }
+  .cell.n1 { color:#60a5fa; } .cell.n2 { color:#34d399; } .cell.n3 { color:#f87171; }
+  .cell.n4 { color:#a78bfa; } .cell.n5 { color:#fbbf24; } .cell.n6 { color:#22d3ee; }
+  .cell.n7 { color:#e5e7eb; } .cell.n8 { color:#9ca3af; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.85);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card-box { text-align:center; padding:20px; }
+  .card-box h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card-box p { margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.7; }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#fff;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  button.toggle { flex:0 0 96px; background:#0e7490; }
+  button.toggle.flagging { background:#b45309; }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">扫雷</div>
+    <div class="stats">
+      <div class="stat"><span>剩余雷</span><strong id="mines">10</strong></div>
+      <div class="stat"><span>用时</span><strong id="time">0s</strong></div>
+      <div class="stat"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="stage">
+    <div id="grid" class="grid"></div>
+    <div id="overlay" class="overlay hidden">
+      <div class="card-box">
+        <h2 id="ov-title">排雷成功！</h2>
+        <p id="ov-desc"></p>
+        <button class="primary" id="ov-action">再来一局</button>
+      </div>
+    </div>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="toggle" id="mode">挖开模式</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">长按可插旗；也可切换旗标模式</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SIZE = 9;
+  var MINES = 10;
+  var LONG_PRESS_MS = 420;
+  var BASE_SCORE = 1000;
+  var SCORE_PER_SECOND = 4;
+
+  var gridEl = document.getElementById('grid');
+  var minesEl = document.getElementById('mines');
+  var timeEl = document.getElementById('time');
+  var bestEl = document.getElementById('best');
+  var modeEl = document.getElementById('mode');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var cells = [];        // { mine, open, flagged, count, el }
+  var started = false;
+  var finished = false;
+  var flagMode = false;
+  var flags = 0;
+  var revealedCount = 0;
+  var seconds = 0;
+  var timer = null;
+  var best = 0;
+  var lastReported = -1;
+  var pressTimer = null;
+  var longPressed = false;
+
+  /** 与原生容器通信；容器不存在时静默忽略。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateStats() {
+    minesEl.textContent = String(MINES - flags);
+    timeEl.textContent = seconds + 's';
+    bestEl.textContent = String(best);
+  }
+
+  function startTimer() {
+    stopTimer();
+    timer = setInterval(function () {
+      if (finished) return;
+      seconds++;
+      updateStats();
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  function newGame() {
+    stopTimer();
+    cells = [];
+    started = false;
+    finished = false;
+    flags = 0;
+    revealedCount = 0;
+    seconds = 0;
+    lastReported = -1;
+    hideOverlay();
+    render();
+    updateStats();
+  }
+
+  function render() {
+    gridEl.innerHTML = '';
+    for (var i = 0; i < SIZE * SIZE; i++) {
+      var btn = document.createElement('button');
+      btn.className = 'cell';
+      btn.setAttribute('data-index', String(i));
+      if (cells[i]) paint(cells[i], btn);
+      gridEl.appendChild(btn);
+    }
+  }
+
+  function paint(cell, el) {
+    el.className = 'cell';
+    el.textContent = '';
+    if (cell.flagged && !cell.open) {
+      el.classList.add('flagged');
+      el.textContent = '🚩';
+      return;
+    }
+    if (!cell.open) return;
+    el.classList.add('revealed');
+    if (cell.mine) {
+      el.classList.add('mine');
+      el.textContent = '💣';
+      return;
+    }
+    if (cell.count > 0) {
+      el.classList.add('n' + cell.count);
+      el.textContent = String(cell.count);
+    }
+  }
+
+  function indexFromEvent(target) {
+    while (target && target !== gridEl && !target.getAttribute('data-index')) {
+      target = target.parentNode;
+    }
+    if (!target || target === gridEl) return -1;
+    return parseInt(target.getAttribute('data-index'), 10);
+  }
+
+  function neighbors(index) {
+    var r = Math.floor(index / SIZE);
+    var c = index % SIZE;
+    var out = [];
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        var nr = r + dr, nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) continue;
+        out.push(nr * SIZE + nc);
+      }
+    }
+    return out;
+  }
+
+  /** 首次点击后再布雷，保证第一下必安全。 */
+  function placeMines(safeIndex) {
+    var forbidden = {};
+    forbidden[safeIndex] = true;
+    var around = neighbors(safeIndex);
+    for (var i = 0; i < around.length; i++) forbidden[around[i]] = true;
+
+    var candidates = [];
+    for (var k = 0; k < SIZE * SIZE; k++) if (!forbidden[k]) candidates.push(k);
+    for (var s = candidates.length - 1; s > 0; s--) {
+      var j = Math.floor(Math.random() * (s + 1));
+      var t = candidates[s]; candidates[s] = candidates[j]; candidates[j] = t;
+    }
+
+    for (var m = 0; m < SIZE * SIZE; m++) {
+      cells[m] = { mine: false, open: false, flagged: false, count: 0 };
+    }
+    for (var n = 0; n < MINES && n < candidates.length; n++) {
+      cells[candidates[n]].mine = true;
+    }
+    for (var idx = 0; idx < cells.length; idx++) {
+      if (cells[idx].mine) continue;
+      var nb = neighbors(idx);
+      var count = 0;
+      for (var x = 0; x < nb.length; x++) if (cells[nb[x]].mine) count++;
+      cells[idx].count = count;
+    }
+  }
+
+  function cellEl(index) {
+    return gridEl.querySelector('[data-index="' + index + '"]');
+  }
+
+  function reveal(index) {
+    var cell = cells[index];
+    if (!cell || cell.open || cell.flagged) return;
+    cell.open = true;
+    revealedCount++;
+    paint(cell, cellEl(index));
+
+    if (cell.mine) { lose(); return; }
+
+    if (cell.count === 0) {
+      var nb = neighbors(index);
+      for (var i = 0; i < nb.length; i++) reveal(nb[i]);
+    }
+  }
+
+  function toggleFlag(index) {
+    var cell = cells[index];
+    if (!cell || cell.open || finished) return;
+    cell.flagged = !cell.flagged;
+    flags += cell.flagged ? 1 : -1;
+    paint(cell, cellEl(index));
+    updateStats();
+  }
+
+  function handleOpen(index) {
+    if (finished || index < 0) return;
+    if (!started) {
+      started = true;
+      placeMines(index);
+      startTimer();
+    }
+    if (flagMode) { toggleFlag(index); return; }
+    reveal(index);
+    if (!finished) checkWin();
+  }
+
+  function checkWin() {
+    if (revealedCount === SIZE * SIZE - MINES) win();
+  }
+
+  function win() {
+    finished = true;
+    stopTimer();
+    var score = Math.max(100, BASE_SCORE - seconds * SCORE_PER_SECOND);
+    if (score > best) { best = score; updateStats(); }
+    reportScore(score);
+    showOverlay('排雷成功！', '用时 ' + seconds + 's<br>本局得分 ' + score, '再来一局');
+  }
+
+  function lose() {
+    finished = true;
+    stopTimer();
+    // 亮出所有雷
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].mine) { cells[i].open = true; paint(cells[i], cellEl(i)); }
+    }
+    showOverlay('踩到雷了', '用时 ' + seconds + 's<br>再试一次吧', '再来一局');
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.innerHTML = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlayEl.classList.add('hidden');
+  }
+
+  function setFlagMode(on) {
+    flagMode = on;
+    modeEl.textContent = on ? '旗标模式' : '挖开模式';
+    if (on) modeEl.classList.add('flagging'); else modeEl.classList.remove('flagging');
+  }
+
+  gridEl.addEventListener('click', function (event) {
+    if (longPressed) { longPressed = false; return; }
+    handleOpen(indexFromEvent(event.target));
+  });
+
+  gridEl.addEventListener('contextmenu', function (event) {
+    event.preventDefault();
+    var index = indexFromEvent(event.target);
+    if (index < 0 || !started) return;
+    toggleFlag(index);
+  });
+
+  gridEl.addEventListener('touchstart', function (event) {
+    var index = indexFromEvent(event.target);
+    if (index < 0) return;
+    longPressed = false;
+    if (pressTimer) clearTimeout(pressTimer);
+    pressTimer = setTimeout(function () {
+      longPressed = true;
+      if (started) toggleFlag(index);
+      pressTimer = null;
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  gridEl.addEventListener('touchend', function () {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  }, { passive: true });
+
+  gridEl.addEventListener('touchmove', function () {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  }, { passive: true });
+
+  document.getElementById('mode').addEventListener('click', function () {
+    setFlagMode(!flagMode);
+  });
+
+  ovActionEl.addEventListener('click', newGame);
+  document.getElementById('restart').addEventListener('click', newGame);
+  document.getElementById('exit').addEventListener('click', function () {
+    send({ type: 'exit' });
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopTimer();
+    else if (started && !finished) startTimer();
+  });
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateStats(); }
+      }
+    }
+  };
+
+  newGame();
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

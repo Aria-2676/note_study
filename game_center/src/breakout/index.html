@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>打砖块</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#e91e63; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .stats { display:flex; gap:8px; }
+  .stat { background:var(--panel); border-radius:8px; padding:6px 12px; text-align:center; min-width:64px; }
+  .stat span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .stat strong { display:block; font-size:clamp(15px,4.2vw,20px); }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  canvas { width:100%; aspect-ratio:3/4; max-height:100%; border-radius:12px; background:#111827; display:block; touch-action:none; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.85);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card-box { text-align:center; padding:20px; }
+  .card-box h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card-box p { margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.7; }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#fff;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">打砖块</div>
+    <div class="stats">
+      <div class="stat"><span>得分</span><strong id="score">0</strong></div>
+      <div class="stat"><span>生命</span><strong id="lives">3</strong></div>
+      <div class="stat"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div id="overlay" class="overlay hidden">
+      <div class="card-box">
+        <h2 id="ov-title">游戏结束</h2>
+        <p id="ov-desc"></p>
+        <button class="primary" id="ov-action">再来一局</button>
+      </div>
+    </div>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">拖动屏幕左右移动挡板</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var COLS = 6;
+  var ROWS = 5;
+  var START_LIVES = 3;
+  var BRICK_SCORE = 10;
+  var LEVEL_BONUS = 50;
+  var ROW_COLORS = ['#e91e63', '#f06292', '#ba68c8', '#7986cb', '#4dd0e1'];
+
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var livesEl = document.getElementById('lives');
+  var bestEl = document.getElementById('best');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var W = 0, H = 0;
+  var paddle = { w: 0, h: 12, x: 0, y: 0 };
+  var ball = { x: 0, y: 0, vx: 0, vy: 0, r: 7 };
+  var bricks = [];
+  var brickW = 0, brickH = 0, brickTop = 0;
+  var score = 0, lives = START_LIVES, level = 1;
+  var best = 0, lastReported = -1;
+  var running = false;
+  var rafId = null;
+  var lastTime = 0;
+
+  /** 与原生容器通信；容器不存在时静默忽略。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateStats() {
+    scoreEl.textContent = String(score);
+    livesEl.textContent = String(lives);
+    bestEl.textContent = String(best);
+  }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W = rect.width;
+    H = rect.height;
+    layout();
+    draw();
+  }
+
+  function layout() {
+    paddle.w = W * 0.24;
+    paddle.h = Math.max(10, H * 0.022);
+    paddle.y = H - paddle.h - H * 0.06;
+    ball.r = Math.max(6, W * 0.022);
+    brickH = H * 0.035;
+    brickTop = H * 0.08;
+    if (paddle.x + paddle.w > W) paddle.x = W - paddle.w;
+    if (paddle.x < 0) paddle.x = 0;
+    buildBricks();
+  }
+
+  function buildBricks() {
+    brickW = (W - W * 0.04) / COLS;
+    bricks = [];
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        bricks.push({
+          x: W * 0.02 + c * brickW,
+          y: brickTop + r * (brickH + 4),
+          w: brickW - 4,
+          h: brickH,
+          color: ROW_COLORS[r % ROW_COLORS.length],
+          alive: true
+        });
+      }
+    }
+  }
+
+  function speed() {
+    return H * (0.62 + (level - 1) * 0.06);
+  }
+
+  function serveBall() {
+    ball.x = paddle.x + paddle.w / 2;
+    ball.y = paddle.y - ball.r - 1;
+    var s = speed();
+    var angle = (Math.random() * 0.5 - 0.25) + (-Math.PI / 2); // 向上偏一点
+    ball.vx = s * Math.cos(angle);
+    ball.vy = s * Math.sin(angle);
+  }
+
+  function resetPositions() {
+    paddle.x = (W - paddle.w) / 2;
+    serveBall();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, 0, W, H);
+
+    for (var i = 0; i < bricks.length; i++) {
+      var b = bricks[i];
+      if (!b.alive) continue;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+    }
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+  }
+
+  function circleHitsRect(cx, cy, r, rect) {
+    var nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    var ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+    var dx = cx - nx, dy = cy - ny;
+    return dx * dx + dy * dy <= r * r;
+  }
+
+  function step(dt) {
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+
+    // 左右墙
+    if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+    if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+    // 顶
+    if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+
+    // 挡板
+    if (ball.vy > 0 && circleHitsRect(ball.x, ball.y, ball.r,
+        { x: paddle.x, y: paddle.y, w: paddle.w, h: paddle.h })) {
+      ball.y = paddle.y - ball.r;
+      var rel = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+      rel = Math.max(-1, Math.min(1, rel));
+      var s = speed();
+      var angle = rel * (Math.PI / 3);
+      ball.vx = s * Math.sin(angle);
+      ball.vy = -s * Math.cos(angle);
+    }
+
+    // 砖块
+    for (var i = 0; i < bricks.length; i++) {
+      var b = bricks[i];
+      if (!b.alive) continue;
+      if (!circleHitsRect(ball.x, ball.y, ball.r, b)) continue;
+
+      var overlapX = (ball.r + b.w / 2) - Math.abs(ball.x - (b.x + b.w / 2));
+      var overlapY = (ball.r + b.h / 2) - Math.abs(ball.y - (b.y + b.h / 2));
+      if (overlapX < overlapY) ball.vx = -ball.vx;
+      else ball.vy = -ball.vy;
+
+      b.alive = false;
+      score += BRICK_SCORE;
+      if (score > best) { best = score; reportScore(score); }
+      updateStats();
+      break;
+    }
+
+    // 掉落
+    if (ball.y - ball.r > H) {
+      lives--;
+      updateStats();
+      if (lives <= 0) { gameOver(); return; }
+      resetPositions();
+    }
+
+    // 过关
+    var remaining = 0;
+    for (var k = 0; k < bricks.length; k++) if (bricks[k].alive) remaining++;
+    if (remaining === 0) {
+      level++;
+      score += LEVEL_BONUS;
+      if (score > best) { best = score; reportScore(score); }
+      updateStats();
+      buildBricks();
+      resetPositions();
+    }
+  }
+
+  function loop(now) {
+    if (!running) return;
+    var dt = Math.min(0.033, (now - lastTime) / 1000 || 0.016);
+    lastTime = now;
+    step(dt);
+    if (running) draw();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function start() {
+    if (rafId) cancelAnimationFrame(rafId);
+    lastTime = 0;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stop() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  function gameOver() {
+    running = false;
+    stop();
+    reportScore(score);
+    showOverlay('游戏结束', '到达第 ' + level + ' 关 · 得分 ' + score, '再来一局');
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.innerHTML = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlayEl.classList.add('hidden');
+  }
+
+  function restart() {
+    score = 0;
+    lives = START_LIVES;
+    level = 1;
+    lastReported = -1;
+    updateStats();
+    hideOverlay();
+    layout();
+    resetPositions();
+    running = true;
+    start();
+  }
+
+  function movePaddleTo(clientX) {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    var x = (clientX - rect.left) / rect.width * W;
+    paddle.x = Math.max(0, Math.min(W - paddle.w, x - paddle.w / 2));
+    draw();
+  }
+
+  canvas.addEventListener('touchstart', function (event) {
+    if (event.touches.length !== 1) return;
+    event.preventDefault();
+    movePaddleTo(event.touches[0].clientX);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (event) {
+    if (event.touches.length !== 1) return;
+    event.preventDefault();
+    movePaddleTo(event.touches[0].clientX);
+  }, { passive: false });
+
+  canvas.addEventListener('mousemove', function (event) {
+    if (event.buttons === 0 && !event.touches) return;
+    movePaddleTo(event.clientX);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var stepPx = W * 0.08;
+    if (event.key === 'ArrowLeft' || event.key === 'a') {
+      event.preventDefault();
+      paddle.x = Math.max(0, paddle.x - stepPx);
+      draw();
+    } else if (event.key === 'ArrowRight' || event.key === 'd') {
+      event.preventDefault();
+      paddle.x = Math.min(W - paddle.w, paddle.x + stepPx);
+      draw();
+    }
+  });
+
+  ovActionEl.addEventListener('click', restart);
+  document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', function () {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stop();
+    else if (running) start();
+  });
+
+  window.addEventListener('resize', function () {
+    resize();
+    resetPositions();
+  });
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateStats(); }
+      }
+    }
+  };
+
+  restart();
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

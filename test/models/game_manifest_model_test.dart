@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:v5_app/modules/games/models/game_manifest_model.dart';
 import 'package:v5_app/modules/games/models/installed_game_model.dart';
@@ -22,6 +25,90 @@ Map<String, Object?> _validGameJson([Map<String, Object?> overrides = const {}])
 }
 
 void main() {
+  // 校验仓库中的真实清单：条目字段非法会被解析器**静默跳过**，
+  // 表现为「游戏中心里看不到这个游戏」，因此这里逐条断言。
+  group('game_center/manifest.json 完整性', () {
+    late Map<String, dynamic> raw;
+    late GameManifest manifest;
+
+    setUpAll(() {
+      final file = File('game_center/manifest.json');
+      expect(file.existsSync(), isTrue, reason: '仓库中应存在游戏清单');
+      raw = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      manifest = GameManifest.fromJson(raw);
+    });
+
+    test('每个游戏条目都能被解析（没有被静默跳过）', () {
+      final rawGames = (raw['games'] as List).cast<Map<String, dynamic>>();
+      expect(manifest.games, hasLength(rawGames.length));
+      expect(manifest.games, isNotEmpty);
+    });
+
+    test('字段与包信息完整，且包文件真实存在', () {
+      for (final game in manifest.games) {
+        expect(game.id, isNotEmpty);
+        expect(game.name, isNotEmpty);
+        expect(game.cost, greaterThan(0), reason: '${game.id} 缺少正数单价');
+        expect(game.entry, isNotEmpty);
+        expect(
+          game.package.sha256,
+          hasLength(64),
+          reason: '${game.id} 未打包：sha256 未回填',
+        );
+        expect(
+          game.package.sizeBytes,
+          greaterThan(0),
+          reason: '${game.id} 未打包：体积为 0',
+        );
+        expect(
+          File(game.package.path).existsSync(),
+          isTrue,
+          reason: '${game.id} 的包文件不存在',
+        );
+      }
+    });
+
+    test('游戏 id 不重复', () {
+      final ids = manifest.games.map((game) => game.id).toList();
+      expect(ids.toSet(), hasLength(ids.length));
+    });
+
+    test('每个游戏都实现了桥接契约', () {
+      for (final item in (raw['games'] as List).cast<Map<String, dynamic>>()) {
+        final id = item['id'];
+        final source = item['source'] as String;
+        final html = File('$source/index.html').readAsStringSync();
+        final compact = html.replaceAll(RegExp(r'\s+'), ' ');
+
+        expect(
+          compact,
+          contains('GameBridge.postMessage'),
+          reason: '$id 未实现与容器的 postMessage 通道',
+        );
+        expect(
+          compact,
+          contains("type: 'ready'"),
+          reason: '$id 未在启动时发送 ready',
+        );
+        expect(
+          compact,
+          contains('window.__native'),
+          reason: '$id 未实现 __native.onMessage（拿不到最高分）',
+        );
+        expect(
+          compact,
+          contains("type: 'reportScore'"),
+          reason: '$id 未上报分数',
+        );
+        expect(
+          compact,
+          contains("type: 'exit'"),
+          reason: '$id 未实现退出按钮',
+        );
+      }
+    });
+  });
+
   group('GameManifest', () {
     test('should parse a valid manifest', () {
       final manifest = GameManifest.fromJson({

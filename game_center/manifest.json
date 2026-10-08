@@ -16,7 +16,87 @@
                                       "sizeBytes":  4025
                                   },
                       "entry":  "index.html"
+                  },
+                  {
+                      "id":  "snake",
+                      "name":  "贪吃蛇",
+                      "description":  "滑动转向吃食物，撞墙或撞到自己即结束",
+                      "icon":  "sports_esports",
+                      "color":  "#4CAF50",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/snake",
+                      "package":  {
+                                      "path":  "game_center/packages/snake_v1.0.0.zip",
+                                      "sha256":  "4b6692fabb5179c3578db0742c55526ed3e83a8d68c791fb75d90d2d9d6ba3ea",
+                                      "sizeBytes":  4291
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "memory",
+                      "name":  "记忆翻牌",
+                      "description":  "翻出两张相同图案配对，步数越少得分越高",
+                      "icon":  "memory",
+                      "color":  "#009688",
+                      "cost":  10,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/memory",
+                      "package":  {
+                                      "path":  "game_center/packages/memory_v1.0.0.zip",
+                                      "sha256":  "5a06a89fcf3913922985f40264bf89f030862bcbc0bb1181a3429806b35bcd5e",
+                                      "sizeBytes":  3613
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "breakout",
+                      "name":  "打砖块",
+                      "description":  "拖动挡板反弹小球，清空所有砖块过关",
+                      "icon":  "extension",
+                      "color":  "#E91E63",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/breakout",
+                      "package":  {
+                                      "path":  "game_center/packages/breakout_v1.0.0.zip",
+                                      "sha256":  "8070fd9d66a1f5ecc58310649ba23918cc0de0a599992911aa016d728569fddd",
+                                      "sizeBytes":  4227
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "minesweeper",
+                      "name":  "扫雷",
+                      "description":  "根据数字提示找出所有雷，长按可插旗标记",
+                      "icon":  "apps",
+                      "color":  "#607D8B",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/minesweeper",
+                      "package":  {
+                                      "path":  "game_center/packages/minesweeper_v1.0.0.zip",
+                                      "sha256":  "9f670a91942fd25b25a75423efd6dec3804ac77eb782f5747b0f29d1e854544e",
+                                      "sizeBytes":  4342
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "tetris",
+                      "name":  "俄罗斯方块",
+                      "description":  "旋转移动下落的方块，填满整行即可消除",
+                      "icon":  "numbers",
+                      "color":  "#3F51B5",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/tetris",
+                      "package":  {
+                                      "path":  "game_center/packages/tetris_v1.0.0.zip",
+                                      "sha256":  "d671295df4f15144410d8708da2f640204bc2ae7257485d1479b0ecc59be83dc",
+                                      "sizeBytes":  4552
+                                  },
+                      "entry":  "index.html"
                   }
               ],
-    "updatedAt":  "2026-10-08T06:12:42Z"
+    "updatedAt":  "2026-10-08T14:27:47Z"
 }
