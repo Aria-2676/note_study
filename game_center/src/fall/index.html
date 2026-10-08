@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>下一百层</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#22d3ee; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .scores { display:flex; gap:8px; }
+  .score-box { background:var(--panel); border-radius:8px; padding:6px 14px; text-align:center; min-width:72px; }
+  .score-box span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .score-box strong { display:block; font-size:clamp(16px,4.5vw,22px); }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  canvas { width:100%; aspect-ratio:4/3; border-radius:12px; background:#111827; display:block; touch-action:none; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.82);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card { text-align:center; padding:20px; }
+  .card h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card p { margin:0 0 16px; font-size:14px; color:var(--muted); }
+  .pad { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .pad button {
+    height:46px; border:0; border-radius:10px; background:var(--panel);
+    color:var(--accent); font-size:20px; font-weight:700;
+  }
+  .pad button:active { background:#334155; }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#083344;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">下一百层</div>
+    <div class="scores">
+      <div class="score-box"><span>得分</span><strong id="score">0</strong></div>
+      <div class="score-box"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2 id="ov-title">下一百层</h2>
+        <p id="ov-desc">左右移动小球，穿过缝隙一路向下</p>
+        <button class="primary" id="ov-action">开始游戏</button>
+      </div>
+    </div>
+  </div>
+  <div class="pad">
+    <button id="left">◀</button>
+    <button id="right">▶</button>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">拖动屏幕或按住方向键移动 · 别被挤到顶端</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GRAVITY = 1400;
+  var MAX_FALL = 900;
+  var BALL_R = 11;
+  var BALL_SPEED = 420;
+  var BAR_H = 12;
+  var SPACING = 116;
+
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var VW = 360, VH = 270;
+  var bars = [];
+  var ball = { x: 0, y: 0, vy: 0 };
+  var scrolled = 0, elapsed = 0;
+  var score = 0, best = 0, lastReported = -1;
+  var state = 'ready';            // ready | playing | over
+  var paused = false, lastTime = 0, rafId = null;
+  var dragActive = false, dragX = null, keyDir = 0;
+  var reason = '';
+
+  /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常，不影响游戏本身 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateScores() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    if (w <= 0) return;
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function barSpeed() { return 88 + Math.min(250, elapsed * 7); }
+  function gapWidth() { return Math.max(74, 134 - elapsed * 1.1); }
+
+  function makeBar(y, gapCenter) {
+    var gw = gapWidth();
+    var margin = gw / 2 + 10;
+    var gx = typeof gapCenter === 'number'
+      ? gapCenter
+      : margin + Math.random() * (VW - margin * 2);
+    gx = Math.max(margin, Math.min(VW - margin, gx));
+    return { y: y, gapX: gx, gapW: gw, hue: 190 + Math.random() * 140 };
+  }
+
+  function solidAt(bar, x) {
+    return x <= bar.gapX - bar.gapW / 2 || x >= bar.gapX + bar.gapW / 2;
+  }
+
+  function wrapX(x) {
+    if (x < -BALL_R) return VW + BALL_R;
+    if (x > VW + BALL_R) return -BALL_R;
+    return x;
+  }
+
+  function setup() {
+    scrolled = 0;
+    elapsed = 0;
+    score = 0;
+    lastReported = -1;
+    dragX = null;
+    keyDir = 0;
+    reason = '';
+    ball.x = VW / 2;
+    ball.y = VH * 0.35;
+    ball.vy = 0;
+
+    bars = [];
+    var first = makeBar(VH * 0.55, ball.x);   // 首层缝隙正对小球，留出反应时间
+    bars.push(first);
+    for (var i = 1; i < 8; i++) {
+      bars.push(makeBar(first.y + i * SPACING));
+    }
+    updateScores();
+  }
+
+  function moveBall(dt) {
+    if (dragActive && dragX !== null) {
+      var d = dragX - ball.x;
+      if (Math.abs(d) <= 2) ball.x = dragX;
+      else ball.x += (d > 0 ? 1 : -1) * Math.min(Math.abs(d), BALL_SPEED * dt);
+    } else if (keyDir !== 0) {
+      ball.x += keyDir * BALL_SPEED * dt;
+    }
+    ball.x = wrapX(ball.x);
+  }
+
+  function update(dt) {
+    elapsed += dt;
+    var v = barSpeed();
+    var shift = v * dt;
+    scrolled += shift;
+
+    moveBall(dt);
+
+    ball.vy = Math.min(MAX_FALL, ball.vy + GRAVITY * dt);
+    ball.y += ball.vy * dt;
+
+    for (var i = 0; i < bars.length; i++) bars[i].y -= shift;
+
+    // 持续在底部补充新层，保证层间距恒定
+    while (bars.length && bars[bars.length - 1].y < VH + SPACING) {
+      bars.push(makeBar(bars[bars.length - 1].y + SPACING));
+    }
+    // 移除已飞出顶部的层
+    for (var k = bars.length - 1; k >= 0; k--) {
+      if (bars[k].y < -90) bars.splice(k, 1);
+    }
+
+    // 与层碰撞：落在层顶（缝隙处直接穿过）
+    for (var j = 0; j < bars.length; j++) {
+      var bar = bars[j];
+      if (!solidAt(bar, ball.x)) continue;
+      var bottom = ball.y + BALL_R;
+      if (bottom >= bar.y && bottom <= bar.y + BAR_H + 36) {
+        ball.y = bar.y - BALL_R;
+        ball.vy = 0;
+      }
+    }
+
+    if (ball.y - BALL_R <= 0) { gameOver('被挤到顶端了'); return; }
+    if (ball.y > VH + 90) { gameOver('跌出了屏幕'); return; }
+
+    var s = Math.floor(scrolled / 12);
+    if (s > score) {
+      score = s;
+      if (score > best) { best = score; reportScore(score); }
+      updateScores();
+    }
+  }
+
+  function gameOver(text) {
+    state = 'over';
+    reason = text;
+    reportScore(score);
+    showOverlay('游戏结束', text + ' · 得分 ' + score, '再来一局');
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, VW, VH);
+    var bg = ctx.createLinearGradient(0, 0, 0, VH);
+    bg.addColorStop(0, '#0b1220');
+    bg.addColorStop(1, '#111827');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, VW, VH);
+
+    for (var i = 0; i < bars.length; i++) {
+      var bar = bars[i];
+      var left = bar.gapX - bar.gapW / 2;
+      var right = bar.gapX + bar.gapW / 2;
+      ctx.fillStyle = 'hsl(' + bar.hue.toFixed(0) + ',55%,46%)';
+      roundRect(-14, bar.y, left + 14, BAR_H, 6);
+      ctx.fill();
+      roundRect(right, bar.y, VW - right + 14, BAR_H, 6);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      roundRect(-14, bar.y, left + 14, 4, 2);
+      ctx.fill();
+      roundRect(right, bar.y, VW - right + 14, 4, 2);
+      ctx.fill();
+    }
+
+    var bg2 = ctx.createRadialGradient(
+      ball.x - BALL_R * 0.35, ball.y - BALL_R * 0.4, BALL_R * 0.2,
+      ball.x, ball.y, BALL_R
+    );
+    bg2.addColorStop(0, '#a5f3fc');
+    bg2.addColorStop(1, '#0891b2');
+    ctx.save();
+    ctx.shadowColor = 'rgba(34,211,238,0.55)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = bg2;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function frame(now) {
+    if (!paused) {
+      var dt = lastTime ? Math.min(0.05, (now - lastTime) / 1000) : 0;
+      lastTime = now;
+      if (state === 'playing') update(dt);
+      draw();
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    VW = rect.width;
+    VH = rect.height;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(VW * dpr);
+    canvas.height = Math.round(VH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.textContent = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() { overlayEl.classList.add('hidden'); }
+
+  function startGame() {
+    hideOverlay();
+    resize();
+    setup();
+    state = 'playing';
+    lastTime = 0;
+  }
+
+  ovActionEl.addEventListener('click', startGame);
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', function () {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  });
+
+  function localX(clientX) {
+    var rect = canvas.getBoundingClientRect();
+    return clientX - rect.left;
+  }
+
+  canvas.addEventListener('pointerdown', function (event) {
+    event.preventDefault();
+    dragActive = true;
+    dragX = localX(event.clientX);
+  });
+  canvas.addEventListener('pointermove', function (event) {
+    if (!dragActive) return;
+    dragX = localX(event.clientX);
+  });
+  window.addEventListener('pointerup', function () {
+    dragActive = false;
+    dragX = null;
+  });
+  window.addEventListener('pointercancel', function () {
+    dragActive = false;
+    dragX = null;
+  });
+
+  function bindHold(id, dir) {
+    var el = document.getElementById(id);
+    el.addEventListener('pointerdown', function (event) {
+      event.preventDefault();
+      keyDir = dir;
+    });
+    el.addEventListener('pointerup', function () { if (keyDir === dir) keyDir = 0; });
+    el.addEventListener('pointerleave', function () { if (keyDir === dir) keyDir = 0; });
+    el.addEventListener('pointercancel', function () { if (keyDir === dir) keyDir = 0; });
+  }
+  bindHold('left', -1);
+  bindHold('right', 1);
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'ArrowLeft' || event.key === 'a') { event.preventDefault(); keyDir = -1; }
+    else if (event.key === 'ArrowRight' || event.key === 'd') { event.preventDefault(); keyDir = 1; }
+  });
+  document.addEventListener('keyup', function (event) {
+    if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'ArrowRight' || event.key === 'd') {
+      keyDir = 0;
+    }
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    paused = document.hidden;
+    if (!paused) lastTime = 0;
+  });
+  window.addEventListener('resize', resize);
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateScores(); }
+      }
+    }
+  };
+
+  resize();
+  setup();
+  state = 'ready';
+  rafId = requestAnimationFrame(frame);
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

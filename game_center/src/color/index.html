@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>色差选择</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#a78bfa; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .scores { display:flex; gap:8px; }
+  .score-box { background:var(--panel); border-radius:8px; padding:6px 14px; text-align:center; min-width:72px; }
+  .score-box span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .score-box strong { display:block; font-size:clamp(16px,4.5vw,22px); }
+  .track { height:8px; border-radius:5px; background:var(--panel); overflow:hidden; }
+  .track i { display:block; height:100%; width:100%; background:var(--accent); transition:width .08s linear; }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  .board {
+    width:100%; max-width:100%; aspect-ratio:1/1; display:grid; gap:8px;
+    padding:8px; background:#111827; border-radius:12px; touch-action:manipulation;
+  }
+  .tile {
+    border:0; border-radius:10px; padding:0; cursor:pointer;
+    transition:transform .08s ease;
+  }
+  .tile:active { transform:scale(.94); }
+  .tile.wrong { box-shadow:inset 0 0 0 3px #ef4444; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.82);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card { text-align:center; padding:20px; }
+  .card h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card p { margin:0 0 16px; font-size:14px; color:var(--muted); }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#2e1065;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">色差选择</div>
+    <div class="scores">
+      <div class="score-box"><span>得分</span><strong id="score">0</strong></div>
+      <div class="score-box"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="track"><i id="timebar"></i></div>
+  <div class="stage">
+    <div id="board" class="board"></div>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2 id="ov-title">色差选择</h2>
+        <p id="ov-desc">在限时内找出颜色略微不同的一块</p>
+        <button class="primary" id="ov-action">开始游戏</button>
+      </div>
+    </div>
+  </div>
+  <div class="hint" id="hint">第 1 关 · 找出颜色不同的一块</div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var boardEl = document.getElementById('board');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var timebarEl = document.getElementById('timebar');
+  var hintEl = document.getElementById('hint');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var round = 1, score = 0, best = 0, lastReported = -1;
+  var inGame = false, paused = false, rafId = null;
+  var deadline = 0, limitMs = 6000, remainMs = 6000;
+
+  /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常，不影响游戏本身 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateScores() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+  }
+
+  /** 关卡越高，格子越密。 */
+  function gridSize(r) {
+    if (r <= 2) return 2;
+    if (r <= 5) return 3;
+    if (r <= 9) return 4;
+    if (r <= 14) return 5;
+    return 6;
+  }
+
+  /** 关卡越高，色差越小（亮度百分点）。 */
+  function colorDelta(r) {
+    return Math.max(4, 17 - (r - 1) * 0.75);
+  }
+
+  /** 关卡越高，限时越短（秒）。 */
+  function roundTime(r) {
+    return Math.max(2.4, 6 - (r - 1) * 0.22);
+  }
+
+  function buildRound() {
+    var n = gridSize(round);
+    var total = n * n;
+    var oddIndex = Math.floor(Math.random() * total);
+    var hue = Math.floor(Math.random() * 360);
+    var light = 58;
+    var dir = Math.random() < 0.5 ? -1 : 1;
+    var d = colorDelta(round) * dir;
+
+    boardEl.style.gridTemplateColumns = 'repeat(' + n + ', 1fr)';
+    boardEl.innerHTML = '';
+    for (var i = 0; i < total; i++) {
+      var tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'tile';
+      var l = i === oddIndex ? light + d : light;
+      tile.style.background = 'hsl(' + hue + ',68%,' + l.toFixed(2) + '%)';
+      if (i === oddIndex) tile.setAttribute('data-odd', '1');
+      tile.addEventListener('click', onTileClick);
+      boardEl.appendChild(tile);
+    }
+
+    limitMs = roundTime(round) * 1000;
+    remainMs = limitMs;
+    deadline = performance.now() + limitMs;
+    hintEl.textContent = '第 ' + round + ' 关 · 找出颜色不同的一块';
+  }
+
+  function onTileClick(event) {
+    if (!inGame || paused) return;
+    var tile = event.currentTarget;
+    if (tile.getAttribute('data-odd') === '1') {
+      score += 10;
+      if (score > best) { best = score; reportScore(score); }
+      updateScores();
+      round += 1;
+      buildRound();
+    } else {
+      tile.classList.add('wrong');
+      gameOver();
+    }
+  }
+
+  function gameOver() {
+    inGame = false;
+    reportScore(score);
+    timebarEl.style.width = '0%';
+    showOverlay('游戏结束', '闯过 ' + (round - 1) + ' 关 · 得分 ' + score, '再来一局');
+  }
+
+  function tick(now) {
+    if (inGame && !paused) {
+      remainMs = deadline - now;
+      var pct = Math.max(0, Math.min(1, remainMs / limitMs));
+      timebarEl.style.width = (pct * 100).toFixed(1) + '%';
+      timebarEl.style.background = pct > 0.4 ? '#a78bfa' : (pct > 0.18 ? '#facc15' : '#ef4444');
+      if (remainMs <= 0) gameOver();
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.textContent = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() { overlayEl.classList.add('hidden'); }
+
+  function startGame() {
+    hideOverlay();
+    round = 1;
+    score = 0;
+    lastReported = -1;
+    updateScores();
+    timebarEl.style.width = '100%';
+    timebarEl.style.background = '#a78bfa';
+    inGame = true;
+    paused = false;
+    buildRound();
+  }
+
+  ovActionEl.addEventListener('click', startGame);
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', function () {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      paused = true;
+    } else if (inGame) {
+      deadline = performance.now() + Math.max(0, remainMs);
+      paused = false;
+    }
+  });
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateScores(); }
+      }
+    }
+  };
+
+  buildRound();
+  inGame = false;
+  rafId = requestAnimationFrame(tick);
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

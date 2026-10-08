@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>跳一跳</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#38bdf8; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .scores { display:flex; gap:8px; }
+  .score-box { background:var(--panel); border-radius:8px; padding:6px 14px; text-align:center; min-width:72px; }
+  .score-box span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .score-box strong { display:block; font-size:clamp(16px,4.5vw,22px); }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  canvas { width:100%; aspect-ratio:4/3; border-radius:12px; background:#111827; display:block; touch-action:none; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.82);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card { text-align:center; padding:20px; }
+  .card h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card p { margin:0 0 16px; font-size:14px; color:var(--muted); }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#082f49;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">跳一跳</div>
+    <div class="scores">
+      <div class="score-box"><span>得分</span><strong id="score">0</strong></div>
+      <div class="score-box"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2 id="ov-title">跳一跳</h2>
+        <p id="ov-desc">按住屏幕蓄力，松开起跳，落在方块上得分</p>
+        <button class="primary" id="ov-action">开始游戏</button>
+      </div>
+    </div>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">按住蓄力，松开起跳 · 落在方块中央额外加分</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GRAVITY = 1600;
+  var JUMP_VY = -560;
+  var MIN_VX = 80;
+  var MAX_VX = 345;
+  var CHARGE_MS = 900;
+  var PLAT_H = 26;
+
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var VW = 360, VH = 270, GROUND_Y = 228;
+  var platforms = [];
+  var player = { x: 0, y: 0, size: 26, vy: 0, vx: 0, squash: 1 };
+  var fromPlat = null;
+  var camX = 0, camTarget = 0;
+  var state = 'ready';            // ready | idle | charging | flying | over
+  var charge = 0, chargeStart = 0;
+  var score = 0, best = 0, lastReported = -1, jumps = 0;
+  var lastTime = 0, paused = false, rafId = null;
+
+  /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常，不影响游戏本身 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateScores() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function makePlatform(x, width) {
+    return {
+      x: x,
+      w: width || (46 + Math.random() * 40),
+      hue: 188 + Math.random() * 118
+    };
+  }
+
+  function addPlatformAhead() {
+    var last = platforms[platforms.length - 1];
+    var gap = 34 + Math.random() * 76;
+    platforms.push(makePlatform(last.x + last.w + gap));
+  }
+
+  function platformTop() { return GROUND_Y - PLAT_H; }
+
+  function snapPlayerOn(idle) {
+    player.y = platformTop() - player.size;
+    if (idle) { player.vy = 0; player.vx = 0; }
+  }
+
+  function setup() {
+    platforms = [makePlatform(40, 84)];
+    platforms[0].hue = 205;
+    player.size = 26;
+    player.squash = 1;
+    player.x = platforms[0].x + platforms[0].w / 2;
+    snapPlayerOn(true);
+    addPlatformAhead();
+    camX = platforms[0].x - VW * 0.22;
+    camTarget = camX;
+    fromPlat = null;
+    score = 0; lastReported = -1; jumps = 0; charge = 0;
+    updateScores();
+  }
+
+  function currentPlatform() {
+    for (var i = 0; i < platforms.length; i++) {
+      if (player.x >= platforms[i].x && player.x <= platforms[i].x + platforms[i].w) {
+        return platforms[i];
+      }
+    }
+    return null;
+  }
+
+  function startCharge() {
+    if (state !== 'idle') return;
+    state = 'charging';
+    charge = 0;
+    chargeStart = performance.now();
+    fromPlat = currentPlatform();
+  }
+
+  function releaseJump() {
+    if (state !== 'charging') return;
+    var p = Math.max(0, Math.min(1, charge));
+    player.vx = MIN_VX + p * (MAX_VX - MIN_VX);
+    player.vy = JUMP_VY;
+    player.squash = 1;
+    charge = 0;
+    state = 'flying';
+  }
+
+  function land(pf, top) {
+    player.y = top - player.size;
+    player.vy = 0;
+    player.vx = 0;
+    player.squash = 1.18;
+    state = 'idle';
+
+    var sameAsFrom = (pf === fromPlat);
+    if (!sameAsFrom) {
+      jumps += 1;
+      var gain = 10;
+      if (Math.abs(player.x - (pf.x + pf.w / 2)) < pf.w * 0.18) gain += 5;
+      score += gain;
+      if (score > best) { best = score; reportScore(score); }
+      updateScores();
+      addPlatformAhead();
+    }
+    camTarget = pf.x - VW * 0.22;
+    while (platforms.length > 3 && platforms[0].x + platforms[0].w < camX - 160) {
+      platforms.shift();
+    }
+  }
+
+  function gameOver() {
+    state = 'over';
+    player.vx = 0;
+    player.vy = 0;
+    reportScore(score);
+    showOverlay('游戏结束', '起跳 ' + jumps + ' 次 · 得分 ' + score, '再来一局');
+  }
+
+  function update(dt) {
+    if (state === 'charging') {
+      charge = Math.min(1, (performance.now() - chargeStart) / CHARGE_MS);
+      player.squash = 1 - charge * 0.26;
+    } else if (state === 'flying') {
+      var prevBottom = player.y + player.size;
+      player.x += player.vx * dt;
+      player.y += player.vy * dt;
+      player.vy += GRAVITY * dt;
+      var bottom = player.y + player.size;
+      if (player.vy > 0) {
+        var top = platformTop();
+        for (var i = 0; i < platforms.length; i++) {
+          var pf = platforms[i];
+          if (pf === fromPlat) continue;
+          if (prevBottom <= top && bottom >= top &&
+              player.x >= pf.x && player.x <= pf.x + pf.w) {
+            land(pf, top);
+            return;
+          }
+        }
+      }
+      if (player.y > VH + 80) { gameOver(); return; }
+    }
+    camX += (camTarget - camX) * Math.min(1, dt * 9);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, VW, VH);
+    var bg = ctx.createLinearGradient(0, 0, 0, VH);
+    bg.addColorStop(0, '#0b1220');
+    bg.addColorStop(1, '#111827');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, VW, VH);
+
+    ctx.save();
+    ctx.translate(-camX, 0);
+
+    var top = platformTop();
+    for (var i = 0; i < platforms.length; i++) {
+      var pf = platforms[i];
+      ctx.fillStyle = 'hsl(' + pf.hue.toFixed(0) + ',62%,52%)';
+      roundRect(pf.x, top, pf.w, PLAT_H, 7);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      roundRect(pf.x + 3, top + 3, pf.w - 6, 6, 3);
+      ctx.fill();
+    }
+
+    var w = player.size * (2 - player.squash);
+    var h = player.size * player.squash;
+    var bottom = player.y + player.size;
+    var left = player.x - w / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = '#fbbf24';
+    roundRect(left, bottom - h, w, h, 8);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.arc(player.x - 5, bottom - h * 0.62, 1.9, 0, Math.PI * 2);
+    ctx.arc(player.x + 5, bottom - h * 0.62, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    if (state === 'charging') {
+      var barW = VW * 0.6, barX = (VW - barW) / 2, barY = 16;
+      ctx.fillStyle = 'rgba(148,163,184,0.28)';
+      roundRect(barX, barY, barW, 10, 5);
+      ctx.fill();
+      ctx.fillStyle = '#38bdf8';
+      roundRect(barX, barY, Math.max(10, barW * charge), 10, 5);
+      ctx.fill();
+    }
+  }
+
+  function frame(now) {
+    if (!paused) {
+      var dt = lastTime ? Math.min(0.05, (now - lastTime) / 1000) : 0;
+      lastTime = now;
+      if (state !== 'over' && state !== 'ready') update(dt);
+      draw();
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    VW = rect.width;
+    VH = rect.height;
+    GROUND_Y = VH - 42;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(VW * dpr);
+    canvas.height = Math.round(VH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (state === 'idle' || state === 'ready') snapPlayerOn(true);
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.textContent = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() { overlayEl.classList.add('hidden'); }
+
+  function startGame() {
+    hideOverlay();
+    resize();
+    setup();
+    state = 'idle';
+    lastTime = 0;
+    camX = platforms[0].x - VW * 0.22;
+    camTarget = camX;
+  }
+
+  ovActionEl.addEventListener('click', startGame);
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', function () {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  });
+
+  canvas.addEventListener('pointerdown', function (event) {
+    event.preventDefault();
+    startCharge();
+  });
+  window.addEventListener('pointerup', releaseJump);
+  window.addEventListener('pointercancel', releaseJump);
+
+  document.addEventListener('keydown', function (event) {
+    if (event.code === 'Space' || event.key === ' ') {
+      event.preventDefault();
+      startCharge();
+    }
+  });
+  document.addEventListener('keyup', function (event) {
+    if (event.code === 'Space' || event.key === ' ') {
+      event.preventDefault();
+      releaseJump();
+    }
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    paused = document.hidden;
+    if (!paused) lastTime = 0;
+  });
+  window.addEventListener('resize', resize);
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateScores(); }
+      }
+    }
+  };
+
+  resize();
+  setup();
+  state = 'ready';
+  rafId = requestAnimationFrame(frame);
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

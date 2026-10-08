@@ -96,7 +96,71 @@
                                       "sizeBytes":  4552
                                   },
                       "entry":  "index.html"
+                  },
+                  {
+                      "id":  "jump",
+                      "name":  "跳一跳",
+                      "description":  "按住蓄力，松开起跳，落在方块上得分",
+                      "icon":  "sports_esports",
+                      "color":  "#38BDF8",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/jump",
+                      "package":  {
+                                      "path":  "game_center/packages/jump_v1.0.0.zip",
+                                      "sha256":  "c71846421f9a80ffc3a888da0d324672a636871560a2ad4a489559705116a35b",
+                                      "sizeBytes":  4499
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "color",
+                      "name":  "色差选择",
+                      "description":  "在限时内找出颜色略微不同的一块",
+                      "icon":  "palette",
+                      "color":  "#A78BFA",
+                      "cost":  10,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/color",
+                      "package":  {
+                                      "path":  "game_center/packages/color_v1.0.0.zip",
+                                      "sha256":  "b8f018c859273ee26264a3221768d9b6af0f4dac5342d06c0c724c737b00062a",
+                                      "sizeBytes":  3455
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "needle",
+                      "name":  "见缝插针",
+                      "description":  "把针插进旋转圆盘的缝隙，别撞到已有的针",
+                      "icon":  "extension",
+                      "color":  "#F472B6",
+                      "cost":  10,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/needle",
+                      "package":  {
+                                      "path":  "game_center/packages/needle_v1.0.0.zip",
+                                      "sha256":  "a4e0661b055391404794d51dad16a229dbdf24b2e47d657b815e71f66ee8520e",
+                                      "sizeBytes":  3976
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "fall",
+                      "name":  "下一百层",
+                      "description":  "左右移动小球，穿过缝隙一路向下",
+                      "icon":  "apps",
+                      "color":  "#22D3EE",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/fall",
+                      "package":  {
+                                      "path":  "game_center/packages/fall_v1.0.0.zip",
+                                      "sha256":  "ae67d944423146bc88f7498c148e57e07090608e8347a7b27a42a5d62b19a53c",
+                                      "sizeBytes":  4743
+                                  },
+                      "entry":  "index.html"
                   }
               ],
-    "updatedAt":  "2026-10-08T14:27:47Z"
+    "updatedAt":  "2026-10-08T14:51:08Z"
 }
