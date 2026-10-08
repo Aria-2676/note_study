@@ -100,10 +100,7 @@ class PrizePoolEditorWidget extends StatelessWidget {
           runSpacing: 4,
           children: scratchProvider.defaultPrizePool.map((prize) {
             return Chip(
-              label: Text(
-                '${prize.name} (${prize.weight.toStringAsFixed(0)})',
-                style: const TextStyle(fontSize: 12),
-              ),
+              label: Text(prize.name, style: const TextStyle(fontSize: 12)),
               backgroundColor: colorScheme.primaryContainer.withValues(
                 alpha: 0.3,
               ),
@@ -168,26 +165,24 @@ class PrizePoolEditorWidget extends StatelessWidget {
         ),
         title: Text(prize.name),
         subtitle: Text(
-          '价值: ${prize.value} | 权重: ${prize.weight.toStringAsFixed(1)}',
+          '价值: ${prize.value} | 概率: ${_probabilityText(prize)}',
           style: const TextStyle(fontSize: 12),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: Icon(Icons.tune, color: colorScheme.primary),
-              onPressed: () => _showWeightDialog(context, prize, colorScheme),
-              tooltip: '调整权重',
-            ),
-            IconButton(
-              icon: Icon(Icons.delete, color: colorScheme.error),
-              onPressed: () => _removePrize(context, prize, colorScheme),
-              tooltip: '删除',
-            ),
-          ],
+        trailing: IconButton(
+          icon: Icon(Icons.delete, color: colorScheme.error),
+          onPressed: () => _removePrize(context, prize, colorScheme),
+          tooltip: '删除',
         ),
       ),
     );
+  }
+
+  /// 只读展示该奖品的实际中奖概率。
+  ///
+  /// 概率由抽奖池按目标返奖率统一反解，不再提供手动调整入口。
+  String _probabilityText(PrizeItem prize) {
+    final probability = scratchProvider.getPrizeProbabilities()[prize] ?? 0;
+    return '${(probability * 100).toStringAsFixed(2)}%';
   }
 
   Widget _buildAddPrizeSection(
@@ -245,68 +240,8 @@ class PrizePoolEditorWidget extends StatelessWidget {
     );
   }
 
-  void _showWeightDialog(
-    BuildContext context,
-    PrizeItem prize,
-    ColorScheme colorScheme,
-  ) {
-    final controller = TextEditingController(
-      text: prize.weight.toStringAsFixed(1),
-    );
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('调整 ${prize.name} 权重'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('当前权重: ${prize.weight.toStringAsFixed(1)}'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: '新权重',
-                hintText: '输入权重值（如 10.0）',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '提示：权重越高，抽中概率越大',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newWeight = double.tryParse(controller.text);
-              if (newWeight != null && newWeight > 0) {
-                await scratchProvider.updatePrizeWeight(prize.id, newWeight);
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              }
-            },
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showAddIntegralDialog(BuildContext context, ColorScheme colorScheme) {
     final valueController = TextEditingController();
-    final weightController = TextEditingController(text: '10.0');
 
     showDialog(
       context: context,
@@ -325,15 +260,11 @@ class PrizePoolEditorWidget extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: weightController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: '权重',
-                hintText: '如 10.0',
-                border: OutlineInputBorder(),
+            Text(
+              '中奖概率由抽奖池按返奖率统一生成，无需手动设置。',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -346,14 +277,13 @@ class PrizePoolEditorWidget extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               final value = int.tryParse(valueController.text);
-              final weight = double.tryParse(weightController.text);
-              if (value != null && value > 0 && weight != null && weight > 0) {
+              if (value != null && value > 0) {
                 final prize = PrizeItem(
                   id: 'custom_int_${DateTime.now().millisecondsSinceEpoch}',
                   name: '$value积分',
                   type: 'integral',
                   value: value,
-                  weight: weight,
+                  weight: 1.0,
                   isDefault: false,
                 );
                 await scratchProvider.addPrizeToPool(prize);

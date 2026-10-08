@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/scratch_card_face.dart';
 import '../../models/scratch_model.dart';
 
 class ScratchCardWidget extends StatefulWidget {
@@ -38,7 +39,7 @@ class _ScratchCardWidgetState extends State<ScratchCardWidget> {
       child: Container(
         key: widget.scratchKey,
         width: 300,
-        height: 200,
+        height: 360,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
@@ -52,7 +53,11 @@ class _ScratchCardWidgetState extends State<ScratchCardWidget> {
         child: Stack(
           children: [
             if (widget.ticket != null)
-              _PrizeContentWidget(ticket: widget.ticket!, isDark: isDark),
+              _ScratchCardFaceWidget(
+                ticket: widget.ticket!,
+                isDark: isDark,
+                isRevealed: widget.isRevealed,
+              ),
             if (!widget.isRevealed && widget.ticket != null)
               Positioned.fill(
                 child: GestureDetector(
@@ -110,6 +115,11 @@ class ScratchLayerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 必须先把遮罩绘制到**独立图层**：BlendMode.clear 会擦除「同一图层内」已绘制
+    // 的内容，而遮罩与卡面同处一个 Stack 图层，不隔离就会把下层卡面一起擦掉，
+    // 表现为刮开处一片透明（露出浮层黑色背景），只有整张揭晓后才看得见票面。
+    canvas.saveLayer(Offset.zero & size, Paint());
+
     final maskPaint = Paint()
       ..color = isDark
           ? colorScheme.surfaceContainerHighest
@@ -168,6 +178,8 @@ class ScratchLayerPainter extends CustomPainter {
         canvas.drawCircle(point, 20, pathPaint);
       }
     }
+
+    canvas.restore();
   }
 
   @override
@@ -176,15 +188,25 @@ class ScratchLayerPainter extends CustomPainter {
   }
 }
 
-class _PrizeContentWidget extends StatelessWidget {
+/// 卡面内容：上「中奖号码」区、下「我的号码」区（3 × 3）。
+///
+/// 号码与金额由 [ScratchFaceGenerator] 依据已抽定的票据确定性生成；
+/// 揭晓后命中的格子以高亮标出。
+class _ScratchCardFaceWidget extends StatelessWidget {
   final ScratchTicket ticket;
   final bool isDark;
+  final bool isRevealed;
 
-  const _PrizeContentWidget({required this.ticket, required this.isDark});
+  const _ScratchCardFaceWidget({
+    required this.ticket,
+    required this.isDark,
+    required this.isRevealed,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final face = ScratchFaceGenerator.generate(ticket);
     final bgColor = isDark
         ? colorScheme.primaryContainer.withValues(alpha: 0.3)
         : const Color(0xFFE8F5E9);
@@ -193,35 +215,127 @@ class _PrizeContentWidget extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: bgColor),
+      child: Column(
+        children: [
+          _buildLabel('中奖号码', colorScheme),
+          const SizedBox(height: 6),
+          _buildWinningNumber(face.winningNumber, colorScheme),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          _buildLabel('我的号码', colorScheme),
+          const SizedBox(height: 6),
+          Expanded(child: _buildGrid(face, colorScheme, textColor)),
+          const SizedBox(height: 4),
+          Text(
+            '号码相同即中对应奖金',
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text, ColorScheme colorScheme) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: colorScheme.onSurface.withValues(alpha: 0.7),
+      ),
+    );
+  }
+
+  Widget _buildWinningNumber(int winningNumber, ColorScheme colorScheme) {
+    return Container(
+      width: 54,
+      height: 54,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(15),
-          topRight: Radius.circular(15),
+        color: colorScheme.primary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$winningNumber',
+        style: TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          color: colorScheme.onPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrid(
+    ScratchCardFace face,
+    ColorScheme colorScheme,
+    Color textColor,
+  ) {
+    final matched = isRevealed ? face.matchedCell : null;
+    final rows = <Widget>[];
+    for (var row = 0; row < 3; row++) {
+      final cells = <Widget>[];
+      for (var column = 0; column < 3; column++) {
+        final cell = face.cells[row * 3 + column];
+        final isHit = matched != null && cell.number == face.winningNumber;
+        cells.add(
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: _buildCell(cell, isHit, colorScheme, textColor),
+            ),
+          ),
+        );
+      }
+      rows.add(Expanded(child: Row(children: cells)));
+    }
+    return Column(children: rows);
+  }
+
+  Widget _buildCell(
+    ScratchCardCell cell,
+    bool isHit,
+    ColorScheme colorScheme,
+    Color textColor,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isHit
+            ? Colors.amber.withValues(alpha: 0.35)
+            : colorScheme.surface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isHit
+              ? Colors.amber
+              : colorScheme.outline.withValues(alpha: 0.2),
+          width: isHit ? 2 : 1,
         ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            ticket.prizeType == 'integral' ? Icons.star : Icons.card_giftcard,
-            size: 64,
-            color: Colors.amber,
-          ),
-          const SizedBox(height: 16),
           Text(
-            ticket.prizeName,
+            '${cell.number}',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: textColor,
             ),
           ),
-          const SizedBox(height: 8),
           Text(
-            ticket.prizeType == 'integral' ? '积分奖励' : '商品奖励',
+            '${cell.amount}分',
             style: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 10,
+              fontWeight: isHit ? FontWeight.bold : FontWeight.normal,
+              color: isHit
+                  ? Colors.orange.shade800
+                  : colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ],

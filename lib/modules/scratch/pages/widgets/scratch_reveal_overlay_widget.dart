@@ -48,13 +48,13 @@ class ScratchRevealOverlayWidget extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  '滑动卡片调整位置',
+                  '滑动刮开涂层',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 ScratchCardWidget(
                   scratchKey: scratchKey,
                   ticket: ticket,
@@ -65,7 +65,7 @@ class ScratchRevealOverlayWidget extends StatelessWidget {
                   onPanUpdate: onPanUpdate,
                   onPanEnd: onPanEnd,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

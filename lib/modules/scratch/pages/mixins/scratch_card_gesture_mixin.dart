@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -161,11 +162,11 @@ mixin ScratchCardGestureMixin<T extends StatefulWidget>
   void _checkReveal() {
     final percentage = _calculateScratchedPercentage();
     if (percentage >= _revealThreshold) {
-      _revealPrize();
+      unawaited(_revealPrize());
     }
   }
 
-  void _revealPrize() {
+  Future<void> _revealPrize() async {
     final scratchProvider = Provider.of<ScratchProvider>(
       context,
       listen: false,
@@ -173,8 +174,15 @@ mixin ScratchCardGestureMixin<T extends StatefulWidget>
     if (!scratchProvider.state.isScratching) return;
 
     scratchProvider.revealPrize();
-    scratchProvider.saveLotteryResult();
-    _claimPrize();
+    // 先落盘（同时把已揭晓票据移出彩票夹）再发奖，保证记录与发奖同序。
+    await scratchProvider.saveLotteryResult();
+    if (!mounted) return;
+    await _claimPrize();
+    if (!mounted) return;
+    // 结算完成后收起浮层并清空当前票据；否则 currentTicket 一直非空，
+    // 主按钮会永远停在「已选择彩票…」且被禁用，导致只能购买一次。
+    exitScratching();
+    scratchProvider.resetScratchCard();
   }
 
   void quickReveal() {
@@ -184,7 +192,7 @@ mixin ScratchCardGestureMixin<T extends StatefulWidget>
     );
     if (!scratchProvider.state.isScratching) return;
 
-    _revealPrize();
+    unawaited(_revealPrize());
   }
 
   Future<void> _claimPrize() async {

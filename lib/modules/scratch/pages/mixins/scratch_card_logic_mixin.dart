@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../../../../providers/scratch_provider.dart';
 import '../../../../providers/points_provider.dart';
 import '../../../../providers/shop_provider.dart';
-import '../../../shop/models/shop_model.dart';
 import '../../models/scratch_model.dart';
 import '../../models/scratch_state.dart';
 import '../../adapters/scratch_statistic_adapter.dart';
@@ -82,14 +81,17 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  Future<void> buyTicket({
+  /// 购买一张刮刮卡，返回是否购买成功。
+  ///
+  /// 这是**唯一的购买入口**（含确认弹窗与统计上报），由主按钮调用。
+  Future<bool> buyTicket({
     required BuildContext context,
     required ScratchProvider scratchProvider,
     required PointsProvider pointsProvider,
   }) async {
-    if (isDebounced()) return;
+    if (isDebounced()) return false;
 
-    if (!scratchProvider.state.canStartScratch) return;
+    if (!scratchProvider.state.canStartScratch) return false;
 
     if (!scratchProvider.canAfford(pointsProvider.currentPoints)) {
       showInsufficientPointsDialog(
@@ -97,14 +99,14 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
         pointsProvider.currentPoints,
         scratchProvider.selectedCost,
       );
-      return;
+      return false;
     }
 
     final confirmed = await showConfirmDialog(
       context,
       scratchProvider.selectedCost,
     );
-    if (!confirmed) return;
+    if (!confirmed) return false;
 
     final success = await scratchProvider.buyTicket(
       pointsProvider.currentPoints,
@@ -121,8 +123,13 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
       // ignore: use_build_context_synchronously
       showBuySuccessDialog(context);
     }
+    return success;
   }
 
+  /// 结算并发奖。
+  ///
+  /// 发奖属于业务逻辑，已下沉到 [ScratchProvider.claimPrize]；
+  /// 本方法只负责触发结算与展示结果。
   Future<void> claimPrize({
     required BuildContext context,
     required ScratchProvider scratchProvider,
@@ -132,82 +139,46 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
     final ticket = scratchProvider.currentTicket;
     if (ticket == null) return;
 
-    try {
-      if (ticket.prizeType == 'integral') {
-        await pointsProvider.addPointsWithRecord(
-          points: ticket.prizeValue,
-          type: 'scratch_win',
-          description: '刮刮乐中奖: ${ticket.prizeName}',
-        );
-        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
-        if (mounted) {
-          // ignore: use_build_context_synchronously
-          showPrizeDialog(context, ticket, true);
-        }
-      } else if (ticket.prizeType == 'goods') {
-        final items = shopProvider.shopItems.where(
-          (i) => i.name == ticket.prizeName,
-        );
-        if (items.isEmpty) {
-          throw Exception('商品不存在');
-        }
-        final item = items.first;
-        if (item.id == null) {
-          throw Exception('商品ID为空');
-        }
-        final purchasedItem = PurchasedItem(
-          shopItemId: item.id!,
-          name: item.name,
-          description: item.description,
-          price: item.price,
-          iconName: item.iconName,
-          colorValue: item.colorValue,
-        );
-        await shopProvider.addPurchasedItem(purchasedItem);
-        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
-        if (mounted) {
-          // ignore: use_build_context_synchronously
-          showPrizeDialog(context, ticket, true);
-        }
-      } else {
-        await pointsProvider.addPointsWithRecord(
-          points: ticket.prizeValue,
-          type: 'scratch_win',
-          description: '刮刮乐中奖: ${ticket.prizeName}',
-        );
-        _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
-        if (mounted) {
-          // ignore: use_build_context_synchronously
-          showPrizeDialog(context, ticket, true);
-        }
-      }
-    } catch (e) {
-      await refundPoints(pointsProvider, ticket.costPoints);
-      if (mounted) {
-        // ignore: use_build_context_synchronously
-        showPrizeDialog(context, ticket, false, e.toString());
-      }
+    final outcome = await scratchProvider.claimPrize(
+      pointsProvider: pointsProvider,
+      shopProvider: shopProvider,
+    );
+
+    if (outcome.isWin) {
+      _statisticAdapter.reportWin(ticket.prizeValue, ticket.prizeType);
+    }
+    if (mounted) {
+      // ignore: use_build_context_synchronously
+      showPrizeDialog(context, ticket, outcome);
     }
   }
 
-  Future<void> refundPoints(PointsProvider pointsProvider, int points) async {
-    try {
-      await pointsProvider.addPointsWithRecord(
-        points: points,
-        type: 'scratch_refund',
-        description: '刮刮乐退款',
-      );
-    } catch (e) {
-      // ignore
-    }
-  }
-
+  /// 展示发奖结果：中奖 / 谢谢参与（空奖）/ 发放失败。
   void showPrizeDialog(
     BuildContext context,
     ScratchTicket ticket,
-    bool success, [
-    String? error,
-  ]) {
+    ScratchClaimOutcome outcome,
+  ) {
+    final isWin = outcome.isWin;
+    final isNoPrize = outcome.success && !outcome.isWin;
+
+    final IconData icon;
+    final Color iconColor;
+    final String title;
+    if (isWin) {
+      icon = Icons.celebration;
+      iconColor = Colors.amber;
+      title = '恭喜中奖！';
+    } else if (isNoPrize) {
+      icon = Icons.sentiment_dissatisfied;
+      iconColor = Colors.grey;
+      title = '谢谢参与';
+    } else {
+      icon = Icons.error_outline;
+      iconColor = Colors.red;
+      title = '发放失败';
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -216,18 +187,14 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              success ? Icons.celebration : Icons.error_outline,
-              size: 64,
-              color: success ? Colors.amber : Colors.red,
-            ),
+            Icon(icon, size: 64, color: iconColor),
             const SizedBox(height: 16),
             Text(
-              success ? '恭喜中奖！' : '发放失败',
+              title,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            if (success) ...[
+            if (isWin) ...[
               Text(
                 ticket.prizeType == 'integral'
                     ? '+${ticket.prizeValue} 积分'
@@ -240,14 +207,19 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+            ] else if (isNoPrize) ...[
+              const Text(
+                '这次没有中奖，下次再来～',
+                style: TextStyle(color: Colors.grey),
+              ),
             ] else ...[
               Text(
                 '已自动退还 ${ticket.costPoints} 积分',
                 style: const TextStyle(color: Colors.grey),
               ),
-              if (error != null)
+              if (outcome.error != null)
                 Text(
-                  error,
+                  outcome.error!,
                   style: const TextStyle(fontSize: 12, color: Colors.red),
                 ),
             ],
@@ -264,7 +236,7 @@ mixin ScratchCardLogicMixin<T extends StatefulWidget> on State<T> {
       ),
     );
 
-    if (success) {
+    if (isWin) {
       HapticFeedback.heavyImpact();
     }
   }

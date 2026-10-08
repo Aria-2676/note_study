@@ -15,14 +15,9 @@ class ProbabilityInfoWidget extends StatelessWidget {
     final selectedCost = scratchProvider.selectedCost;
     final maxAllowedValue =
         selectedCost * ScratchProvider.maxPrizeValueMultiplier;
-
-    double actualExpected = 0;
-    probabilities.forEach((prize, prob) {
-      actualExpected += prize.value * prob;
-    });
-
-    final actualReturnRate = (actualExpected / selectedCost * 100)
-        .toStringAsFixed(1);
+    final expectedReturn = scratchProvider.expectedReturnValue;
+    final returnRate = scratchProvider.actualReturnRate * 100;
+    final winRate = scratchProvider.winProbability * 100;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -49,14 +44,21 @@ class ProbabilityInfoWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '• 权重 = 1 / 价值（价值越高，概率越低）',
+            '• 返奖率固定 65%（对齐即开型彩票：奖金 65% + 公益金 20% + 发行费 15%）',
             style: TextStyle(
               color: colorScheme.onSurface.withValues(alpha: 0.8),
               fontSize: 12,
             ),
           ),
           Text(
-            '• 高价值切割：价值 > $maxAllowedValue积分 的奖品不入池',
+            '• 本档中奖率 ${winRate.toStringAsFixed(1)}%，未中奖即「谢谢参与」',
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            '• 奖项面额上限：$maxAllowedValue积分',
             style: TextStyle(
               color: colorScheme.onSurface.withValues(alpha: 0.8),
               fontSize: 12,
@@ -84,7 +86,7 @@ class ProbabilityInfoWidget extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '期望收益: ${actualExpected.toStringAsFixed(1)}积分 ($actualReturnRate%)',
+                      '期望收益: ${expectedReturn.toStringAsFixed(1)}积分 (${returnRate.toStringAsFixed(1)}%)',
                       style: TextStyle(
                         fontSize: 12,
                         color: colorScheme.onSurface.withValues(alpha: 0.7),

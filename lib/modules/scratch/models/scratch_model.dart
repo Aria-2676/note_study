@@ -49,7 +49,9 @@ class PrizeItem with DbSerializable {
       name: shopItem.name,
       type: 'goods',
       value: shopItem.price,
-      weight: 100.0 / (shopItem.price + 10),
+      // 与手动添加的积分奖品同档：权重只表达「相对稀有度」，实际概率由
+      // 抽奖池按目标返奖率统一反解，不再由奖品自行决定。
+      weight: 1.0,
       isDefault: false,
     );
   }
@@ -208,4 +210,25 @@ class LotteryRecord with DbSerializable {
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
+}
+
+/// 刮刮乐发奖结果。
+///
+/// [success] 为 false 时表示发放过程出错（此时票款已自动退还）；
+/// [isWin] 为 false 且 [success] 为 true 表示正常结算但未中奖（空奖）。
+class ScratchClaimOutcome {
+  /// 流程是否正常完成（空奖也算完成）。
+  final bool success;
+
+  /// 是否中奖。
+  final bool isWin;
+
+  /// 失败原因，成功时为 null。
+  final String? error;
+
+  const ScratchClaimOutcome({
+    required this.success,
+    required this.isWin,
+    this.error,
+  });
 }

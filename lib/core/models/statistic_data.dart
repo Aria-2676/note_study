@@ -151,6 +151,9 @@ class StatisticKeys {
   /// 开始刮奖点击
   static const clickScratchStart = 'click_scratch_start';
 
+  /// 领取每日免费刮奖
+  static const clickScratchFreeTicket = 'click_scratch_free_ticket';
+
   /// 中奖计数
   static const countScratchWin = 'count_scratch_win';
 

@@ -31,7 +31,13 @@ class GameCdnConfig {
   );
 
   /// 主基址不可达时的回退基址列表（按顺序尝试）。
+  ///
+  /// 优先 jsDelivr 的镜像节点：实测本机 `cdn.jsdelivr.net` / `gcore.jsdelivr.net`
+  /// / `testingcf.jsdelivr.net` 均可正常返回，而 `raw.githubusercontent.com`
+  /// 虽 TCP 可连、HTTP 却常被中途重置（Connection reset by peer），故置末位兜底。
   static const List<String> manifestFallbackBases = [
+    'https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main',
+    'https://testingcf.jsdelivr.net/gh/Aria-2676/note_study@main',
     'https://raw.githubusercontent.com/Aria-2676/note_study/main',
   ];
 

@@ -284,7 +284,7 @@ void main() {
         id: 'test',
         name: 'Test',
         type: 'integral',
-        value: 200,
+        value: 10 * ScratchProvider.maxPrizeValueMultiplier + 1,
       );
 
       expect(provider.canAddToPrizePool(prize), false);
@@ -393,15 +393,18 @@ void main() {
       expect(provider.completePrizePool.any((p) => p.id == 'p1'), isTrue);
     });
 
-    test('updatePrizeWeight 更新权重', () async {
+    test('自定义奖品概率由抽奖池统一生成（不再手调权重）', () async {
       await provider.initialize(const []);
       await provider.addPrizeToPool(
         PrizeItem(id: 'p1', name: '自定义', type: 'integral', value: 8),
       );
 
-      await provider.updatePrizeWeight('p1', 3.0);
+      final probabilities = provider.getPrizeProbabilities();
+      final custom = probabilities.keys.firstWhere((p) => p.id == 'p1');
 
-      expect(provider.customPrizePool.single.weight, 3.0);
+      expect(probabilities[custom], greaterThan(0));
+      // 返奖率仍由奖池反解守住
+      expect(provider.actualReturnRate, closeTo(0.65, 0.01));
     });
 
     test('removePrizeFromPool 与 resetPrizePoolToDefault', () async {

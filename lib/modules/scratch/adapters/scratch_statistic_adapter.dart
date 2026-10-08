@@ -30,6 +30,14 @@ class ScratchStatisticAdapter extends BaseStatisticAdapter {
     );
   }
 
+  /// 上报领取每日免费刮奖。
+  Future<void> reportFreeTicket() async {
+    await reportClick(
+      StatisticKeys.clickScratchFreeTicket,
+      moduleName: _moduleName,
+    );
+  }
+
   Future<void> reportWin(int prizeValue, String prizeType) async {
     await reportCount(
       StatisticKeys.countScratchWin,

@@ -300,27 +300,51 @@ class _ScratchCardPageState extends State<ScratchCardPage>
     final isProcessing = scratchProvider.isProcessing;
     final hasTicket = scratchProvider.currentTicket != null;
     final isRevealed = scratchProvider.state.isRevealed;
+    final freeAvailable = scratchProvider.freeTicketAvailable;
 
     String buttonText;
     if (isRevealed) {
       buttonText = '刮奖完成';
     } else if (hasTicket && !scratchProvider.state.isScratching) {
       buttonText = '已选择彩票，点击开始刮奖';
+    } else if (freeAvailable) {
+      buttonText = '今日免费刮奖（每天 1 次）';
     } else {
       buttonText = '购买彩票';
     }
 
     return ScratchMainButtonWidget(
-      enabled: canAfford && !isProcessing && !hasTicket && !isRevealed,
+      enabled:
+          !isProcessing &&
+          !hasTicket &&
+          !isRevealed &&
+          (freeAvailable || canAfford),
       isProcessing: isProcessing,
       buttonText: buttonText,
       onPressed: () async {
-        final success = await scratchProvider.buyTicket(
-          pointsProvider.currentPoints,
+        if (freeAvailable) {
+          final ok = await scratchProvider.claimFreeTicket();
+          if (!mounted) return;
+          if (ok) {
+            _statisticAdapter.reportFreeTicket();
+            startScratching();
+          } else {
+            final message = scratchProvider.errorMessage;
+            if (message != null) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(message)));
+            }
+          }
+          return;
+        }
+        // 统一走逻辑层的购买入口：含确认弹窗、统计上报与成功提示。
+        final success = await buyTicket(
+          context: context,
+          scratchProvider: scratchProvider,
+          pointsProvider: pointsProvider,
         );
-        if (success) {
-          // 扣分已在购买事务内完成，这里只需刷新积分显示
-          await pointsProvider.reload();
+        if (success && mounted) {
           startScratching();
         }
       },
