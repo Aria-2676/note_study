@@ -9,6 +9,7 @@ import 'modules/pomodoro/services/pomodoro_background_service.dart';
 import 'modules/tasks/repositories/task_repository.dart';
 import 'modules/tasks/services/task_scheduler_service.dart';
 import 'modules/statistics/repositories/statistics_repository.dart';
+import 'modules/games/providers/game_provider.dart';
 import 'providers/app_state_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/points_provider.dart';
@@ -26,11 +27,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await WidgetService.init();
   await StatisticService.init();
-  await PomodoroNotificationService.init();
-  await PomodoroBackgroundService.init();
 
   final settingsProvider = SettingsProvider();
-  await settingsProvider.initialize();
+  // 设置读取会首次打开数据库（冷启动的主要耗时），与通知/番茄钟初始化互不依赖，
+  // 故并行以缩短启动；两个通知服务之间保持串行，避免插件内部状态竞争。
+  final settingsFuture = settingsProvider.initialize();
+  await PomodoroNotificationService.init();
+  await PomodoroBackgroundService.init();
+  await settingsFuture;
 
   runApp(MyApp(settingsProvider: settingsProvider));
 }
@@ -54,8 +58,8 @@ class MyApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider(create: (_) => AppStateProvider()),
+        ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider(create: (_) => PointsProvider()),
         ChangeNotifierProvider(create: (_) => TagProvider()),
         ChangeNotifierProvider(create: (_) => PomodoroProvider()),
@@ -67,6 +71,11 @@ class MyApp extends StatelessWidget {
           create: (context) => ShopProvider(context.read<PointsProvider>()),
           update: (context, pointsProvider, shopProvider) =>
               shopProvider!..updatePointsProvider(pointsProvider),
+        ),
+        ChangeNotifierProxyProvider<PointsProvider, GameProvider>(
+          create: (context) => GameProvider(context.read<PointsProvider>()),
+          update: (context, pointsProvider, gameProvider) =>
+              gameProvider!..updatePointsProvider(pointsProvider),
         ),
         ChangeNotifierProxyProvider<PointsProvider, TaskProvider>(
           create: (context) => TaskProvider(

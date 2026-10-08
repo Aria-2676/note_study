@@ -1,14 +1,35 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:v5_app/core/services/database/database_service.dart';
 import 'package:v5_app/providers/scratch_provider.dart';
 import 'package:v5_app/modules/scratch/models/scratch_model.dart';
 import 'package:v5_app/modules/scratch/models/scratch_state.dart';
 
 void main() {
+  // DatabaseService.instance 落到 ffi SQLite，独立临时目录隔离。
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+  setUpAll(() async {
+    final dir = Directory.systemTemp.createTempSync('v5_scratch_test');
+    await databaseFactory.setDatabasesPath(dir.path);
+  });
+
   late ScratchProvider provider;
 
-  setUp(() {
+  setUp(() async {
+    await DatabaseService.instance.clearAllData();
     provider = ScratchProvider();
   });
+
+  ScratchTicket ticket() => ScratchTicket(
+    costPoints: 10,
+    prizeId: 'test',
+    prizeName: 'Test',
+    prizeType: 'integral',
+    prizeValue: 10,
+  );
 
   group('initial state', () {
     test('should have correct default values', () {
@@ -269,4 +290,147 @@ void main() {
       expect(provider.canAddToPrizePool(prize), false);
     });
   });
+
+  group('ScratchPlayMixin 购票与开奖', () {
+    test('buyTicket 成功扣分并出票', () async {
+      await DatabaseService.instance.updateUserPoints(100);
+
+      final ok = await provider.buyTicket(100);
+
+      expect(ok, isTrue);
+      expect(provider.isProcessing, isFalse);
+      expect(provider.currentTicket, isNotNull);
+      expect(provider.currentTicket!.id, isNotNull);
+      expect(provider.ticketWallet.length, 1);
+      expect(provider.unscratchedCount, 1);
+    });
+
+    test('buyTicket 积分不足返回 false 并提示', () async {
+      final ok = await provider.buyTicket(5);
+
+      expect(ok, isFalse);
+      expect(provider.errorMessage, contains('积分不足'));
+    });
+
+    test('buyTicket 非 idle 状态直接返回 false', () async {
+      await DatabaseService.instance.updateUserPoints(100);
+      provider.selectTicket(ticket());
+      provider.startScratching();
+
+      expect(await provider.buyTicket(100), isFalse);
+    });
+
+    test('saveLotteryResult 写入开奖记录并刷新彩票夹', () async {
+      await DatabaseService.instance.updateUserPoints(100);
+      await provider.buyTicket(100);
+      provider.startScratching();
+      provider.revealPrize();
+
+      await provider.saveLotteryResult();
+
+      expect(provider.lotteryRecords.length, 1);
+      expect(
+        provider.lotteryRecords.single.prizeName,
+        provider.currentTicket!.prizeName,
+      );
+      expect(provider.ticketWallet, isEmpty);
+    });
+
+    test('deleteTicket 删除彩票并清空当前票', () async {
+      await DatabaseService.instance.updateUserPoints(100);
+      await provider.buyTicket(100);
+      final id = provider.currentTicket!.id!;
+
+      await provider.deleteTicket(id);
+
+      expect(provider.currentTicket, isNull);
+      expect(provider.ticketWallet, isEmpty);
+    });
+
+    test('deleteRecord 删除单条记录', () async {
+      await _insertRecord(provider, 1);
+      expect(provider.lotteryRecords.length, 1);
+
+      await provider.deleteRecord(provider.lotteryRecords.single.id!);
+
+      expect(provider.lotteryRecords, isEmpty);
+    });
+
+    test('clearAllRecords 清空全部记录', () async {
+      await _insertRecord(provider, 1);
+      await _insertRecord(provider, 2);
+      expect(provider.lotteryRecords.length, 2);
+
+      await provider.clearAllRecords();
+
+      expect(provider.lotteryRecords, isEmpty);
+    });
+  });
+
+  group('ScratchPrizePoolMixin 奖池持久化', () {
+    test('initialize 加载空的自定义奖池与记录', () async {
+      await provider.initialize(const []);
+
+      expect(provider.customPrizePool, isEmpty);
+      expect(provider.lotteryRecords, isEmpty);
+      expect(provider.ticketWallet, isEmpty);
+      expect(provider.errorMessage, isNull);
+    });
+
+    test('addPrizeToPool 幂等持久化', () async {
+      await provider.initialize(const []);
+      final prize = PrizeItem(
+        id: 'p1',
+        name: '自定义',
+        type: 'integral',
+        value: 8,
+      );
+
+      await provider.addPrizeToPool(prize);
+      await provider.addPrizeToPool(prize);
+
+      expect(provider.customPrizePool.map((p) => p.id), ['p1']);
+      expect(provider.completePrizePool.any((p) => p.id == 'p1'), isTrue);
+    });
+
+    test('updatePrizeWeight 更新权重', () async {
+      await provider.initialize(const []);
+      await provider.addPrizeToPool(
+        PrizeItem(id: 'p1', name: '自定义', type: 'integral', value: 8),
+      );
+
+      await provider.updatePrizeWeight('p1', 3.0);
+
+      expect(provider.customPrizePool.single.weight, 3.0);
+    });
+
+    test('removePrizeFromPool 与 resetPrizePoolToDefault', () async {
+      await provider.initialize(const []);
+      await provider.addPrizeToPool(
+        PrizeItem(id: 'p1', name: '自定义', type: 'integral', value: 8),
+      );
+
+      await provider.removePrizeFromPool('p1');
+      expect(provider.customPrizePool, isEmpty);
+
+      await provider.addPrizeToPool(
+        PrizeItem(id: 'p2', name: '自定义2', type: 'integral', value: 9),
+      );
+      await provider.resetPrizePoolToDefault();
+      expect(provider.customPrizePool, isEmpty);
+    });
+  });
+}
+
+Future<void> _insertRecord(ScratchProvider provider, int day) async {
+  await DatabaseService.instance.insertLotteryRecord(
+    LotteryRecord(
+      drawTime: DateTime(2024, 1, day),
+      prizeName: 'p$day',
+      prizeType: 'integral',
+      prizeValue: 1,
+      costPoints: 10,
+    ),
+  );
+  await provider.initialize(const []);
 }

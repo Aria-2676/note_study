@@ -163,6 +163,28 @@ class StatisticKeys {
   /// 抽奖记录访问
   static const pageViewScratchRecords = 'page_view_scratch_records';
 
+  // ========== Games小游戏 ==========
+  /// 游戏中心访问
+  static const pageViewGamesCenter = 'page_view_games_center';
+
+  /// 点击下载游戏
+  static const clickGamesDownload = 'click_games_download';
+
+  /// 点击启动游戏
+  static const clickGamesLaunch = 'click_games_launch';
+
+  /// 卸载游戏
+  static const clickGamesUninstall = 'click_games_uninstall';
+
+  /// 游戏安装完成计数
+  static const countGamesInstalled = 'count_games_installed';
+
+  /// 游戏入场消耗积分计数
+  static const countGamesPointsSpent = 'count_games_points_spent';
+
+  /// 游戏结束上报分数
+  static const countGamesScore = 'count_games_score';
+
   // ========== System系统 ==========
   /// App崩溃信息
   static const systemAppCrash = 'system_app_crash';

@@ -11,9 +11,14 @@ mixin SettingsPersistenceMixin on SettingsProviderCoreMixin {
     _themeMode = settings['themeMode'] == 'dark'
         ? ThemeMode.dark
         : ThemeMode.light;
-    _taskViewMode = settings['taskViewMode'] == 'simple'
-        ? TaskViewMode.simple
-        : TaskViewMode.rich;
+    // 仅在键值可识别时赋值，否则保留字段初始值：缺失键不应把默认的
+    // simple 视图翻转成 rich（与下面 createMode/editMode 的处理方式一致）。
+    final viewModeStr = settings['taskViewMode'];
+    if (viewModeStr == 'simple') {
+      _taskViewMode = TaskViewMode.simple;
+    } else if (viewModeStr == 'rich') {
+      _taskViewMode = TaskViewMode.rich;
+    }
 
     final createModeStr = settings['taskCreateMode'];
     if (createModeStr == 'full') {

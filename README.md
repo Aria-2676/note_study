@@ -8,6 +8,7 @@
 - ✅ 积分系统：完成任务获得积分，兑换奖励
 - ✅ 商城系统：用积分兑换各种奖励
 - ✅ 桌面小组件：快速查看和完成任务
+- ✅ 小游戏中心：游戏包按需下载，下载后离线可玩（消耗积分入场）
 - ✅ 主题切换：支持亮色/暗色模式
 - ✅ 多平台支持：Android、iOS、Web、Windows、macOS、Linux
 
@@ -19,6 +20,7 @@
 - **数据库**：SQLite (sqflite)
 - **桌面小组件**：home_widget
 - **存储**：shared_preferences
+- **小游戏容器**：webview_flutter（本地回环静态服务加载外置 HTML5 游戏包）
 
 ## 运行方式
 
@@ -31,18 +33,30 @@
 
 ```
 lib/
-├── core/            # 全局服务（WidgetService、StatisticService）
-├── modules/         # 业务模块（pages、adapters、utils）
-├── providers/       # 状态管理（Provider）
-├── repositories/    # 数据仓库层
-├── services/        # 业务服务
-├── components/      # 通用组件
-├── ui/              # UI 资源
-├── use_cases/       # 用例层
+├── core/            # 全局服务（WidgetService、StatisticService、DatabaseService 门面与各职责 mixin）、通用模型/工具
+├── modules/         # 业务模块，自包含 pages/adapters/utils/repositories/models/providers/services
+│                    # （tasks、shop、points、tag、pomodoro、scratch、statistics、calendar、games、profile、help、others）
+├── providers/       # 状态管理（Provider 及其职责 mixin）
+├── ui/              # 通用 UI 资源与组件
 └── main.dart        # 入口文件
 ```
 
 ## 版本历史
+
+- **V5.5.0** (2026-10-08)
+  - 小游戏模块化：新增游戏中心，游戏包**按需下载**、解压至应用私有目录，由内置 WebView 容器经本地回环静态服务加载，**下载后完全离线可玩**
+  - 首发 2048（HTML5 版），移除编译进包的 Dart 版；最高分沿用旧 key，老用户记录零丢失
+  - 计费：按游戏配单价、进入即扣、中途退出不退还；扣分为事务内原子操作（余额不足零变更）
+  - 安全：zip-slip 与目录穿越 fail-closed、sha256 校验、仅回环放行的网络安全配置、导航白名单
+  - 基础优化：启动时数据库打开与通知初始化并行；修复 `clearAllData` 未清理刮刮乐彩票、缺失设置键将默认视图由「简洁」误翻转为「丰富」
+  - 整合期间一并修复：积分结算可逆、番茄钟设置落库、回收站丢循环任务关联、刮刮乐出票非原子
+  - 测试覆盖率 40.7% → 83.9%（606 个用例，全部通过）
+  - 使用方法：我的 → 休闲小游戏 → 下载后启动
+
+- **V5.4.0** (2026-10-08)
+  - 数据管理系统深度优化：schema 蛇形命名统一、仓储接口抽象、Service 层下沉、缓存 LRU、SQL 下推与索引、事务包裹、Model 序列化基类
+  - 修复日历条滚动、滑动删除取消、任务回收、备份管理、导出确认、备份文件可见性等 6 个缺陷
+  - 使用方法：数据管理入口统一走备份管理
 
 - **V5.3.2** (2026-04-21)
   - 重构各模块统计适配器，提取公共逻辑至 `BaseStatisticAdapter` 基类

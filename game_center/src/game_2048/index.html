@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>2048</title>
+<style>
+  :root {
+    --bg: #faf8ef;
+    --board: #bbada0;
+    --cell: #cdc1b4;
+    --text: #776e65;
+    --light: #f9f6f2;
+    --gap: clamp(6px, 2.2vw, 12px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #app {
+    height: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  header { display: flex; align-items: center; justify-content: space-between; }
+  .title { font-size: clamp(26px, 8vw, 40px); font-weight: 800; letter-spacing: 1px; }
+  .scores { display: flex; gap: 8px; }
+  .score-box {
+    background: var(--board); color: var(--light);
+    border-radius: 8px; padding: 6px 14px; text-align: center; min-width: 72px;
+  }
+  .score-box span { display: block; font-size: 11px; opacity: .85; letter-spacing: 1px; }
+  .score-box strong { display: block; font-size: clamp(16px, 4.5vw, 22px); }
+  .ops { display: flex; gap: 8px; }
+  button {
+    flex: 1; border: 0; border-radius: 8px; padding: 10px 12px;
+    font-size: 14px; font-weight: 600; color: var(--light);
+    background: #8f7a66; cursor: pointer;
+  }
+  button:active { opacity: .85; }
+  #exit { background: #a99b90; flex: 0 0 84px; }
+  .board-wrap { position: relative; flex: 1; display: flex; align-items: center; }
+  .board {
+    position: relative; width: 100%; aspect-ratio: 1 / 1;
+    background: var(--board); border-radius: 10px;
+    padding: var(--gap);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: var(--gap);
+  }
+  .cell {
+    background: var(--cell); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: clamp(18px, 7vw, 38px);
+    color: var(--text);
+    transition: background .1s ease;
+  }
+  .cell[data-v="2"]    { background: #eee4da; }
+  .cell[data-v="4"]    { background: #ede0c8; }
+  .cell[data-v="8"]    { background: #f2b179; color: var(--light); }
+  .cell[data-v="16"]   { background: #f59563; color: var(--light); }
+  .cell[data-v="32"]   { background: #f67c5f; color: var(--light); }
+  .cell[data-v="64"]   { background: #f65e3b; color: var(--light); }
+  .cell[data-v="128"]  { background: #edcf72; color: var(--light); font-size: clamp(16px, 6vw, 32px); }
+  .cell[data-v="256"]  { background: #edcc61; color: var(--light); font-size: clamp(16px, 6vw, 32px); }
+  .cell[data-v="512"]  { background: #edc850; color: var(--light); font-size: clamp(16px, 6vw, 32px); }
+  .cell[data-v="1024"] { background: #edc53f; color: var(--light); font-size: clamp(14px, 5vw, 26px); }
+  .cell[data-v="2048"] { background: #edc22e; color: var(--light); font-size: clamp(14px, 5vw, 26px); }
+  .cell.pop { animation: pop .14s ease; }
+  @keyframes pop { 0% { transform: scale(.82); } 100% { transform: scale(1); } }
+  .overlay {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: rgba(238, 228, 218, .78);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .overlay.hidden { display: none; }
+  .overlay-card { text-align: center; padding: 20px; }
+  .overlay-card h2 { margin: 0 0 8px; font-size: clamp(22px, 6vw, 30px); }
+  .overlay-card p { margin: 0 0 16px; font-size: 14px; opacity: .8; }
+  .overlay-card button { padding: 10px 24px; }
+  .hint { text-align: center; font-size: 12px; opacity: .55; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">2048</div>
+    <div class="scores">
+      <div class="score-box"><span>得分</span><strong id="score">0</strong></div>
+      <div class="score-box"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="ops">
+    <button id="new-game">重新开始</button>
+    <button id="exit">退出</button>
+  </div>
+  <div class="board-wrap">
+    <div id="board" class="board"></div>
+    <div id="overlay" class="overlay hidden">
+      <div class="overlay-card">
+        <h2 id="overlay-title">游戏结束</h2>
+        <p id="overlay-desc"></p>
+        <button id="overlay-action">再来一局</button>
+      </div>
+    </div>
+  </div>
+  <div class="hint">滑动屏幕或使用方向键合成 2048</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SIZE = 4;
+  var WIN_VALUE = 2048;
+
+  var grid = [];
+  var score = 0;
+  var best = 0;
+  var finished = false;
+  var continued = false;
+  var lastReported = -1;
+
+  var boardEl = document.getElementById('board');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var overlayEl = document.getElementById('overlay');
+  var overlayTitleEl = document.getElementById('overlay-title');
+  var overlayDescEl = document.getElementById('overlay-desc');
+  var overlayActionEl = document.getElementById('overlay-action');
+
+  /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常，不影响游戏本身 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function createEmptyGrid() {
+    var g = [];
+    for (var r = 0; r < SIZE; r++) {
+      g.push(new Array(SIZE).fill(0));
+    }
+    return g;
+  }
+
+  function addRandomTile() {
+    var empty = [];
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        if (grid[r][c] === 0) empty.push([r, c]);
+      }
+    }
+    if (empty.length === 0) return;
+    var pick = empty[Math.floor(Math.random() * empty.length)];
+    grid[pick[0]][pick[1]] = Math.random() < 0.9 ? 2 : 4;
+  }
+
+  function render(newCells) {
+    boardEl.innerHTML = '';
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var value = grid[r][c];
+        var cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.v = value;
+        cell.textContent = value === 0 ? '' : String(value);
+        if (newCells && newCells.indexOf(r + ',' + c) >= 0) {
+          cell.classList.add('pop');
+        }
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function updateScores() {
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+  }
+
+  function getLine(dir, index) {
+    var line = [];
+    for (var j = 0; j < SIZE; j++) {
+      if (dir === 'left') line.push(grid[index][j]);
+      else if (dir === 'right') line.push(grid[index][SIZE - 1 - j]);
+      else if (dir === 'up') line.push(grid[j][index]);
+      else line.push(grid[SIZE - 1 - j][index]);
+    }
+    return line;
+  }
+
+  function setLine(dir, index, line) {
+    for (var j = 0; j < SIZE; j++) {
+      if (dir === 'left') grid[index][j] = line[j];
+      else if (dir === 'right') grid[index][SIZE - 1 - j] = line[j];
+      else if (dir === 'up') grid[j][index] = line[j];
+      else grid[SIZE - 1 - j][index] = line[j];
+    }
+  }
+
+  function mergeLine(line) {
+    var nums = [];
+    for (var i = 0; i < line.length; i++) {
+      if (line[i] !== 0) nums.push(line[i]);
+    }
+    var out = [];
+    var gained = 0;
+    for (var k = 0; k < nums.length; k++) {
+      if (k + 1 < nums.length && nums[k] === nums[k + 1]) {
+        var merged = nums[k] * 2;
+        out.push(merged);
+        gained += merged;
+        k++;
+      } else {
+        out.push(nums[k]);
+      }
+    }
+    while (out.length < SIZE) out.push(0);
+    return { out: out, gained: gained };
+  }
+
+  function move(dir) {
+    if (finished) return;
+    var changed = false;
+    var gainedTotal = 0;
+
+    for (var i = 0; i < SIZE; i++) {
+      var line = getLine(dir, i);
+      var result = mergeLine(line);
+      gainedTotal += result.gained;
+      for (var j = 0; j < SIZE; j++) {
+        if (result.out[j] !== line[j]) changed = true;
+      }
+      setLine(dir, i, result.out);
+    }
+
+    if (!changed) return;
+
+    score += gainedTotal;
+    addRandomTile();
+    render([]);
+    updateScores();
+
+    if (score > best) {
+      best = score;
+      updateScores();
+      reportScore(score);
+    }
+
+    checkState();
+  }
+
+  function hasMove() {
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        if (grid[r][c] === 0) return true;
+        if (c + 1 < SIZE && grid[r][c] === grid[r][c + 1]) return true;
+        if (r + 1 < SIZE && grid[r][c] === grid[r + 1][c]) return true;
+      }
+    }
+    return false;
+  }
+
+  function hasValue(target) {
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        if (grid[r][c] >= target) return true;
+      }
+    }
+    return false;
+  }
+
+  function checkState() {
+    if (!continued && hasValue(WIN_VALUE)) {
+      continued = true;
+      showOverlay('达成 2048！', '可以继续挑战更高的数字。', '继续');
+      return;
+    }
+    if (hasMove()) return;
+    finished = true;
+    reportScore(score);
+    showOverlay('游戏结束', '本局得分 ' + score + '，最高 ' + best, '再来一局');
+  }
+
+  function showOverlay(title, desc, actionText) {
+    overlayTitleEl.textContent = title;
+    overlayDescEl.textContent = desc;
+    overlayActionEl.textContent = actionText;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlayEl.classList.add('hidden');
+  }
+
+  function restart() {
+    grid = createEmptyGrid();
+    score = 0;
+    finished = false;
+    continued = false;
+    lastReported = -1;
+    addRandomTile();
+    addRandomTile();
+    render([]);
+    updateScores();
+    hideOverlay();
+  }
+
+  overlayActionEl.addEventListener('click', function () {
+    if (finished) {
+      restart();
+    } else {
+      hideOverlay();
+    }
+  });
+
+  document.getElementById('new-game').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', function () {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var map = {
+      ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
+      a: 'left', d: 'right', w: 'up', s: 'down'
+    };
+    var dir = map[event.key];
+    if (!dir) return;
+    event.preventDefault();
+    move(dir);
+  });
+
+  var touchStartX = 0;
+  var touchStartY = 0;
+  var touching = false;
+
+  document.addEventListener('touchstart', function (event) {
+    if (event.touches.length !== 1) return;
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+    touching = true;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function (event) {
+    if (touching) event.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchend', function (event) {
+    if (!touching) return;
+    touching = false;
+    var touch = event.changedTouches[0];
+    var dx = touch.clientX - touchStartX;
+    var dy = touch.clientY - touchStartY;
+    var threshold = 24;
+    if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      move(dx > 0 ? 'right' : 'left');
+    } else {
+      move(dy > 0 ? 'down' : 'up');
+    }
+  }, { passive: true });
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) {
+          best = value;
+          updateScores();
+        }
+      }
+    }
+  };
+
+  restart();
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

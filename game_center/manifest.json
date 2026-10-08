@@ -1,0 +1,22 @@
+{
+    "schemaVersion":  1,
+    "games":  [
+                  {
+                      "id":  "2048",
+                      "name":  "2048",
+                      "description":  "经典数字合成游戏，滑动合并相同数字",
+                      "icon":  "grid_on",
+                      "color":  "#FF9800",
+                      "cost":  10,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/game_2048",
+                      "package":  {
+                                      "path":  "game_center/packages/game_2048_v1.0.0.zip",
+                                      "sha256":  "d05c92e3ca44b875531e71ffd42f59456ecf2e07c18c14b00cb719ee932fcb5c",
+                                      "sizeBytes":  4025
+                                  },
+                      "entry":  "index.html"
+                  }
+              ],
+    "updatedAt":  "2026-10-08T06:12:42Z"
+}

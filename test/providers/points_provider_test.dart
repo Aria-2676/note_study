@@ -1,8 +1,22 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:v5_app/core/services/database/database_service.dart';
 import 'package:v5_app/providers/points_provider.dart';
 import 'package:v5_app/modules/points/models/points_model.dart';
 
 void main() {
+  // 让 DatabaseService.instance 在测试进程内落到 ffi 的 SQLite 上，
+  // 并用独立临时目录隔离，避免与其它测试文件并发争用同一个库文件。
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+  setUpAll(() async {
+    final dir = Directory.systemTemp.createTempSync('v5_points_test');
+    await databaseFactory.setDatabasesPath(dir.path);
+  });
+
   group('PointsProvider', () {
     test('should have correct initial values', () {
       final provider = PointsProvider();
@@ -172,6 +186,162 @@ void main() {
       );
 
       expect(record.points, -50);
+    });
+  });
+
+  group('PointsProvider 数据库交互', () {
+    late PointsProvider provider;
+
+    setUp(() async {
+      // clearAllData 会把积分清零、清空流水，保证每个用例起点一致
+      await DatabaseService.instance.clearAllData();
+      provider = PointsProvider();
+      await provider.initialize();
+    });
+
+    test('should load zero points and empty records after initialize', () {
+      expect(provider.currentPoints, 0);
+      expect(provider.records, isEmpty);
+    });
+
+    test('addPoints should increase the balance', () async {
+      await provider.addPoints(50);
+      expect(provider.currentPoints, 50);
+    });
+
+    test('addPoints should accumulate across calls', () async {
+      await provider.addPoints(10);
+      await provider.addPoints(15);
+      expect(provider.currentPoints, 25);
+    });
+
+    test('deductPoints should decrease the balance', () async {
+      await provider.addPoints(50);
+      await provider.deductPoints(20);
+      expect(provider.currentPoints, 30);
+    });
+
+    test('updatePoints should set the exact balance', () async {
+      await provider.addPoints(50);
+      await provider.updatePoints(123);
+      expect(provider.currentPoints, 123);
+    });
+
+    test('addPointsWithRecord should write points and a positive record',
+        () async {
+      await provider.addPointsWithRecord(
+        points: 30,
+        type: 'task_complete',
+        description: '完成任务',
+        relatedId: 7,
+      );
+
+      expect(provider.currentPoints, 30);
+      expect(provider.records.length, 1);
+      expect(provider.records.single.points, 30);
+      expect(provider.records.single.type, 'task_complete');
+      expect(provider.records.single.relatedId, 7);
+    });
+
+    test('deductPointsWithRecord should write negative points and record',
+        () async {
+      await provider.addPointsWithRecord(
+        points: 30,
+        type: 'task_complete',
+        description: '完成任务',
+        relatedId: 7,
+      );
+      await provider.deductPointsWithRecord(
+        points: 10,
+        type: 'task_uncomplete',
+        description: '取消完成',
+        relatedId: 7,
+      );
+
+      expect(provider.currentPoints, 20);
+      expect(provider.records.first.points, -10);
+      expect(provider.records.first.type, 'task_uncomplete');
+    });
+
+    test('hasRecordForTypeAndRelatedId should reflect stored records',
+        () async {
+      await provider.addPointsWithRecord(
+        points: 5,
+        type: 'task_complete',
+        description: '完成任务',
+        relatedId: 9,
+      );
+
+      expect(
+        await provider.hasRecordForTypeAndRelatedId('task_complete', 9),
+        isTrue,
+      );
+      expect(
+        await provider.hasRecordForTypeAndRelatedId('task_complete', 99),
+        isFalse,
+      );
+    });
+
+    test('getLatestRecord should return the newest matching record', () async {
+      await provider.addPointsWithRecord(
+        points: 10,
+        type: 'task_complete',
+        description: '完成任务',
+        relatedId: 3,
+      );
+      await provider.deductPointsWithRecord(
+        points: 10,
+        type: 'task_uncomplete',
+        description: '取消完成',
+        relatedId: 3,
+      );
+
+      final latest = await provider.getLatestRecord(3, [
+        'task_complete',
+        'task_uncomplete',
+      ]);
+
+      expect(latest, isNotNull);
+      expect(latest!.type, 'task_uncomplete');
+    });
+
+    test('getLatestRecord should return null when nothing matches', () async {
+      expect(await provider.getLatestRecord(404, ['task_complete']), isNull);
+      expect(await provider.getLatestRecord(404, []), isNull);
+    });
+
+    test('reload should re-read points modified directly in the database',
+        () async {
+      await DatabaseService.instance.updateUserPoints(999);
+      await provider.reload();
+      expect(provider.currentPoints, 999);
+    });
+
+    test('refreshRecords should reload the record list', () async {
+      await DatabaseService.instance.addPointsRecord(
+        PointsRecord(points: 1, type: 'manual', description: '手工记录'),
+      );
+      await provider.refreshRecords();
+      expect(provider.records.length, 1);
+    });
+
+    test('records should be capped at 50 entries', () async {
+      for (var i = 0; i < 60; i++) {
+        await DatabaseService.instance.addPointsRecord(
+          PointsRecord(points: i, type: 'bulk', description: '记录$i'),
+        );
+      }
+      await provider.refreshRecords();
+      expect(provider.records.length, 50);
+    });
+
+    test('should notify listeners when points change', () async {
+      var notifyCount = 0;
+      provider.addListener(() => notifyCount++);
+
+      await provider.addPoints(10);
+
+      expect(notifyCount, greaterThanOrEqualTo(1));
     });
   });
 }

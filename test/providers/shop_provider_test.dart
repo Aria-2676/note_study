@@ -1,9 +1,23 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:v5_app/core/services/database/database_service.dart';
 import 'package:v5_app/modules/shop/models/shop_model.dart';
 import 'package:v5_app/providers/shop_provider.dart';
 import 'package:v5_app/providers/points_provider.dart';
 
 void main() {
+  // 让 DatabaseService.instance 在测试进程内落到 ffi 的 SQLite 上，
+  // 并用独立临时目录隔离，避免与其它测试文件并发争用同一个库文件。
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+  setUpAll(() async {
+    final dir = Directory.systemTemp.createTempSync('v5_shop_test');
+    await databaseFactory.setDatabasesPath(dir.path);
+  });
+
   group('ShopItem', () {
     test('should create with required values', () {
       final item = ShopItem(name: '测试商品', description: '这是一个测试商品', price: 100);
@@ -255,6 +269,157 @@ void main() {
       final shopProvider = ShopProvider(pointsProvider);
 
       expect(shopProvider.getPurchasedItemCount(1), 0);
+    });
+  });
+
+  group('ShopProvider 数据库交互', () {
+    late PointsProvider pointsProvider;
+    late ShopProvider shopProvider;
+
+    setUp(() async {
+      await DatabaseService.instance.clearAllData();
+      pointsProvider = PointsProvider();
+      await pointsProvider.initialize();
+      shopProvider = ShopProvider(pointsProvider);
+      await shopProvider.initialize();
+    });
+
+    test('initialize should seed default shop items', () {
+      expect(shopProvider.isInitialized, isTrue);
+      expect(shopProvider.shopItems.length, 8);
+      expect(
+        shopProvider.shopItems.any((i) => i.name == '休息15分钟'),
+        isTrue,
+      );
+    });
+
+    test('initialize should not duplicate items on repeated calls', () async {
+      await shopProvider.initialize();
+      expect(shopProvider.shopItems.length, 8);
+    });
+
+    test('addShopItem should persist a new item', () async {
+      await shopProvider.addShopItem(
+        ShopItem(name: '新商品', description: '描述', price: 60),
+      );
+
+      expect(shopProvider.shopItems.length, 9);
+      expect(shopProvider.shopItems.any((i) => i.name == '新商品'), isTrue);
+    });
+
+    test('updateShopItem should persist the new price', () async {
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '休息15分钟',
+      );
+
+      await shopProvider.updateShopItem(item.copyWith(price: 999));
+
+      final updated = shopProvider.shopItems.firstWhere(
+        (i) => i.id == item.id,
+      );
+      expect(updated.price, 999);
+    });
+
+    test('deleteShopItem should remove the item', () async {
+      final item = shopProvider.shopItems.first;
+      await shopProvider.deleteShopItem(item.id!);
+
+      expect(shopProvider.shopItems.length, 7);
+      expect(shopProvider.shopItems.any((i) => i.id == item.id), isFalse);
+    });
+
+    test('purchaseItem should reject an item without id', () async {
+      final result = await shopProvider.purchaseItem(
+        ShopItem(name: '无 id 商品', description: '描述', price: 10),
+      );
+
+      expect(result, '商品信息错误');
+    });
+
+    test('purchaseItem should reject when points are insufficient', () async {
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '休息15分钟',
+      );
+
+      final result = await shopProvider.purchaseItem(item);
+
+      expect(result, '积分不足，无法兑换');
+      expect(shopProvider.purchasedItems, isEmpty);
+    });
+
+    test('purchaseItem should deduct points and record the purchase', () async {
+      await pointsProvider.addPoints(100);
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '休息15分钟',
+      );
+
+      final result = await shopProvider.purchaseItem(item);
+
+      expect(result, isNull);
+      expect(pointsProvider.currentPoints, 50);
+      expect(shopProvider.purchasedItems.length, 1);
+      expect(shopProvider.getPurchasedItemCount(item.id!), 1);
+    });
+
+    test('purchaseItem should refuse when balance drops below the price',
+        () async {
+      await pointsProvider.addPoints(10);
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '看一集动漫',
+      );
+
+      final result = await shopProvider.purchaseItem(item);
+
+      expect(result, '积分不足，无法兑换');
+      expect(pointsProvider.currentPoints, 10);
+      expect(shopProvider.purchasedItems, isEmpty);
+    });
+
+    test('deletePurchasedItem should remove a purchased item', () async {
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '休息15分钟',
+      );
+      await pointsProvider.addPoints(100);
+      await shopProvider.purchaseItem(item);
+
+      final purchasedId = shopProvider.purchasedItems.single.id!;
+      await shopProvider.deletePurchasedItem(purchasedId);
+
+      expect(shopProvider.purchasedItems, isEmpty);
+    });
+
+    test('addPurchasedItem should append a purchased item', () async {
+      await shopProvider.addPurchasedItem(
+        PurchasedItem(
+          shopItemId: 1,
+          name: '手工入库',
+          description: '描述',
+          price: 20,
+        ),
+      );
+
+      expect(shopProvider.purchasedItems.length, 1);
+    });
+
+    test('updatePointsProvider should use the new provider for purchases',
+        () async {
+      final richProvider = PointsProvider();
+      await DatabaseService.instance.updateUserPoints(500);
+      await richProvider.initialize();
+      shopProvider.updatePointsProvider(richProvider);
+
+      final item = shopProvider.shopItems.firstWhere(
+        (i) => i.name == '买一本书',
+      );
+      final result = await shopProvider.purchaseItem(item);
+
+      expect(result, isNull);
+      expect(richProvider.currentPoints, 300);
+    });
+
+    test('report page views should complete without throwing', () async {
+      await shopProvider.reportPageViewHome();
+      await shopProvider.reportPageViewWarehouse();
     });
   });
 }

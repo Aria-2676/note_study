@@ -86,6 +86,7 @@ class DatabaseService
     await db.delete('pomodoro_settings');
     await db.delete('custom_prize_pool');
     await db.delete('lottery_records');
+    await db.delete('scratch_tickets');
     await db.delete('recycled_tasks');
     await db.update(
       'user_points',
