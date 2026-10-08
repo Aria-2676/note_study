@@ -296,7 +296,8 @@
     running = false;
     stop();
     reportScore(score);
-    showOverlay('游戏结束', '到达第 ' + level + ' 关 · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '到达第 ' + level + ' 关 · 得分 ' + score, '退出游戏');
   }
 
   function showOverlay(title, desc, action) {
@@ -317,7 +318,7 @@
     lastReported = -1;
     updateStats();
     hideOverlay();
-    layout();
+    resize();
     resetPositions();
     running = true;
     start();
@@ -361,12 +362,14 @@
     }
   });
 
-  ovActionEl.addEventListener('click', restart);
-  document.getElementById('restart').addEventListener('click', restart);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
-  });
+  }
+
+  ovActionEl.addEventListener('click', exitGame);
+  document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stop();
@@ -386,6 +389,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateStats(); }
       }
+      if (message.type === 'restart') { restart(); }
     }
   };
 

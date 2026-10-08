@@ -159,10 +159,11 @@
   function gameOver() {
     state = 'over';
     reportScore(score);
+    send({ type: 'gameOver', score: score, result: 'lose' });
     showOverlay(
       failed ? '插到针了' : '游戏结束',
       '共插入 ' + needles.length + ' 根 · 得分 ' + score,
-      '再来一局'
+      '退出游戏'
     );
   }
 
@@ -269,12 +270,16 @@
     lastTime = 0;
   }
 
-  ovActionEl.addEventListener('click', startGame);
-  document.getElementById('restart').addEventListener('click', startGame);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
+  }
+
+  ovActionEl.addEventListener('click', function () {
+    if (state === 'over') { exitGame(); } else { startGame(); }
   });
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   canvas.addEventListener('pointerdown', function (event) {
     event.preventDefault();
@@ -301,6 +306,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateScores(); }
       }
+      if (message.type === 'restart') { startGame(); }
     }
   };
 

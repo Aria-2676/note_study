@@ -249,7 +249,8 @@
     state = 'over';
     reason = text;
     reportScore(score);
-    showOverlay('游戏结束', text + ' · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', text + ' · 得分 ' + score, '退出游戏');
   }
 
   function draw() {
@@ -330,12 +331,16 @@
     lastTime = 0;
   }
 
-  ovActionEl.addEventListener('click', startGame);
-  document.getElementById('restart').addEventListener('click', startGame);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
+  }
+
+  ovActionEl.addEventListener('click', function () {
+    if (state === 'over') { exitGame(); } else { startGame(); }
   });
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   function localX(clientX) {
     var rect = canvas.getBoundingClientRect();
@@ -397,6 +402,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateScores(); }
       }
+      if (message.type === 'restart') { startGame(); }
     }
   };
 

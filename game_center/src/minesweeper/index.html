@@ -306,7 +306,8 @@
     var score = Math.max(100, BASE_SCORE - seconds * SCORE_PER_SECOND);
     if (score > best) { best = score; updateStats(); }
     reportScore(score);
-    showOverlay('排雷成功！', '用时 ' + seconds + 's<br>本局得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'win' });
+    showOverlay('排雷成功！', '用时 ' + seconds + 's<br>本局得分 ' + score, '退出游戏');
   }
 
   function lose() {
@@ -316,7 +317,8 @@
     for (var i = 0; i < cells.length; i++) {
       if (cells[i].mine) { cells[i].open = true; paint(cells[i], cellEl(i)); }
     }
-    showOverlay('踩到雷了', '用时 ' + seconds + 's<br>再试一次吧', '再来一局');
+    showOverlay('踩到雷了', '用时 ' + seconds + 's<br>再试一次吧', '退出游戏');
+    send({ type: 'gameOver', score: 0, result: 'lose' });
   }
 
   function showOverlay(title, desc, action) {
@@ -372,11 +374,13 @@
     setFlagMode(!flagMode);
   });
 
-  ovActionEl.addEventListener('click', newGame);
-  document.getElementById('restart').addEventListener('click', newGame);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     send({ type: 'exit' });
-  });
+  }
+
+  ovActionEl.addEventListener('click', exitGame);
+  document.getElementById('restart').addEventListener('click', newGame);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopTimer();
@@ -391,6 +395,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateStats(); }
       }
+      if (message.type === 'restart') { newGame(); }
     }
   };
 

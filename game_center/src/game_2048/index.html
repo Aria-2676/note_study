@@ -297,7 +297,8 @@
     if (hasMove()) return;
     finished = true;
     reportScore(score);
-    showOverlay('游戏结束', '本局得分 ' + score + '，最高 ' + best, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '本局得分 ' + score + '，最高 ' + best, '退出游戏');
   }
 
   function showOverlay(title, desc, actionText) {
@@ -326,17 +327,19 @@
 
   overlayActionEl.addEventListener('click', function () {
     if (finished) {
-      restart();
+      exitGame();
     } else {
       hideOverlay();
     }
   });
 
-  document.getElementById('new-game').addEventListener('click', restart);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
-  });
+  }
+
+  document.getElementById('new-game').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('keydown', function (event) {
     var map = {
@@ -390,6 +393,7 @@
           updateScores();
         }
       }
+      if (message.type === 'restart') { restart(); }
     }
   };
 

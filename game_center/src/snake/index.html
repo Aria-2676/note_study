@@ -227,7 +227,14 @@
       if (score > best) { best = score; reportScore(score); }
       updateScores();
       placeFood();
-      if (food.x < 0) { draw(); showOverlay('通关啦！', '整张棋盘都被你占满了', '再来一局'); running = false; stopLoop(); return; }
+      if (food.x < 0) {
+        running = false;
+        stopLoop();
+        draw();
+        send({ type: 'gameOver', score: score, result: 'win' });
+        showOverlay('通关啦！', '整张棋盘都被你占满了', '退出游戏');
+        return;
+      }
     } else {
       snake.pop();
     }
@@ -238,7 +245,8 @@
     running = false;
     stopLoop();
     reportScore(score);
-    showOverlay('游戏结束', '长度 ' + snake.length + ' · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '长度 ' + snake.length + ' · 得分 ' + score, '退出游戏');
   }
 
   function showOverlay(title, desc, action) {
@@ -266,12 +274,14 @@
     startLoop();
   }
 
-  ovActionEl.addEventListener('click', restart);
-  document.getElementById('restart').addEventListener('click', restart);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
-  });
+  }
+
+  ovActionEl.addEventListener('click', exitGame);
+  document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   var dirButtons = document.querySelectorAll('.pad button[data-dir]');
   for (var b = 0; b < dirButtons.length; b++) {
@@ -336,6 +346,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateScores(); }
       }
+      if (message.type === 'restart') { restart(); }
     }
   };
 

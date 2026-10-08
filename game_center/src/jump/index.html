@@ -226,7 +226,8 @@
     player.vx = 0;
     player.vy = 0;
     reportScore(score);
-    showOverlay('游戏结束', '起跳 ' + jumps + ' 次 · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '起跳 ' + jumps + ' 次 · 得分 ' + score, '退出游戏');
   }
 
   function update(dt) {
@@ -351,12 +352,16 @@
     camTarget = camX;
   }
 
-  ovActionEl.addEventListener('click', startGame);
-  document.getElementById('restart').addEventListener('click', startGame);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
+  }
+
+  ovActionEl.addEventListener('click', function () {
+    if (state === 'over') { exitGame(); } else { startGame(); }
   });
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   canvas.addEventListener('pointerdown', function (event) {
     event.preventDefault();
@@ -392,6 +397,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateScores(); }
       }
+      if (message.type === 'restart') { startGame(); }
     }
   };
 

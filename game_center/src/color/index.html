@@ -97,7 +97,7 @@
   var ovActionEl = document.getElementById('ov-action');
 
   var round = 1, score = 0, best = 0, lastReported = -1;
-  var inGame = false, paused = false, rafId = null;
+  var inGame = false, paused = false, rafId = null, ended = false;
   var deadline = 0, limitMs = 6000, remainMs = 6000;
 
   /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
@@ -184,9 +184,11 @@
 
   function gameOver() {
     inGame = false;
+    ended = true;
     reportScore(score);
     timebarEl.style.width = '0%';
-    showOverlay('游戏结束', '闯过 ' + (round - 1) + ' 关 · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '闯过 ' + (round - 1) + ' 关 · 得分 ' + score, '退出游戏');
   }
 
   function tick(now) {
@@ -219,15 +221,20 @@
     timebarEl.style.background = '#a78bfa';
     inGame = true;
     paused = false;
+    ended = false;
     buildRound();
   }
 
-  ovActionEl.addEventListener('click', startGame);
-  document.getElementById('restart').addEventListener('click', startGame);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
+  }
+
+  ovActionEl.addEventListener('click', function () {
+    if (ended) { exitGame(); } else { startGame(); }
   });
+  document.getElementById('restart').addEventListener('click', startGame);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
@@ -246,6 +253,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateScores(); }
       }
+      if (message.type === 'restart') { startGame(); }
     }
   };
 

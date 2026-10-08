@@ -105,6 +105,16 @@ void main() {
           contains("type: 'exit'"),
           reason: '$id 未实现退出按钮',
         );
+        expect(
+          compact,
+          contains("type: 'gameOver'"),
+          reason: '$id 未在回合结束时通知容器（无法统一结算）',
+        );
+        expect(
+          compact,
+          contains("message.type === 'restart'"),
+          reason: '$id 未响应容器的「再来一局」',
+        );
       }
     });
   });

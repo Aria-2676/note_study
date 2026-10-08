@@ -245,7 +245,8 @@
     var score = Math.max(MIN_SCORE, BASE_SCORE - penalty);
     if (score > best) { best = score; updateStats(); }
     reportScore(score);
-    showOverlay('恭喜通关！', '用时 ' + seconds + 's · ' + moves + ' 步<br>本局得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'win' });
+    showOverlay('恭喜通关！', '用时 ' + seconds + 's · ' + moves + ' 步<br>本局得分 ' + score, '退出游戏');
   }
 
   function showOverlay(title, desc, action) {
@@ -283,11 +284,13 @@
     flip(parseInt(target.getAttribute('data-index'), 10));
   });
 
-  ovActionEl.addEventListener('click', restart);
-  document.getElementById('restart').addEventListener('click', restart);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     send({ type: 'exit' });
-  });
+  }
+
+  ovActionEl.addEventListener('click', exitGame);
+  document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopTimer();
@@ -302,6 +305,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateStats(); }
       }
+      if (message.type === 'restart') { restart(); }
     }
   };
 

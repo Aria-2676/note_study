@@ -61,6 +61,9 @@ class _GameHostPageState extends State<GameHostPage> {
   int _bestScore = 0;
   int _lastReportedScore = 0;
 
+  /// 结算面板是否已弹出，避免游戏重复上报导致多次弹窗。
+  bool _roundEndVisible = false;
+
   String get _bestScoreKey => 'game_best_score_${widget.game.id}';
 
   @override
@@ -154,6 +157,8 @@ class _GameHostPageState extends State<GameHostPage> {
         _sendUserInfo(payload['requestId']);
       case 'reportScore':
         _handleScore((payload['score'] as num?)?.toInt() ?? 0);
+      case 'gameOver':
+        _handleGameOver(payload);
       case 'exit':
         _exitToCenter();
       default:
@@ -228,6 +233,114 @@ class _GameHostPageState extends State<GameHostPage> {
       _status = GameHostStatus.error;
       _errorMessage = message;
     });
+  }
+
+  /// 回合结束（失败或通关）：弹出统一结算面板，由容器决定退出或付费再来一局。
+  ///
+  /// 游戏内不再自行提供免费重开入口，保证「一次入场 = 一个回合」。
+  Future<void> _handleGameOver(Map<String, dynamic> payload) async {
+    if (_roundEndVisible) return;
+    _roundEndVisible = true;
+    final reported = (payload['score'] as num?)?.toInt() ?? _lastReportedScore;
+    if (reported > _bestScore) _bestScore = reported;
+    final won = payload['result'] == 'win';
+    try {
+      await _showRoundEndSheet(won);
+    } finally {
+      _roundEndVisible = false;
+    }
+  }
+
+  /// 展示回合结算面板：「再来一局（消耗积分）」或「退出」。
+  Future<void> _showRoundEndSheet(bool won) async {
+    final provider = context.read<GameProvider>();
+    final cost = widget.game.cost;
+    var insufficient = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (sheetContext) => PopScope(
+        canPop: false,
+        child: StatefulBuilder(
+          builder: (context, setSheetState) => Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  won ? Icons.emoji_events_outlined : Icons.flag_outlined,
+                  size: 44,
+                  color: won ? Colors.amber : Colors.blueGrey,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  won ? '通关！' : '本局结束',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _roundSummary(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                if (insufficient) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '积分不足，无法再来一局',
+                    style: TextStyle(fontSize: 13, color: Colors.red.shade400),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: insufficient
+                        ? null
+                        : () async {
+                            final ok = await provider.chargeEntry(widget.game);
+                            if (!ok) {
+                              setSheetState(() => insufficient = true);
+                              return;
+                            }
+                            if (sheetContext.mounted) {
+                              Navigator.of(sheetContext).pop();
+                            }
+                            _lastReportedScore = 0;
+                            _sendToGame({'type': 'restart'});
+                          },
+                    child: Text('再来一局（消耗 $cost 积分）'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      _exitToCenter();
+                    },
+                    child: const Text('退出'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 结算文案：本局有得分时同时展示得分与历史最高。
+  String _roundSummary() {
+    if (_lastReportedScore > 0) {
+      return '本局得分 $_lastReportedScore · 最高 $_bestScore';
+    }
+    return '最高 $_bestScore';
   }
 
   void _exitToCenter() {

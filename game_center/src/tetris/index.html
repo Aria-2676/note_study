@@ -343,7 +343,8 @@
     running = false;
     stopDropTimer();
     reportScore(score);
-    showOverlay('游戏结束', '消除 ' + lines + ' 行 · 得分 ' + score, '再来一局');
+    send({ type: 'gameOver', score: score, result: 'lose' });
+    showOverlay('游戏结束', '消除 ' + lines + ' 行 · 得分 ' + score, '退出游戏');
   }
 
   function showOverlay(title, desc, action) {
@@ -393,12 +394,14 @@
     else if (event.key === ' ') { event.preventDefault(); hardDrop(); }
   });
 
-  ovActionEl.addEventListener('click', restart);
-  document.getElementById('restart').addEventListener('click', restart);
-  document.getElementById('exit').addEventListener('click', function () {
+  function exitGame() {
     if (score > 0) reportScore(score);
     send({ type: 'exit' });
-  });
+  }
+
+  ovActionEl.addEventListener('click', exitGame);
+  document.getElementById('restart').addEventListener('click', restart);
+  document.getElementById('exit').addEventListener('click', exitGame);
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopDropTimer();
@@ -415,6 +418,7 @@
         var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
         if (value > best) { best = value; updateStats(); }
       }
+      if (message.type === 'restart') { restart(); }
     }
   };
 
