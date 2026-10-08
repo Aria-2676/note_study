@@ -23,11 +23,15 @@ class GameCdnConfig {
 
   /// 不可变地址基址：用于拉取游戏包。
   ///
-  /// 发布时注入 commit SHA（`...@<sha>`），使同一路径的内容永久不变，
+  /// 刻意**不用** `cdn.jsdelivr.net`：实测它对 `.zip` 会 301 重定向到
+  /// `raw.githubusercontent.com`（该主机在国内常被间歇性 reset），而
+  /// `gcore.jsdelivr.net` / `testingcf.jsdelivr.net` 可直连返回 200。
+  ///
+  /// 发布时仍可注入 commit SHA（`...@<sha>`），使同一路径的内容永久不变，
   /// 从而让 sha256 校验真正具备意义。
   static const String packageBase = String.fromEnvironment(
     'GAME_CDN_SHA_BASE',
-    defaultValue: manifestBase,
+    defaultValue: 'https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main',
   );
 
   /// 主基址不可达时的回退基址列表（按顺序尝试）。
