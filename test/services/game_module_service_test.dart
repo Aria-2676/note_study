@@ -250,6 +250,46 @@ void main() {
     });
   });
 
+  group('GameModuleService.reconcile 磁盘重建', () {
+    test('索引丢失时按磁盘目录补回安装记录', () async {
+      await createVersionDir('2048', '1.0.0');
+
+      final reconciled = await service.reconcile(InstalledGamesIndex.empty);
+
+      expect(reconciled.byId('2048')?.installedVersion, '1.0.0');
+      expect(reconciled.byId('2048')?.entry, 'index.html');
+      // 重建结果应落盘，避免每次启动都重新扫盘
+      expect((await repository.loadIndex()).byId('2048'), isNotNull);
+    });
+
+    test('同一游戏存在多个版本目录时取最高版本', () async {
+      await createVersionDir('2048', '1.0.0');
+      await createVersionDir('2048', '1.0.10');
+
+      final reconciled = await service.reconcile(InstalledGamesIndex.empty);
+
+      expect(reconciled.byId('2048')?.installedVersion, '1.0.10');
+    });
+
+    test('版本目录内没有入口文件时不认账', () async {
+      await Directory(
+        await repository.versionDirectory('2048', '1.0.0'),
+      ).create(recursive: true);
+
+      final reconciled = await service.reconcile(InstalledGamesIndex.empty);
+
+      expect(reconciled.games, isEmpty);
+    });
+
+    test('忽略 .tmp 等内部目录', () async {
+      await repository.tempDirectory();
+
+      final reconciled = await service.reconcile(InstalledGamesIndex.empty);
+
+      expect(reconciled.games, isEmpty);
+    });
+  });
+
   group('GameModuleService.install 失败路径', () {
     test('下载失败时抛出 GameException 并清理临时目录', () async {
       final game = GameInfo(

@@ -31,6 +31,10 @@ class _GameCenterPageState extends State<GameCenterPage> {
     final provider = context.read<GameProvider>();
     await provider.reportCenterViewed();
     await provider.loadInstalled();
+    // 上次下载被系统中断会留下临时残留；正在安装时不清理，避免误删在途文件。
+    if (!provider.isInstalling) {
+      await provider.cleanTemp();
+    }
     if (!provider.isManifestLoaded) {
       await provider.refreshManifest();
     }
@@ -55,7 +59,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
     if (success) {
       _showSnack('「${game.name}」安装完成');
     } else {
-      _showSnack(provider.manifestError ?? '安装失败，请稍后重试', isError: true);
+      _showSnack(provider.installErrorOf(game.id) ?? '安装失败，请稍后重试', isError: true);
     }
   }
 

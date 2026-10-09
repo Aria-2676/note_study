@@ -179,13 +179,15 @@ class GameManifest {
 class GamePathUtils {
   const GamePathUtils._();
 
+  static final RegExp _windowsDrive = RegExp(r'^[a-zA-Z]:');
+
   /// 校验并规范化相对路径；不合法（绝对路径、包含 `..`、空串）时返回 null。
   static String? normalizeRelative(String? raw) {
     if (raw == null) return null;
     final trimmed = raw.trim().replaceAll('\\', '/');
     if (trimmed.isEmpty) return null;
     if (trimmed.startsWith('/')) return null;
-    if (RegExp(r'^[a-zA-Z]:').hasMatch(trimmed)) return null;
+    if (_windowsDrive.hasMatch(trimmed)) return null;
     final segments = trimmed.split('/');
     if (segments.any((s) => s == '..' || s.isEmpty)) return null;
     return segments.join('/');

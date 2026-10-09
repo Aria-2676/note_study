@@ -36,6 +36,7 @@ class GameProvider extends ChangeNotifier {
   bool _isManifestLoaded = false;
   final Map<String, double> _downloadProgress = {};
   final Set<String> _installing = {};
+  final Map<String, String> _installErrors = {};
 
   /// 云端可供下载的游戏列表。
   List<GameInfo> get games => List.unmodifiable(_games);
@@ -73,16 +74,11 @@ class GameProvider extends ChangeNotifier {
   /// 某游戏的下载进度（0~1）；未在下载则为 null。
   double? downloadProgressOf(String gameId) => _downloadProgress[gameId];
 
+  /// 某游戏最近一次安装失败的原因；安装成功或从未尝试过时为 null。
+  String? installErrorOf(String gameId) => _installErrors[gameId];
+
   /// 某游戏是否正在安装。
   bool isInstallingGame(String gameId) => _installing.contains(gameId);
-
-  /// 初始化：读取本地安装状态并尝试拉取清单。
-  ///
-  /// 清单拉取失败不影响已安装游戏的离线游玩，只记录错误。
-  Future<void> initialize() async {
-    await loadInstalled();
-    await refreshManifest();
-  }
 
   /// 读取安装索引并与磁盘对账。
   Future<void> loadInstalled() async {
@@ -119,21 +115,23 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// 下载并安装（或升级）游戏；成功返回 true。
+  ///
+  /// 失败原因写入 [installErrorOf]（与清单错误 [manifestError] 分开），
+  /// 这样单款游戏装不上不会让整个游戏中心显示「列表加载失败」。
   Future<bool> installGame(GameInfo game) async {
     if (_installing.contains(game.id)) return false;
     _installing.add(game.id);
     _downloadProgress[game.id] = 0;
+    _installErrors.remove(game.id);
     notifyListeners();
 
     try {
       final installed = await _moduleService.install(
         game,
         onProgress: (received, total) {
-          if (total == null || total <= 0) {
-            _downloadProgress[game.id] = -1;
-          } else {
-            _downloadProgress[game.id] = received / total;
-          }
+          final next = (total == null || total <= 0) ? -1.0 : received / total;
+          if (!_shouldNotifyProgress(game.id, next)) return;
+          _downloadProgress[game.id] = next;
           notifyListeners();
         },
       );
@@ -142,11 +140,11 @@ class GameProvider extends ChangeNotifier {
       await _statisticAdapter.reportInstalled(game.id, game.latestVersion);
       return true;
     } on GameException catch (error) {
-      _manifestError = error.message;
+      _installErrors[game.id] = error.message;
       return false;
     } catch (error, stack) {
       AppLogger.warn('GameProvider', '安装失败: ${game.id}', error, stack);
-      _manifestError = '安装失败，请稍后重试';
+      _installErrors[game.id] = '安装失败，请稍后重试';
       return false;
     } finally {
       _installing.remove(game.id);
@@ -155,8 +153,21 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  /// 下载进度回调是否需要通知 UI。
+  ///
+  /// 下载回调按数据块触发（几 MB 的包可能上千次），逐次 `notifyListeners`
+  /// 会让游戏中心整个列表重建、明显掉帧。这里只在**整数百分比变化**时通知，
+  /// 未知总长（-1）也只通知一次。
+  bool _shouldNotifyProgress(String gameId, double next) {
+    final previous = _downloadProgress[gameId];
+    if (previous == null) return true;
+    if (previous < 0 || next < 0) return previous != next;
+    return (next * 100).floor() != (previous * 100).floor();
+  }
+
   /// 卸载游戏。
   Future<void> uninstallGame(String gameId) async {
+    _installErrors.remove(gameId);
     try {
       await _moduleService.uninstall(gameId);
       _installed = _installed.remove(gameId);

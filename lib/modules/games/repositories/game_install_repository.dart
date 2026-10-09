@@ -87,6 +87,26 @@ class GameInstallRepository {
     await temp.rename(file.path);
   }
 
+  /// 列出磁盘上存在目录的全部游戏 id。
+  ///
+  /// `.tmp` 等以 `.` 开头的内部目录会被忽略。
+  Future<List<String>> listGameIds() async {
+    try {
+      final root = await rootDirectory();
+      final names = <String>[];
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is! Directory) continue;
+        final name = p.basename(entity.path);
+        if (name.startsWith('.')) continue;
+        names.add(name);
+      }
+      return names;
+    } catch (error, stack) {
+      AppLogger.warn('GameInstallRepository', '扫描已安装游戏失败', error, stack);
+      return [];
+    }
+  }
+
   /// 列出某游戏在磁盘上实际存在的版本目录名。
   Future<List<String>> listInstalledVersions(String gameId) async {
     try {

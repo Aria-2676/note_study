@@ -110,5 +110,38 @@ void main() {
       expect(server.isRunning, isTrue);
       expect(firstPort, greaterThan(0));
     });
+
+    test('应在 GET 与 HEAD 上都返回 Content-Length', () async {
+      const body = '<html>ok</html>';
+      await server.start(rootDir: root.path, entry: 'index.html');
+
+      final getResponse = await get('/index.html');
+      expect(getResponse.statusCode, 200);
+      expect(getResponse.contentLength, body.length);
+      await getResponse.drain<void>();
+
+      final headRequest = await client.headUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/index.html'),
+      );
+      final headResponse = await headRequest.close();
+      expect(headResponse.statusCode, 200);
+      expect(headResponse.contentLength, body.length);
+      await headResponse.drain<void>();
+    });
+
+    test('目录请求应回落为目录下的 index.html', () async {
+      await Directory(p.join(root.path, 'level')).create();
+      await File(
+        p.join(root.path, 'level', 'index.html'),
+      ).writeAsString('<html>level</html>');
+      await server.start(rootDir: root.path, entry: 'index.html');
+
+      final response = await get('/level/');
+      expect(response.statusCode, 200);
+      expect(
+        await response.transform(utf8.decoder).join(),
+        contains('level'),
+      );
+    });
   });
 }

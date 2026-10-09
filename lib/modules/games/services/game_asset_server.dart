@@ -22,6 +22,9 @@ class GameAssetServer {
   /// 当前监听端口；未启动时为 0。
   int get port => _server?.port ?? 0;
 
+  /// 请求路径前导斜杠；`p.join` 会把前导 `/` 视为 rooted，必须先剥掉。
+  static final RegExp _leadingSlashes = RegExp(r'^/+');
+
   static const Map<String, String> _mimeTypes = {
     '.html': 'text/html; charset=utf-8',
     '.htm': 'text/html; charset=utf-8',
@@ -127,7 +130,10 @@ class GameAssetServer {
         _mimeTypes[p.extension(target).toLowerCase()] ??
             'application/octet-stream',
       )
-      ..set(HttpHeaders.cacheControlHeader, 'no-store');
+      ..set(HttpHeaders.cacheControlHeader, 'no-store')
+      // 显式给出长度：WebView 需要它才能显示资源加载进度，部分内核在缺少
+      // `Content-Length` 时还会先缓冲整个响应再解析。
+      ..contentLength = await file.length();
 
     if (request.method == 'HEAD') return;
     await response.addStream(file.openRead());
@@ -135,10 +141,12 @@ class GameAssetServer {
 
   /// 将请求路径解析为 root 内的绝对文件路径；越界时返回 null。
   String? _resolveTarget(String root, String rawPath) {
-    final decoded = Uri.decodeComponent(rawPath);
+    var decoded = Uri.decodeComponent(rawPath);
+    // 目录请求（以 `/` 结尾）回落为目录下的入口文件。
+    if (decoded.endsWith('/')) decoded = '${decoded}index.html';
     // `p.join` 遇到以 `/` 开头的段会替换整个路径（各平台都把前导 `/` 视为
     // rooted），因此必须先剥离前导斜杠，否则子资源请求会被误判为越界。
-    final trimmed = decoded.replaceFirst(RegExp(r'^/+'), '');
+    final trimmed = decoded.replaceFirst(_leadingSlashes, '');
     if (trimmed.trim().isEmpty) {
       return p.join(root, 'index.html');
     }

@@ -9,6 +9,7 @@ import '../models/game_manifest_model.dart';
 import '../models/installed_game_model.dart';
 import '../repositories/game_install_repository.dart';
 import '../utils/game_cdn_config.dart';
+import '../utils/game_version_utils.dart';
 import 'game_exception.dart';
 import 'game_installer.dart';
 
@@ -16,6 +17,9 @@ import 'game_installer.dart';
 class GameModuleService {
   GameModuleService({GameInstallRepository? installRepository})
     : _installRepository = installRepository ?? GameInstallRepository();
+
+  /// 索引丢失后按磁盘重建时使用的默认入口名。
+  static const String _defaultEntry = 'index.html';
 
   final GameInstallRepository _installRepository;
 
@@ -101,10 +105,12 @@ class GameModuleService {
     await _installRepository.saveIndex(index.remove(gameId));
   }
 
-  /// 与磁盘对账：剔除索引中记载但目录已丢失的记录。
+  /// 与磁盘对账：以磁盘为准修正索引。
   ///
-  /// 索引只是缓存，磁盘才是真实来源；目录被系统清理或用户手动删除后，
-  /// 通过本方法让状态自愈。
+  /// 索引只是缓存，磁盘才是真实来源，因此两个方向都要修：
+  /// 1. 索引里记载、但目录已丢失的记录 → 剔除（被系统清理或用户手动删除）；
+  /// 2. 目录存在、但索引里没有记录（索引损坏或被删）→ 补回，
+  ///    否则用户明明装过却要重新下载一遍。
   Future<InstalledGamesIndex> reconcile(InstalledGamesIndex index) async {
     final valid = <String, InstalledGame>{};
     for (final entry in index.games.entries) {
@@ -117,14 +123,61 @@ class GameModuleService {
       }
     }
 
+    final reconciled = await _recoverFromDisk(valid);
+    final changed =
+        reconciled.length != index.games.length ||
+        reconciled.entries.any(
+          (entry) =>
+              index.games[entry.key]?.installedVersion !=
+              entry.value.installedVersion,
+        );
+
     final result = InstalledGamesIndex(
       schemaVersion: index.schemaVersion,
-      games: valid,
+      games: reconciled,
     );
-    if (valid.length != index.games.length) {
+    if (changed) {
       await _installRepository.saveIndex(result);
     }
     return result;
+  }
+
+  /// 扫描磁盘，补回索引中缺失的安装记录。
+  ///
+  /// 只在版本目录内确实存在入口文件时才认账，避免把半途失败的残留目录
+  /// 误判成「已安装」。索引里丢失了入口名，故统一按 `index.html` 判定。
+  Future<Map<String, InstalledGame>> _recoverFromDisk(
+    Map<String, InstalledGame> known,
+  ) async {
+    final result = Map<String, InstalledGame>.from(known);
+    for (final gameId in await _installRepository.listGameIds()) {
+      if (result.containsKey(gameId)) continue;
+      final version = await _latestInstalledVersion(gameId);
+      if (version == null) continue;
+      final dir = await _installRepository.versionDirectory(gameId, version);
+      if (!await File(p.join(dir, _defaultEntry)).exists()) continue;
+
+      result[gameId] = InstalledGame(
+        gameId: gameId,
+        installedVersion: version,
+        installedAt: DateTime.now(),
+        sizeBytes: 0,
+        entry: _defaultEntry,
+      );
+      AppLogger.warn(
+        'GameModuleService',
+        '安装索引缺失，已按磁盘重建: $gameId@$version',
+      );
+    }
+    return result;
+  }
+
+  /// 磁盘上某个游戏的最新版本目录名；无有效目录时返回 null。
+  Future<String?> _latestInstalledVersion(String gameId) async {
+    final versions = await _installRepository.listInstalledVersions(gameId);
+    if (versions.isEmpty) return null;
+    versions.sort((a, b) => GameVersionUtils.compare(b, a));
+    return versions.first;
   }
 
   /// 读取安装索引（不做对账）。

@@ -54,12 +54,21 @@ class _GameHostPageState extends State<GameHostPage> {
   static const String _legacyBestScore2048Key = 'game_2048_best_score';
   static const int _maxReasonableScore = 1000000000;
 
+  /// 同一局内分数统计的最小写入间隔（见 [_shouldReportScoreStats]）。
+  static const Duration _scoreStatsInterval = Duration(seconds: 5);
+
   final GameAssetServer _server = GameAssetServer();
   WebViewController? _controller;
   GameHostStatus _status = GameHostStatus.booting;
   String? _errorMessage;
   int _bestScore = 0;
   int _lastReportedScore = 0;
+
+  /// 已经写入统计的分数，用于避免同一分数重复落库。
+  int _lastStatsScore = 0;
+
+  /// 上次写入分数统计的时间。
+  DateTime? _lastScoreStatsAt;
 
   /// 结算面板是否已弹出，避免游戏重复上报导致多次弹窗。
   bool _roundEndVisible = false;
@@ -101,6 +110,9 @@ class _GameHostPageState extends State<GameHostPage> {
 
       final charged = await provider.chargeEntry(widget.game);
       if (!charged) {
+        // 未能付费入场：立即释放本地服务，避免端口被空占。
+        await _server.stop();
+        if (!mounted) return;
         setState(() => _status = GameHostStatus.insufficient);
         return;
       }
@@ -114,6 +126,7 @@ class _GameHostPageState extends State<GameHostPage> {
       await controller.loadRequest(entryUri);
     } catch (error, stack) {
       AppLogger.warn('GameHostPage', '启动游戏失败: ${widget.game.id}', error, stack);
+      await _server.stop();
       _fail('启动游戏失败，请稍后重试');
     }
   }
@@ -190,22 +203,50 @@ class _GameHostPageState extends State<GameHostPage> {
     }
   }
 
-  Future<void> _handleScore(int score) async {
+  Future<void> _handleScore(int score, {bool isFinal = false}) async {
     if (score <= 0 || score > _maxReasonableScore) return;
-    // 只接受递增的分数上报，避免游戏脚本反复回传造成统计噪声。
-    if (score <= _lastReportedScore) return;
-    _lastReportedScore = score;
-    await context.read<GameProvider>().reportGameScore(widget.game.id, score);
+    // 只接受递增的分数上报，避免游戏脚本反复回传造成统计噪声；
+    // 回合结束的最终分数（[isFinal]）即使未增长也要入账。
+    if (!isFinal && score <= _lastReportedScore) return;
 
-    if (score <= _bestScore) return;
-    _bestScore = score;
+    if (score > _lastReportedScore) _lastReportedScore = score;
+    if (score > _bestScore) {
+      _bestScore = score;
+      await _persistBestScore(score);
+      _sendToGame({'type': 'bestScore', 'bestScore': score});
+    }
+
+    if (!_shouldReportScoreStats(score, isFinal)) return;
+    await context.read<GameProvider>().reportGameScore(widget.game.id, score);
+  }
+
+  /// 分数统计是否需要真正落库。
+  ///
+  /// 游戏会在每次得分时上报（贪吃蛇每吃一次食物就报一次），而统计写入是
+  /// 「读整份缓存 → 追加 → 重写整份缓存」，逐条上报会造成明显的写放大。
+  /// 因此限制为同一局内每 [_scoreStatsInterval] 最多写一次；回合结束时
+  /// （[isFinal]）不受间隔限制，保证本局最终分数一定入账。
+  bool _shouldReportScoreStats(int score, bool isFinal) {
+    if (score <= _lastStatsScore) return false;
+    final last = _lastScoreStatsAt;
+    if (!isFinal &&
+        last != null &&
+        DateTime.now().difference(last) < _scoreStatsInterval) {
+      return false;
+    }
+    _lastScoreStatsAt = DateTime.now();
+    _lastStatsScore = score;
+    return true;
+  }
+
+  /// 持久化最高分（最高分需在退出后仍然可见）。
+  Future<void> _persistBestScore(int score) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_bestScoreKey, score);
     } catch (error) {
       AppLogger.warn('GameHostPage', '保存最高分失败', error);
     }
-    _sendToGame({'type': 'bestScore', 'bestScore': score});
   }
 
   Future<int> _loadBestScore() async {
@@ -242,7 +283,8 @@ class _GameHostPageState extends State<GameHostPage> {
     if (_roundEndVisible) return;
     _roundEndVisible = true;
     final reported = (payload['score'] as num?)?.toInt() ?? _lastReportedScore;
-    if (reported > _bestScore) _bestScore = reported;
+    // 回合结束时补报最终分数：既让最高分落库，也让统计拿到本局结果。
+    await _handleScore(reported, isFinal: true);
     final won = payload['result'] == 'win';
     try {
       await _showRoundEndSheet(won);
@@ -311,6 +353,7 @@ class _GameHostPageState extends State<GameHostPage> {
                               Navigator.of(sheetContext).pop();
                             }
                             _lastReportedScore = 0;
+                            _lastStatsScore = 0;
                             _sendToGame({'type': 'restart'});
                           },
                     child: Text('再来一局（消耗 $cost 积分）'),
