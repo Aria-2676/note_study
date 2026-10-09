@@ -160,7 +160,103 @@
                                       "sizeBytes":  4787
                                   },
                       "entry":  "index.html"
+                  },
+                  {
+                      "id":  "sokoban",
+                      "name":  "推箱子",
+                      "description":  "把所有箱子推到目标点，只能推不能拉",
+                      "icon":  "widgets",
+                      "color":  "#F59E0B",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/sokoban",
+                      "package":  {
+                                      "path":  "game_center/packages/sokoban_v1.0.0.zip",
+                                      "sha256":  "8c0b173011ae638f9807232b6518887212e6be97f6d5c0888c0f4d0c9034e34b",
+                                      "sizeBytes":  4630
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "puzzle",
+                      "name":  "数字拼图",
+                      "description":  "滑动方块把数字按顺序排好",
+                      "icon":  "extension",
+                      "color":  "#10B981",
+                      "cost":  10,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/puzzle",
+                      "package":  {
+                                      "path":  "game_center/packages/puzzle_v1.0.0.zip",
+                                      "sha256":  "ca4a6f6d241e09639cd1ad39f926c9585f26cce82a76e23e4c40bc0faf91eac1",
+                                      "sizeBytes":  4188
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "klotski",
+                      "name":  "华容道",
+                      "description":  "滑动方块让曹操从底部出口逃出",
+                      "icon":  "view_quilt",
+                      "color":  "#DC2626",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/klotski",
+                      "package":  {
+                                      "path":  "game_center/packages/klotski_v1.0.0.zip",
+                                      "sha256":  "55428e6e819e2714e17f135e3fc36f408e76c60e5bdc0e6c3fabd1114212fae5",
+                                      "sizeBytes":  4971
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "sudoku",
+                      "name":  "数独闯关",
+                      "description":  "9x9 网格填入 1-9，每行/列/宫不重复",
+                      "icon":  "grid_view",
+                      "color":  "#0EA5E9",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/sudoku",
+                      "package":  {
+                                      "path":  "game_center/packages/sudoku_v1.0.0.zip",
+                                      "sha256":  "5f5c7cdad53a7ab461d24a898b5521a65d4fbcd6783f42de873d76ec2c710006",
+                                      "sizeBytes":  5098
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "shooter",
+                      "name":  "飞机大战",
+                      "description":  "拖动飞机躲避敌弹并自动开火击落敌机",
+                      "icon":  "flight",
+                      "color":  "#3B82F6",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/shooter",
+                      "package":  {
+                                      "path":  "game_center/packages/shooter_v1.0.0.zip",
+                                      "sha256":  "cbe4333568a87a3bd866e75978b37b89867b8901f6e145358f15dd9bd506a21e",
+                                      "sizeBytes":  5602
+                                  },
+                      "entry":  "index.html"
+                  },
+                  {
+                      "id":  "gomoku",
+                      "name":  "五子棋",
+                      "description":  "先连成五子者胜，与 AI 对弈",
+                      "icon":  "casino",
+                      "color":  "#7C3AED",
+                      "cost":  20,
+                      "latestVersion":  "1.0.0",
+                      "source":  "game_center/src/gomoku",
+                      "package":  {
+                                      "path":  "game_center/packages/gomoku_v1.0.0.zip",
+                                      "sha256":  "e63318166e8301a46d28d35528a05d75fd47a4340182b400afb761cee97e7898",
+                                      "sizeBytes":  5089
+                                  },
+                      "entry":  "index.html"
                   }
               ],
-    "updatedAt":  "2026-10-08T15:14:57Z"
+    "updatedAt":  "2026-10-09T07:39:10Z"
 }

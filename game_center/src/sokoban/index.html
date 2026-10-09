@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>推箱子</title>
+<style>
+  :root { --bg:#1c1917; --panel:#292524; --accent:#f59e0b; --text:#fef3c7; --muted:#a8a29e; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(22px,7vw,34px); font-weight:800; letter-spacing:1px; }
+  .stats { display:flex; gap:8px; }
+  .stat { background:var(--panel); border-radius:8px; padding:6px 12px; text-align:center; min-width:62px; }
+  .stat span { display:block; font-size:11px; color:var(--muted); letter-spacing:1px; }
+  .stat strong { display:block; font-size:clamp(15px,4.2vw,20px); }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  .grid {
+    display:grid; gap:2px; background:#0c0a09; padding:6px; border-radius:10px;
+    touch-action:none;
+  }
+  .cell { width:42px; height:42px; border-radius:6px; background:#3f3a34; }
+  .cell.wall { background:#111827; box-shadow:inset 0 0 0 2px #1e293b; }
+  .cell.target {
+    background:radial-gradient(circle, rgba(245,158,11,.35) 0 0 12px, transparent 13px), #3f3a34;
+  }
+  .cell.box {
+    background:linear-gradient(135deg,#b45309,#78350f); border:2px solid #fbbf24;
+    border-radius:6px;
+  }
+  .cell.box.done {
+    background:linear-gradient(135deg,#22c55e,#15803d); border-color:#86efac;
+  }
+  .cell.player {
+    background:radial-gradient(circle at 50% 40%, #fef3c7 0 8px, #f59e0b 9px 16px, transparent 17px), #3f3a34;
+    box-shadow:inset 0 0 0 2px #fde68a;
+  }
+  .overlay {
+    position:absolute; inset:0; border-radius:10px; background:rgba(15,23,42,.85);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card { text-align:center; padding:20px; }
+  .card h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card p { margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.7; }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#451a03;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .pad { display:grid; grid-template-columns:repeat(3,56px); gap:6px; justify-content:center; }
+  .pad button {
+    height:48px; border:0; border-radius:8px; background:var(--panel);
+    color:var(--text); font-size:20px; font-weight:700;
+  }
+  .pad button:active { background:#44403c; }
+  .pad .blank { visibility:hidden; }
+  .hint { text-align:center; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">推箱子</div>
+    <div class="stats">
+      <div class="stat"><span>关卡</span><strong id="level">1/3</strong></div>
+      <div class="stat"><span>步数</span><strong id="moves">0</strong></div>
+      <div class="stat"><span>得分</span><strong id="score">0</strong></div>
+    </div>
+  </header>
+  <div class="stage">
+    <div id="grid" class="grid"></div>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2 id="ov-title">推箱子</h2>
+        <p id="ov-desc">把所有橙色箱子推到目标点（绿色高亮）</p>
+        <button class="primary" id="ov-action">开始游戏</button>
+      </div>
+    </div>
+  </div>
+  <div class="pad">
+    <button class="blank"></button>
+    <button data-dir="up">↑</button>
+    <button class="blank"></button>
+    <button data-dir="left">←</button>
+    <button data-dir="down">↓</button>
+    <button data-dir="right">→</button>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">滑动屏幕或使用方向键 · 不能拉箱子，只能推</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // 字符约定：# 墙  空格 地板  . 目标  $ 箱子  * 箱子在目标上  @ 玩家  + 玩家在目标上
+  var LEVELS = [
+    [
+      '######',
+      '#@$ .#',
+      '#    #',
+      '######'
+    ],
+    [
+      '#######',
+      '#  .  #',
+      '# @$  #',
+      '#     #',
+      '#######'
+    ],
+    [
+      '########',
+      '# . .  #',
+      '# @$   #',
+      '#   $  #',
+      '#      #',
+      '########'
+    ]
+  ];
+  var BASE_SCORE = 1000;
+  var MOVE_PENALTY = 5;
+  var LEVEL_BONUS = 500;
+
+  var gridEl = document.getElementById('grid');
+  var levelEl = document.getElementById('level');
+  var movesEl = document.getElementById('moves');
+  var scoreEl = document.getElementById('score');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var map = [];          // 当前关卡解析后的二维数组
+  var rows = 0, cols = 0;
+  var player = { r: 0, c: 0 };
+  var boxes = [];        // { r, c }
+  var targets = [];     // { r, c }
+  var level = 0;
+  var moves = 0;
+  var score = 0;
+  var best = 0;
+  var lastReported = -1;
+  var state = 'ready';   // ready | playing | over
+  var finished = false; // 全部通关
+
+  /** 与原生容器通信；容器不存在时静默忽略（例如在浏览器里直接打开）。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常，不影响游戏本身 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateStats() {
+    levelEl.textContent = (level + 1) + '/' + LEVELS.length;
+    movesEl.textContent = String(moves);
+    scoreEl.textContent = String(score);
+  }
+
+  function loadLevel(idx) {
+    var raw = LEVELS[idx];
+    rows = raw.length;
+    cols = raw[0].length;
+    map = [];
+    boxes = [];
+    targets = [];
+    for (var r = 0; r < rows; r++) {
+      var row = [];
+      for (var c = 0; c < cols; c++) {
+        var ch = raw[r][c];
+        var cell = { wall: false, target: false };
+        if (ch === '#') { cell.wall = true; }
+        else if (ch === '.') { cell.target = true; targets.push({ r: r, c: c }); }
+        else if (ch === '*') { cell.target = true; targets.push({ r: r, c: c }); boxes.push({ r: r, c: c }); }
+        else if (ch === '@') { player = { r: r, c: c }; }
+        else if (ch === '+') { cell.target = true; targets.push({ r: r, c: c }); player = { r: r, c: c }; }
+        else if (ch === '$') { boxes.push({ r: r, c: c }); }
+        row.push(cell);
+      }
+      map.push(row);
+    }
+    moves = 0;
+    render();
+    updateStats();
+  }
+
+  function boxAt(r, c) {
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].r === r && boxes[i].c === c) return boxes[i];
+    }
+    return null;
+  }
+
+  function render() {
+    gridEl.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    gridEl.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
+    gridEl.innerHTML = '';
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var div = document.createElement('div');
+        div.className = 'cell';
+        var cell = map[r][c];
+        if (cell.wall) { div.classList.add('wall'); }
+        if (cell.target) { div.classList.add('target'); }
+        var box = boxAt(r, c);
+        if (box) {
+          div.classList.add('box');
+          if (cell.target) div.classList.add('done');
+        }
+        if (player.r === r && player.c === c && !cell.wall) {
+          div.classList.add('player');
+        }
+        gridEl.appendChild(div);
+      }
+    }
+  }
+
+  function tryMove(dr, dc) {
+    if (state !== 'playing') return;
+    var nr = player.r + dr;
+    var nc = player.c + dc;
+    if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) return;
+    if (map[nr][nc].wall) return;
+
+    var box = boxAt(nr, nc);
+    if (box) {
+      // 尝试推箱子
+      var br = nr + dr;
+      var bc = nc + dc;
+      if (br < 0 || br >= rows || bc < 0 || bc >= cols) return;
+      if (map[br][bc].wall) return;
+      if (boxAt(br, bc)) return;
+      box.r = br; box.c = bc;
+    }
+    player.r = nr; player.c = nc;
+    moves++;
+    updateStats();
+    render();
+    if (checkWin()) onLevelClear();
+  }
+
+  function checkWin() {
+    for (var i = 0; i < boxes.length; i++) {
+      if (!map[boxes[i].r][boxes[i].c].target) return false;
+    }
+    return true;
+  }
+
+  function onLevelClear() {
+    var bonus = Math.max(100, BASE_SCORE - moves * MOVE_PENALTY) + level * LEVEL_BONUS;
+    score += bonus;
+    if (score > best) { best = score; reportScore(score); }
+    updateStats();
+
+    if (level + 1 < LEVELS.length) {
+      level++;
+      loadLevel(level);
+    } else {
+      finished = true;
+      gameOver();
+    }
+  }
+
+  function gameOver() {
+    state = 'over';
+    reportScore(score);
+    send({ type: 'gameOver', score: score, result: 'win' });
+    showOverlay(
+      '全部通关！',
+      '共 ' + LEVELS.length + ' 关 · 累计 ' + score + ' 分',
+      '退出游戏'
+    );
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.textContent = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() { overlayEl.classList.add('hidden'); }
+
+  function startGame() {
+    hideOverlay();
+    level = 0;
+    score = 0;
+    moves = 0;
+    lastReported = -1;
+    finished = false;
+    loadLevel(level);
+    state = 'playing';
+  }
+
+  function restartCurrent() {
+    // 中途重开当前关：免费，仅重置当前关卡步数和位置
+    if (state !== 'playing') { startGame(); return; }
+    score = Math.max(0, score - 50);   // 重开当前关扣少量分数（避免无限刷分）
+    lastReported = -1;
+    loadLevel(level);
+  }
+
+  function exitGame() {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  }
+
+  ovActionEl.addEventListener('click', function () {
+    if (state === 'over') { exitGame(); } else { startGame(); }
+  });
+  document.getElementById('restart').addEventListener('click', restartCurrent);
+  document.getElementById('exit').addEventListener('click', exitGame);
+
+  // 方向键按钮
+  var padButtons = document.querySelectorAll('.pad button[data-dir]');
+  padButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var d = btn.getAttribute('data-dir');
+      if (d === 'up') tryMove(-1, 0);
+      else if (d === 'down') tryMove(1, 0);
+      else if (d === 'left') tryMove(0, -1);
+      else if (d === 'right') tryMove(0, 1);
+    });
+  });
+
+  // 键盘
+  document.addEventListener('keydown', function (event) {
+    var code = event.code;
+    if (code === 'ArrowUp' || code === 'KeyW') { event.preventDefault(); tryMove(-1, 0); }
+    else if (code === 'ArrowDown' || code === 'KeyS') { event.preventDefault(); tryMove(1, 0); }
+    else if (code === 'ArrowLeft' || code === 'KeyA') { event.preventDefault(); tryMove(0, -1); }
+    else if (code === 'ArrowRight' || code === 'KeyD') { event.preventDefault(); tryMove(0, 1); }
+  });
+
+  // 滑动手势
+  var touchStart = null;
+  gridEl.addEventListener('pointerdown', function (event) {
+    touchStart = { x: event.clientX, y: event.clientY };
+  });
+  gridEl.addEventListener('pointerup', function (event) {
+    if (!touchStart) return;
+    var dx = event.clientX - touchStart.x;
+    var dy = event.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      tryMove(0, dx > 0 ? 1 : -1);
+    } else {
+      tryMove(dy > 0 ? 1 : -1, 0);
+    }
+  });
+  gridEl.addEventListener('pointercancel', function () { touchStart = null; });
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateStats(); }
+      }
+      if (message.type === 'restart') { startGame(); }
+    }
+  };
+
+  loadLevel(0);
+  updateStats();
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

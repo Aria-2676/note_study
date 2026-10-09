@@ -20,6 +20,10 @@ class GamePresentationUtils {
     'numbers': Icons.numbers,
     'palette': Icons.palette,
     'music_note': Icons.music_note,
+    'widgets': Icons.widgets,
+    'view_quilt': Icons.view_quilt,
+    'grid_view': Icons.grid_view,
+    'flight': Icons.flight,
   };
 
   /// 按名称取图标；未知名称回退到通用游戏图标。

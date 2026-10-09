@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>飞机大战</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --accent:#3b82f6; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none;
+  }
+  #app {
+    height:100%; max-width:520px; margin:0 auto;
+    padding:10px 12px 12px; display:flex; flex-direction:column; gap:8px;
+  }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  .title { font-size:clamp(20px,6vw,28px); font-weight:800; }
+  .stats { display:flex; gap:6px; }
+  .stat { background:var(--panel); border-radius:8px; padding:5px 10px; text-align:center; min-width:54px; }
+  .stat span { display:block; font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .stat strong { display:block; font-size:clamp(13px,3.6vw,18px); }
+  .hp-bar { flex:1; height:8px; background:#334155; border-radius:4px; overflow:hidden; margin:6px 0; }
+  .hp-fill { height:100%; background:linear-gradient(90deg,#22c55e,#eab308,#ef4444); transition:width .15s ease; }
+  .stage { position:relative; flex:1; display:flex; align-items:center; justify-content:center; }
+  canvas { width:100%; aspect-ratio:3/4; border-radius:12px; background:#0c0a09; display:block; touch-action:none; }
+  .overlay {
+    position:absolute; inset:0; border-radius:12px; background:rgba(15,23,42,.85);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .overlay.hidden { display:none; }
+  .card { text-align:center; padding:20px; }
+  .card h2 { margin:0 0 8px; font-size:clamp(20px,6vw,28px); }
+  .card p { margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.7; }
+  .ops { display:flex; gap:8px; }
+  button.primary {
+    flex:1; border:0; border-radius:10px; padding:12px; font-size:15px;
+    font-weight:700; background:var(--accent); color:#fff;
+  }
+  button.ghost {
+    flex:0 0 84px; border:0; border-radius:10px; padding:12px;
+    font-size:14px; font-weight:600; background:#334155; color:var(--text);
+  }
+  .hint { text-align:center; font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">飞机大战</div>
+    <div class="stats">
+      <div class="stat"><span>波次</span><strong id="wave">0/10</strong></div>
+      <div class="stat"><span>得分</span><strong id="score">0</strong></div>
+      <div class="stat"><span>最高</span><strong id="best">0</strong></div>
+    </div>
+  </header>
+  <div class="hp-bar"><div class="hp-fill" id="hp" style="width:100%"></div></div>
+  <div class="stage">
+    <canvas id="board"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="card">
+        <h2 id="ov-title">飞机大战</h2>
+        <p id="ov-desc">自动开火 · 拖动屏幕移动飞机 · 击落敌机</p>
+        <button class="primary" id="ov-action">开始游戏</button>
+      </div>
+    </div>
+  </div>
+  <div class="ops">
+    <button class="primary" id="restart">重新开始</button>
+    <button class="ghost" id="exit">退出</button>
+  </div>
+  <div class="hint">触摸拖动或方向键移动 · 躲开敌机和子弹</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var VW = 360, VH = 480;
+  var TOTAL_WAVES = 10;
+
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var waveEl = document.getElementById('wave');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var hpEl = document.getElementById('hp');
+  var overlayEl = document.getElementById('overlay');
+  var ovTitleEl = document.getElementById('ov-title');
+  var ovDescEl = document.getElementById('ov-desc');
+  var ovActionEl = document.getElementById('ov-action');
+
+  var player = { x: 0, y: 0, w: 28, h: 32, hp: 3, lastShot: 0, invul: 0 };
+  var bullets = [];     // { x, y, vy, dmg }
+  var enemies = [];     // { x, y, w, h, vy, hp, color, lastShot, shoot }
+  var eBullets = [];    // { x, y, vy }
+  var explosions = [];  // { x, y, t }
+  var stars = [];
+  var wave = 0;
+  var spawnQueue = [];  // 待生成敌机
+  var spawnTimer = 0;
+  var score = 0;
+  var best = 0;
+  var lastReported = -1;
+  var state = 'ready';
+  var paused = false;
+  var lastTime = 0;
+  var rafId = null;
+  var ended = false;
+  var failed = false;
+  var keys = {};
+
+  /** 与原生容器通信；容器不存在时静默忽略。 */
+  function send(message) {
+    try {
+      if (window.GameBridge && window.GameBridge.postMessage) {
+        window.GameBridge.postMessage(JSON.stringify(message));
+      }
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  function reportScore(value) {
+    if (value <= lastReported) return;
+    lastReported = value;
+    send({ type: 'reportScore', score: value });
+  }
+
+  function updateStats() {
+    waveEl.textContent = Math.min(wave + 1, TOTAL_WAVES) + '/' + TOTAL_WAVES;
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(best);
+    hpEl.style.width = Math.max(0, player.hp) / 3 * 100 + '%';
+  }
+
+  function initStars() {
+    stars = [];
+    for (var i = 0; i < 40; i++) {
+      stars.push({
+        x: Math.random() * VW,
+        y: Math.random() * VH,
+        s: Math.random() * 1.5 + 0.5,
+        v: Math.random() * 30 + 20
+      });
+    }
+  }
+
+  function queueWave(n) {
+    spawnQueue = [];
+    var count = 4 + n * 2;          // 每波数量随波次增加
+    var hp = 1 + Math.floor(n / 3); // 敌机血量
+    var speed = 60 + n * 8;
+    for (var i = 0; i < count; i++) {
+      spawnQueue.push({
+        delay: i * 0.6 + Math.random() * 0.3,
+        x: 30 + Math.random() * (VW - 60),
+        w: 26, h: 26,
+        hp: hp, vy: speed, color: '#f87171', shoot: n >= 2 && Math.random() < 0.4
+      });
+    }
+    spawnTimer = 0;
+  }
+
+  function spawnFromQueue(dt) {
+    if (!spawnQueue.length) return;
+    spawnTimer += dt;
+    while (spawnQueue.length && spawnQueue[0].delay <= spawnTimer) {
+      var q = spawnQueue.shift();
+      enemies.push({
+        x: q.x, y: -q.h, w: q.w, h: q.h,
+        vy: q.vy, hp: q.hp, color: q.color,
+        lastShot: 0, shoot: q.shoot
+      });
+    }
+  }
+
+  function startWave() {
+    if (wave >= TOTAL_WAVES) {
+      // 全部通关
+      ended = true;
+      gameOver();
+      return;
+    }
+    queueWave(wave);
+    updateStats();
+  }
+
+  function gameOver() {
+    state = 'over';
+    reportScore(score);
+    send({ type: 'gameOver', score: score, result: failed ? 'lose' : 'win' });
+    showOverlay(
+      failed ? '飞机坠毁' : '全部通关！',
+      '波次 ' + Math.min(wave, TOTAL_WAVES) + ' · 得分 ' + score,
+      '退出游戏'
+    );
+  }
+
+  function showOverlay(title, desc, action) {
+    ovTitleEl.textContent = title;
+    ovDescEl.textContent = desc;
+    ovActionEl.textContent = action;
+    overlayEl.classList.remove('hidden');
+  }
+
+  function hideOverlay() { overlayEl.classList.add('hidden'); }
+
+  function startGame() {
+    hideOverlay();
+    resize();
+    player.x = VW / 2 - player.w / 2;
+    player.y = VH - player.h - 12;
+    player.hp = 3;
+    player.invul = 0;
+    bullets = [];
+    enemies = [];
+    eBullets = [];
+    explosions = [];
+    wave = 0;
+    spawnQueue = [];
+    spawnTimer = 0;
+    score = 0;
+    lastReported = -1;
+    ended = false;
+    failed = false;
+    state = 'playing';
+    lastTime = 0;
+    initStars();
+    startWave();
+    updateStats();
+  }
+
+  function restartCurrent() { startGame(); }
+
+  function exitGame() {
+    if (score > 0) reportScore(score);
+    send({ type: 'exit' });
+  }
+
+  function rectHit(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function update(dt) {
+    // 星空滚动
+    for (var i = 0; i < stars.length; i++) {
+      stars[i].y += stars[i].v * dt;
+      if (stars[i].y > VH) { stars[i].y = 0; stars[i].x = Math.random() * VW; }
+    }
+
+    if (state !== 'playing') return;
+
+    // 玩家移动
+    var sp = 260;
+    if (keys.left) player.x -= sp * dt;
+    if (keys.right) player.x += sp * dt;
+    if (keys.up) player.y -= sp * dt;
+    if (keys.down) player.y += sp * dt;
+    player.x = Math.max(0, Math.min(VW - player.w, player.x));
+    player.y = Math.max(VH * 0.4, Math.min(VH - player.h, player.y));
+
+    // 自动开火
+    player.lastShot += dt;
+    if (player.lastShot >= 0.18) {
+      player.lastShot = 0;
+      bullets.push({ x: player.x + player.w / 2 - 2, y: player.y, vy: -520, w: 4, h: 12, dmg: 1 });
+    }
+    if (player.invul > 0) player.invul -= dt;
+
+    // 子弹移动 + 出界
+    for (var i = bullets.length - 1; i >= 0; i--) {
+      bullets[i].y += bullets[i].vy * dt;
+      if (bullets[i].y < -20) bullets.splice(i, 1);
+    }
+    for (var j = eBullets.length - 1; j >= 0; j--) {
+      eBullets[j].y += eBullets[j].vy * dt;
+      if (eBullets[j].y > VH + 20) eBullets.splice(j, 1);
+    }
+
+    // 敌机生成 + 移动
+    spawnFromQueue(dt);
+    for (var k = enemies.length - 1; k >= 0; k--) {
+      var e = enemies[k];
+      e.y += e.vy * dt;
+      e.x += Math.sin(e.y * 0.02) * 30 * dt; // 轻微左右摆动
+      e.x = Math.max(0, Math.min(VW - e.w, e.x));
+      // 敌机开火
+      if (e.shoot) {
+        e.lastShot += dt;
+        if (e.lastShot >= 1.4) {
+          e.lastShot = 0;
+          eBullets.push({ x: e.x + e.w / 2 - 2, y: e.y + e.h, vy: 220, w: 4, h: 8 });
+        }
+      }
+      // 敌机出界（漏过）→ 扣血
+      if (e.y > VH) {
+        enemies.splice(k, 1);
+        if (player.invul <= 0) {
+          player.hp--;
+          player.invul = 1.0;
+          updateStats();
+          if (player.hp <= 0) { failed = true; ended = true; gameOver(); return; }
+        }
+      }
+    }
+
+    // 子弹 vs 敌机
+    for (var bi = bullets.length - 1; bi >= 0; bi--) {
+      var b = bullets[bi];
+      for (var ei = enemies.length - 1; ei >= 0; ei--) {
+        var en = enemies[ei];
+        if (rectHit(b, en)) {
+          en.hp -= b.dmg;
+          bullets.splice(bi, 1);
+          if (en.hp <= 0) {
+            enemies.splice(ei, 1);
+            score += 100;
+            if (score > best) { best = score; reportScore(score); }
+            updateStats();
+            explosions.push({ x: en.x + en.w / 2, y: en.y + en.h / 2, t: 0.3 });
+          }
+          break;
+        }
+      }
+    }
+
+    // 敌弹 vs 玩家
+    if (player.invul <= 0) {
+      for (var bi2 = eBullets.length - 1; bi2 >= 0; bi2--) {
+        if (rectHit(eBullets[bi2], player)) {
+          eBullets.splice(bi2, 1);
+          player.hp--;
+          player.invul = 1.0;
+          updateStats();
+          if (player.hp <= 0) { failed = true; ended = true; gameOver(); return; }
+          break;
+        }
+      }
+      // 敌机撞玩家
+      for (var ei2 = 0; ei2 < enemies.length; ei2++) {
+        if (rectHit(enemies[ei2], player)) {
+          player.hp = 0;
+          updateStats();
+          failed = true; ended = true; gameOver();
+          return;
+        }
+      }
+    }
+
+    // 爆炸动画
+    for (var ex = explosions.length - 1; ex >= 0; ex--) {
+      explosions[ex].t -= dt;
+      if (explosions[ex].t <= 0) explosions.splice(ex, 1);
+    }
+
+    // 波次完成 → 下一波
+    if (!enemies.length && !spawnQueue.length) {
+      wave++;
+      if (wave >= TOTAL_WAVES) {
+        ended = true;
+        gameOver();
+      } else {
+        startWave();
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, VW, VH);
+    var bg = ctx.createLinearGradient(0, 0, 0, VH);
+    bg.addColorStop(0, '#0b1220');
+    bg.addColorStop(1, '#111827');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, VW, VH);
+
+    // 星空
+    ctx.fillStyle = '#94a3b8';
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      ctx.globalAlpha = 0.4 + s.s * 0.4;
+      ctx.fillRect(s.x, s.y, s.s, s.s);
+    }
+    ctx.globalAlpha = 1;
+
+    // 玩家子弹
+    ctx.fillStyle = '#fbbf24';
+    for (var b = 0; b < bullets.length; b++) {
+      ctx.fillRect(bullets[b].x, bullets[b].y, bullets[b].w, bullets[b].h);
+    }
+    // 敌弹
+    ctx.fillStyle = '#f87171';
+    for (var eb = 0; eb < eBullets.length; eb++) {
+      ctx.fillRect(eBullets[eb].x, eBullets[eb].y, eBullets[eb].w, eBullets[eb].h);
+    }
+
+    // 敌机
+    for (var e = 0; e < enemies.length; e++) {
+      var en = enemies[e];
+      ctx.fillStyle = en.color;
+      ctx.beginPath();
+      ctx.moveTo(en.x + en.w / 2, en.y + en.h);
+      ctx.lineTo(en.x, en.y);
+      ctx.lineTo(en.x + en.w, en.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(en.x + en.w / 2 - 3, en.y + 4, 6, 6);
+    }
+
+    // 玩家
+    if (state === 'playing' && (player.invul <= 0 || Math.floor(player.invul * 10) % 2 === 0)) {
+      ctx.fillStyle = '#60a5fa';
+      ctx.beginPath();
+      ctx.moveTo(player.x + player.w / 2, player.y);
+      ctx.lineTo(player.x, player.y + player.h);
+      ctx.lineTo(player.x + player.w, player.y + player.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(player.x + player.w / 2 - 3, player.y + player.h - 8, 6, 6);
+    }
+
+    // 爆炸
+    for (var ex = 0; ex < explosions.length; ex++) {
+      var x = explosions[ex];
+      var r = (0.3 - x.t) * 60;
+      ctx.strokeStyle = 'rgba(251,191,36,' + x.t.toFixed(2) + ')';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x.x, x.y, r + 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function frame(now) {
+    if (!paused) {
+      var dt = lastTime ? Math.min(0.05, (now - lastTime) / 1000) : 0;
+      lastTime = now;
+      if (state === 'playing' || state === 'over') update(dt);
+      draw();
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    VW = rect.width;
+    VH = rect.height;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(VW * dpr);
+    canvas.height = Math.round(VH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // 触摸拖动
+  var dragOffset = null;
+  canvas.addEventListener('pointerdown', function (event) {
+    if (state !== 'playing') return;
+    var p = canvasPos(event);
+    // 拖动方式：跟随手指位置
+    dragOffset = { dx: p.x - (player.x + player.w / 2), dy: p.y - (player.y + player.h / 2) };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointermove', function (event) {
+    if (!dragOffset || state !== 'playing') return;
+    var p = canvasPos(event);
+    player.x = Math.max(0, Math.min(VW - player.w, p.x - dragOffset.dx - player.w / 2));
+    player.y = Math.max(VH * 0.4, Math.min(VH - player.h, p.y - dragOffset.dy - player.h / 2));
+  });
+  canvas.addEventListener('pointerup', function () { dragOffset = null; });
+  canvas.addEventListener('pointercancel', function () { dragOffset = null; });
+
+  function canvasPos(event) {
+    var rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  // 键盘
+  document.addEventListener('keydown', function (event) {
+    var c = event.code;
+    if (c === 'ArrowLeft' || c === 'KeyA') { keys.left = true; event.preventDefault(); }
+    else if (c === 'ArrowRight' || c === 'KeyD') { keys.right = true; event.preventDefault(); }
+    else if (c === 'ArrowUp' || c === 'KeyW') { keys.up = true; event.preventDefault(); }
+    else if (c === 'ArrowDown' || c === 'KeyS') { keys.down = true; event.preventDefault(); }
+  });
+  document.addEventListener('keyup', function (event) {
+    var c = event.code;
+    if (c === 'ArrowLeft' || c === 'KeyA') keys.left = false;
+    else if (c === 'ArrowRight' || c === 'KeyD') keys.right = false;
+    else if (c === 'ArrowUp' || c === 'KeyW') keys.up = false;
+    else if (c === 'ArrowDown' || c === 'KeyS') keys.down = false;
+  });
+
+  ovActionEl.addEventListener('click', function () {
+    if (state === 'over') { exitGame(); } else { startGame(); }
+  });
+  document.getElementById('restart').addEventListener('click', restartCurrent);
+  document.getElementById('exit').addEventListener('click', exitGame);
+
+  document.addEventListener('visibilitychange', function () {
+    paused = document.hidden;
+    if (!paused) lastTime = 0;
+  });
+  window.addEventListener('resize', resize);
+
+  /** 接收原生容器下发的消息（最高分、返回等）。 */
+  window.__native = {
+    onMessage: function (message) {
+      if (!message) return;
+      if (message.type === 'userInfo' || message.type === 'bestScore') {
+        var value = typeof message.bestScore === 'number' ? message.bestScore : 0;
+        if (value > best) { best = value; updateStats(); }
+      }
+      if (message.type === 'restart') { startGame(); }
+    }
+  };
+
+  resize();
+  initStars();
+  updateStats();
+  rafId = requestAnimationFrame(frame);
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>
