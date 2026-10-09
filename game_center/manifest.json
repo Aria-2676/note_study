@@ -172,8 +172,8 @@
                       "source":  "game_center/src/sokoban",
                       "package":  {
                                       "path":  "game_center/packages/sokoban_v1.0.0.zip",
-                                      "sha256":  "8c0b173011ae638f9807232b6518887212e6be97f6d5c0888c0f4d0c9034e34b",
-                                      "sizeBytes":  4630
+                                      "sha256":  "e215782059a934b916f34858f4c3e2cc5daf9c9f8dfc5bf99378fe036c21f041",
+                                      "sizeBytes":  4615
                                   },
                       "entry":  "index.html"
                   },
@@ -258,5 +258,5 @@
                       "entry":  "index.html"
                   }
               ],
-    "updatedAt":  "2026-10-09T10:01:57Z"
+    "updatedAt":  "2026-10-09T10:09:01Z"
 }
