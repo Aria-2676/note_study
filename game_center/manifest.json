@@ -204,8 +204,8 @@
                       "source":  "game_center/src/klotski",
                       "package":  {
                                       "path":  "game_center/packages/klotski_v1.0.0.zip",
-                                      "sha256":  "55428e6e819e2714e17f135e3fc36f408e76c60e5bdc0e6c3fabd1114212fae5",
-                                      "sizeBytes":  4971
+                                      "sha256":  "9bcfb67f0ba5f0a14ad5845582fcf5864715c39abe65e9b4bb23cfd599a2155f",
+                                      "sizeBytes":  4970
                                   },
                       "entry":  "index.html"
                   },
@@ -220,8 +220,8 @@
                       "source":  "game_center/src/sudoku",
                       "package":  {
                                       "path":  "game_center/packages/sudoku_v1.0.0.zip",
-                                      "sha256":  "5f5c7cdad53a7ab461d24a898b5521a65d4fbcd6783f42de873d76ec2c710006",
-                                      "sizeBytes":  5098
+                                      "sha256":  "8cc0e0624447512d90540d231b2e1d1886062dce7c400cf495f9c4cdf8a37219",
+                                      "sizeBytes":  5056
                                   },
                       "entry":  "index.html"
                   },
@@ -252,11 +252,11 @@
                       "source":  "game_center/src/gomoku",
                       "package":  {
                                       "path":  "game_center/packages/gomoku_v1.0.0.zip",
-                                      "sha256":  "e63318166e8301a46d28d35528a05d75fd47a4340182b400afb761cee97e7898",
-                                      "sizeBytes":  5089
+                                      "sha256":  "e92b2dba187d7233ce28e810e38fff2215ac821f4777cf00f2edfecdfe1e5dbb",
+                                      "sizeBytes":  5178
                                   },
                       "entry":  "index.html"
                   }
               ],
-    "updatedAt":  "2026-10-09T07:39:10Z"
+    "updatedAt":  "2026-10-09T10:01:57Z"
 }

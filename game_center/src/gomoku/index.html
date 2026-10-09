@@ -35,16 +35,22 @@
     touch-action:manipulation;
   }
   .grid-svg { position:absolute; inset:14px; pointer-events:none; }
-  .cells { position:absolute; inset:14px; display:grid; grid-template-columns:repeat(15,1fr); grid-template-rows:repeat(15,1fr); }
-  .cell { cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .cell.disabled { cursor:default; }
+  .intersections { position:absolute; inset:14px; }
+  .intersection {
+    position:absolute;
+    width:calc(100% / 14); height:calc(100% / 14);
+    transform:translate(-50%, -50%);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .intersection.disabled { cursor:default; }
   .stone {
     width:80%; height:80%; border-radius:50%;
     box-shadow:0 2px 4px rgba(0,0,0,.4), inset 0 1px 2px rgba(255,255,255,.4);
   }
   .stone.black { background:radial-gradient(circle at 35% 30%, #4b4b4b, #050505); }
   .stone.white { background:radial-gradient(circle at 35% 30%, #fff, #d1d5db); }
-  .cell.last .stone { box-shadow:0 2px 4px rgba(0,0,0,.4), 0 0 0 2px #ef4444; }
+  .intersection.last .stone { box-shadow:0 2px 4px rgba(0,0,0,.4), 0 0 0 2px #ef4444; }
   .overlay {
     position:absolute; inset:0; border-radius:10px; background:rgba(15,23,42,.85);
     display:flex; align-items:center; justify-content:center; z-index:5;
@@ -81,8 +87,8 @@
   </div>
   <div class="stage">
     <div class="board">
-      <svg class="grid-svg" viewBox="0 0 14 14" preserveAspectRatio="none"></svg>
-      <div class="cells" id="cells"></div>
+      <svg class="grid-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <div class="intersections" id="intersections"></div>
     </div>
     <div id="overlay" class="overlay">
       <div class="card">
@@ -108,7 +114,7 @@
   var BASE_SCORE = 1500;
   var MOVE_PENALTY = 5;
 
-  var cellsEl = document.getElementById('cells');
+  var intersectionsEl = document.getElementById('intersections');
   var gridSvg = document.querySelector('.grid-svg');
   var movesEl = document.getElementById('moves');
   var scoreEl = document.getElementById('score');
@@ -162,28 +168,32 @@
   }
 
   function buildGrid() {
-    cellsEl.innerHTML = '';
+    intersectionsEl.innerHTML = '';
     cellEls = [];
-    // SVG 网格线：14x14 个格子的网格需要 15 条横线、15 条竖线（在 0..14 之间均匀分布）
+    // SVG 网格线：15 条横线 + 15 条竖线，在 0..100 之间均匀分布（viewBox 0 0 100 100）
     var lines = '';
     for (var i = 0; i < SIZE; i++) {
-      var p = (i / (SIZE - 1) * 14).toFixed(3);
-      lines += '<line x1="' + p + '" y1="0" x2="' + p + '" y2="14" stroke="#5b3a1f" stroke-width="0.04" />';
-      lines += '<line x1="0" y1="' + p + '" x2="14" y2="' + p + '" stroke="#5b3a1f" stroke-width="0.04" />';
+      var p = (i / (SIZE - 1) * 100).toFixed(3);
+      lines += '<line x1="' + p + '" y1="0" x2="' + p + '" y2="100" stroke="#5b3a1f" stroke-width="0.3" />';
+      lines += '<line x1="0" y1="' + p + '" x2="100" y2="' + p + '" stroke="#5b3a1f" stroke-width="0.3" />';
     }
     gridSvg.innerHTML = lines;
 
+    // 15x15 个交叉点，每个 .intersection 居中于实际交叉点（translate -50%, -50%）
+    var pct = 100 / (SIZE - 1);
     for (var r = 0; r < SIZE; r++) {
       var row = [];
       for (var c = 0; c < SIZE; c++) {
         var div = document.createElement('div');
-        div.className = 'cell';
+        div.className = 'intersection';
+        div.style.left = (c * pct).toFixed(3) + '%';
+        div.style.top = (r * pct).toFixed(3) + '%';
         div.setAttribute('data-r', String(r));
         div.setAttribute('data-c', String(c));
         div.addEventListener('click', (function (rr, cc) {
           return function () { playerMove(rr, cc); };
         })(r, c));
-        cellsEl.appendChild(div);
+        intersectionsEl.appendChild(div);
         row.push(div);
       }
       cellEls.push(row);

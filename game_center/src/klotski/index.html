@@ -371,7 +371,7 @@
     if (absX > absY) {
       moved = movePiece(piece, 0, dx > 0 ? 1 : -1);
     } else {
-      moved = movePiece(piece, dy > 0 ? 1 : 0, 0);
+      moved = movePiece(piece, dy > 0 ? 1 : -1, 0);
     }
     if (moved) {
       // 重置起点，允许连续拖动
