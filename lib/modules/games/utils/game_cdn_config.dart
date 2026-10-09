@@ -21,9 +21,9 @@ class GameCdnConfig {
     defaultValue: 'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
   );
 
-  /// 不可变地址基址：用于拉取游戏包。
+  /// 不可变地址基址：用于拉取游戏包（首选）。
   ///
-  /// 刻意**不用** `cdn.jsdelivr.net`：实测它对 `.zip` 会 301 重定向到
+  /// 刻意**不用** `cdn.jsdelivr.net` 作为首选：实测它对 `.zip` 会 301 重定向到
   /// `raw.githubusercontent.com`（该主机在国内常被间歇性 reset），而
   /// `gcore.jsdelivr.net` / `testingcf.jsdelivr.net` 可直连返回 200。
   ///
@@ -45,14 +45,27 @@ class GameCdnConfig {
     'https://raw.githubusercontent.com/Aria-2676/note_study/main',
   ];
 
+  /// 游戏包的回退基址列表（按顺序尝试）。
+  ///
+  /// 各 jsDelivr 镜像对 `@main` 的缓存彼此独立，且 `purge.jsdelivr.net` 只覆盖
+  /// CF/FY 两个 provider，无法清理 `gcore` / `testingcf`。因此同一路径在不同
+  /// 镜像上可能新旧不一：清单已更新、包却仍是旧版，导致 sha256 校验失败。
+  /// 下载时若校验不通过，依次回退到其它镜像，最后落到不受 CDN 缓存影响的源站。
+  static const List<String> packageFallbackBases = [
+    'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
+    'https://testingcf.jsdelivr.net/gh/Aria-2676/note_study@main',
+    'https://raw.githubusercontent.com/Aria-2676/note_study/main',
+  ];
+
   /// 按顺序返回所有候选的 manifest 地址（主基址在前）。
   static List<Uri> manifestUris() {
     final bases = <String>{manifestBase, ...manifestFallbackBases};
     return bases.map((base) => Uri.parse('$base/$manifestPath')).toList();
   }
 
-  /// 由清单中的相对路径构造游戏包下载地址。
-  static Uri packageUri(String relativePath) {
-    return Uri.parse('$packageBase/$relativePath');
+  /// 按顺序返回所有候选的游戏包地址（主基址在前）。
+  static List<Uri> packageUris(String relativePath) {
+    final bases = <String>{packageBase, ...packageFallbackBases};
+    return bases.map((base) => Uri.parse('$base/$relativePath')).toList();
   }
 }

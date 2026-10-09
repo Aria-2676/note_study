@@ -54,13 +54,12 @@ class GameModuleService {
     final extractDir = p.join(tempDir.path, '${game.id}-$stamp');
 
     try {
-      await GameInstaller.downloadZip(
-        url: GameCdnConfig.packageUri(game.package.path),
-        destPath: zipPath,
+      await _downloadVerifiedZip(
+        game,
+        zipPath,
         onProgress: onProgress,
         isCancelled: isCancelled,
       );
-      await _verifyChecksum(zipPath, game.package.sha256);
       await Isolate.run(
         () => GameInstaller.extractZip(zipPath: zipPath, targetDir: extractDir),
       );
@@ -141,6 +140,42 @@ class GameModuleService {
 
   /// 清理临时目录残留。
   Future<void> cleanTemp() => _installRepository.cleanTemp();
+
+  /// 依次尝试多个 CDN 源下载游戏包，下载后立即校验 sha256。
+  ///
+  /// 各镜像节点对 `@main` 的缓存彼此独立，某节点可能仍返回旧包（清单已更新、
+  /// 包未更新），此时校验会失败；本方法会清理残包并回退到下一个候选源，
+  /// 直至某个源返回内容与清单一致。全部失败时抛出 [GameException]。
+  Future<void> _downloadVerifiedZip(
+    GameInfo game,
+    String zipPath, {
+    void Function(int received, int? total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    Object? lastError;
+    for (final uri in GameCdnConfig.packageUris(game.package.path)) {
+      try {
+        await GameInstaller.downloadZip(
+          url: uri,
+          destPath: zipPath,
+          onProgress: onProgress,
+          isCancelled: isCancelled,
+        );
+        await _verifyChecksum(zipPath, game.package.sha256);
+        return;
+      } catch (error, stack) {
+        lastError = error;
+        AppLogger.warn(
+          'GameModuleService',
+          '下载或校验失败，尝试下一个源: $uri',
+          error,
+          stack,
+        );
+        await _deleteQuietly(zipPath);
+      }
+    }
+    throw GameException('游戏包下载或校验失败（$lastError）');
+  }
 
   Future<void> _verifyChecksum(String zipPath, String expected) async {
     if (expected.isEmpty) return;

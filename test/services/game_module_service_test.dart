@@ -222,6 +222,26 @@ void main() {
       );
     });
 
+    test('packageUris 主地址在前并包含回退地址', () {
+      const relativePath = 'game_center/packages/snake_v1.0.0.zip';
+      final uris = GameCdnConfig.packageUris(relativePath);
+
+      expect(
+        uris.first.toString(),
+        '${GameCdnConfig.packageBase}/$relativePath',
+      );
+      expect(uris.length, greaterThanOrEqualTo(2));
+      expect(
+        uris.map((u) => u.toString()),
+        contains(contains('raw.githubusercontent.com')),
+      );
+      expect(
+        uris.map((u) => u.toString()).toSet().length,
+        uris.length,
+        reason: '候选地址应互不重复',
+      );
+    });
+
     test('所有候选失败时抛出 GameException', () async {
       await expectLater(
         service.fetchManifest(timeout: const Duration(milliseconds: 1)),
