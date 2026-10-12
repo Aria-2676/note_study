@@ -8,6 +8,30 @@ import 'package:path/path.dart' as p;
 import 'package:v5_app/modules/games/services/game_exception.dart';
 import 'package:v5_app/modules/games/services/game_installer.dart';
 
+/// 让 `new HttpClient()` 造出**真实**客户端的覆盖层。
+///
+/// 本文件用 [HttpServer] 起了本地回环服务，需要真实网络。当前用例之所以能过，
+/// 是因为这个文件没有初始化 [TestWidgetsFlutterBinding]——它一旦被初始化（比如
+/// 以后有人为了用 path_provider 而加上 `ensureInitialized()`），全局
+/// `HttpOverrides` 就会被换成「一律返回 HTTP 400」的假客户端，这些用例会以
+/// 完全错误的原因失败。这里提前把联网用例包进 [withRealHttp]，与
+/// `test/core/updater/app_asset_applier_test.dart` 保持同一套做法，消除该隐患。
+///
+/// 注意 `createHttpClient` 内不能直接 `HttpClient()`，否则无限递归。
+class _RealHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      super.createHttpClient(context);
+}
+
+/// 在「真实网络」的 Zone 里跑 [body]。
+Future<T> withRealHttp<T>(Future<T> Function() body) {
+  return HttpOverrides.runZoned<Future<T>>(
+    body,
+    createHttpClient: (context) => _RealHttpOverrides().createHttpClient(context),
+  );
+}
+
 void main() {
   late Directory tempDir;
 
@@ -126,43 +150,43 @@ void main() {
   });
 
   group('GameInstaller.downloadZip', () {
-    test('should throw GameException on non-200 response', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      server.listen((request) {
-        request.response.statusCode = HttpStatus.notFound;
-        request.response.close();
-      });
-      addTearDown(() => server.close(force: true));
+    test('should throw GameException on non-200 response', () => withRealHttp(() async {
+          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          server.listen((request) {
+            request.response.statusCode = HttpStatus.notFound;
+            request.response.close();
+          });
+          addTearDown(() => server.close(force: true));
 
-      await expectLater(
-        GameInstaller.downloadZip(
-          url: Uri.parse('http://127.0.0.1:${server.port}/missing.zip'),
-          destPath: p.join(tempDir.path, 'dl.zip'),
-        ),
-        throwsA(isA<GameException>()),
-      );
-    });
+          await expectLater(
+            GameInstaller.downloadZip(
+              url: Uri.parse('http://127.0.0.1:${server.port}/missing.zip'),
+              destPath: p.join(tempDir.path, 'dl.zip'),
+            ),
+            throwsA(isA<GameException>()),
+          );
+        }));
 
-    test('should write all bytes and report progress', () async {
-      final payload = List<int>.generate(4096, (i) => i % 256);
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      server.listen((request) {
-        request.response.headers.contentLength = payload.length;
-        request.response.add(payload);
-        request.response.close();
-      });
-      addTearDown(() => server.close(force: true));
+    test('should write all bytes and report progress', () => withRealHttp(() async {
+          final payload = List<int>.generate(4096, (i) => i % 256);
+          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          server.listen((request) {
+            request.response.headers.contentLength = payload.length;
+            request.response.add(payload);
+            request.response.close();
+          });
+          addTearDown(() => server.close(force: true));
 
-      final dest = p.join(tempDir.path, 'dl_ok.zip');
-      var lastReceived = 0;
-      await GameInstaller.downloadZip(
-        url: Uri.parse('http://127.0.0.1:${server.port}/ok.zip'),
-        destPath: dest,
-        onProgress: (received, total) => lastReceived = received,
-      );
+          final dest = p.join(tempDir.path, 'dl_ok.zip');
+          var lastReceived = 0;
+          await GameInstaller.downloadZip(
+            url: Uri.parse('http://127.0.0.1:${server.port}/ok.zip'),
+            destPath: dest,
+            onProgress: (received, total) => lastReceived = received,
+          );
 
-      expect(await File(dest).length(), payload.length);
-      expect(lastReceived, payload.length);
-    });
+          expect(await File(dest).length(), payload.length);
+          expect(lastReceived, payload.length);
+        }));
   });
 }
