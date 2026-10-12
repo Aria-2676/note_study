@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_decision.dart';
 import '../models/app_update_manifest.dart';
+import '../services/app_asset_applier.dart';
 import '../services/app_update_decider.dart';
 import '../services/app_update_exception.dart';
 import '../services/app_update_launcher.dart';
@@ -14,24 +15,27 @@ import '../services/app_update_settings.dart';
 
 /// 版本检查与更新流程的状态中枢。
 ///
-/// 依赖全部可注入（服务 / 设置 / 平台启动器 / 版本号来源），因此决策与节流逻辑
-/// 可以脱离真实平台被测试。
+/// 依赖全部可注入（服务 / 设置 / 平台启动器 / 资源落地器 / 版本号来源），
+/// 因此决策与节流逻辑可以脱离真实平台被测试。
 class AppUpdateProvider extends ChangeNotifier {
   AppUpdateProvider({
     AppUpdateService? service,
     AppUpdateSettings? settings,
     AppUpdateLauncher? launcher,
+    AppAssetApplier? assetApplier,
     Future<String> Function()? currentVersionLoader,
     Future<String> Function()? platformLoader,
   }) : _service = service ?? AppUpdateService(),
        _settings = settings ?? const AppUpdateSettings(),
        _launcher = launcher ?? const AppUpdateLauncher(),
+       _assetApplier = assetApplier ?? const AppAssetApplier(),
        _versionLoader = currentVersionLoader ?? loadVersionFromPackageInfo,
        _platformLoader = platformLoader ?? loadPlatform;
 
   final AppUpdateService _service;
   final AppUpdateSettings _settings;
   final AppUpdateLauncher _launcher;
+  final AppAssetApplier _assetApplier;
   final Future<String> Function() _versionLoader;
   final Future<String> Function() _platformLoader;
 
@@ -41,6 +45,7 @@ class AppUpdateProvider extends ChangeNotifier {
   String _currentPlatform = 'android';
   bool _isChecking = false;
   bool _isApplying = false;
+  bool _isApplyingAssets = false;
   bool _notificationsEnabled = true;
   bool _promptPending = false;
   double _applyProgress = 0;
@@ -98,9 +103,11 @@ class AppUpdateProvider extends ChangeNotifier {
   /// 冷启动 / 回到前台时调用：**只有超过间隔才真正发请求**。
   ///
   /// 版本检查走的是公共 CDN，没必要每次启动都打一次。
+  /// 检查完若只有资源热更新，会顺手静默应用（不弹窗、不打扰用户）。
   Future<void> checkIfDue() async {
     if (await _settings.isAutoCheckDue()) {
       await check();
+      await applyPendingAssetsSilently();
     }
   }
 
@@ -150,6 +157,32 @@ class AppUpdateProvider extends ChangeNotifier {
       notificationsDisabled: !_notificationsEnabled,
     );
     _promptPending = _decision.shouldPrompt;
+  }
+
+  /// 静默应用资源热更新（如果有）。
+  ///
+  /// 设计取向：资源热更**完全不打扰用户**——不弹窗、不出提示、失败也不报错，
+  /// 只在日志里留痕，下次检查时自然重试。这符合它「后台修补资源」的定位。
+  ///
+  /// 应用成功后才写回 `assetBuild`，避免失败时把构建号推进到「已应用」状态
+  /// 而导致该资源包被永久跳过。
+  Future<void> applyPendingAssetsSilently() async {
+    if (_isApplyingAssets) return;
+    final assets = _decision.assets;
+    if (assets == null) return;
+
+    _isApplyingAssets = true;
+    try {
+      await _assetApplier.apply(assets);
+      await _settings.setAssetBuild(assets.build);
+      // 构建号变了，重新判定一次：资源已是最新则不再重复出现在结论里。
+      await _recompute();
+    } catch (error, stack) {
+      AppLogger.warn('AppUpdateProvider', '资源热更新应用失败（下次检查会重试）', error, stack);
+    } finally {
+      _isApplyingAssets = false;
+      notifyListeners();
+    }
   }
 
   /// 用户点了「稍后」：本次不再弹，下次启动仍会提醒。

@@ -1,9 +1,5 @@
-import 'dart:io';
-
-import 'package:archive/archive.dart';
-import 'package:path/path.dart' as p;
-
 import '../../../core/services/file_downloader.dart';
+import '../../../core/services/zip_extractor.dart';
 import 'game_exception.dart';
 
 /// 游戏包的下载、校验与解压。
@@ -46,97 +42,21 @@ class GameInstaller {
 
   /// 解压 [zipPath] 到 [targetDir]。
   ///
-  /// 采用 fail-closed 策略：条目出现绝对路径、`..` 或符号链接时**整包拒绝**，
-  /// 而不是跳过该条目——否则畸形包会产出「装了一半」的目录且难以察觉。
+  /// 实现在 [ZipExtractor]（App 资源热更新包也用同一套）；这里把
+  /// [ZipExtractorException] 转成 [GameException]，维持游戏模块原有的错误契约。
   static Future<void> extractZip({
     required String zipPath,
     required String targetDir,
   }) async {
-    final root = Directory(targetDir).absolute.path;
-    await Directory(root).create(recursive: true);
-
-    final input = InputFileStream(zipPath);
-    final Archive archive;
     try {
-      archive = ZipDecoder().decodeStream(input);
-    } catch (error) {
-      await input.close();
-      throw GameException('压缩包解析失败：$error');
-    }
-
-    try {
-      // `ZipDecoder().decodeStream` 对垃圾输入不抛错也不产出条目，会静默
-      // 「成功」。这里显式判空，把畸形包转成错误而非产出空目录。
-      if (archive.isEmpty) {
-        throw const GameException('压缩包为空或已损坏');
-      }
-      for (final entry in archive) {
-        final name = entry.name.replaceAll('\\', '/');
-        _assertSafeEntry(name, entry);
-        final destination = _resolveWithin(root, name);
-
-        if (entry.isDirectory) {
-          await Directory(destination).create(recursive: true);
-          continue;
-        }
-        if (!entry.isFile) continue;
-
-        await Directory(p.dirname(destination)).create(recursive: true);
-        final output = OutputFileStream(destination);
-        try {
-          entry.writeContent(output);
-        } finally {
-          await output.close();
-        }
-      }
-    } on GameException {
-      rethrow;
-    } catch (error) {
-      throw GameException('压缩包解压失败：$error');
-    } finally {
-      archive.clearSync();
-      await input.close();
+      await ZipExtractor.extract(zipPath: zipPath, targetDir: targetDir);
+    } on ZipExtractorException catch (error) {
+      throw GameException(error.message);
     }
   }
 
   /// 统计目录总字节数（递归）。
-  static Future<int> directorySize(String dirPath) async {
-    final dir = Directory(dirPath);
-    if (!await dir.exists()) return 0;
-    var total = 0;
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File) {
-        try {
-          total += await entity.length();
-        } catch (_) {
-          // 文件可能在统计期间被删除，忽略。
-        }
-      }
-    }
-    return total;
-  }
-
-  /// 校验压缩包条目是否安全（防 zip-slip / 符号链接攻击）。
-  static void _assertSafeEntry(String name, ArchiveFile entry) {
-    if (entry.isSymbolicLink) {
-      throw GameException('压缩包包含符号链接：$name');
-    }
-    if (name.startsWith('/') || p.isAbsolute(name)) {
-      throw GameException('压缩包包含绝对路径：$name');
-    }
-    if (name.split('/').contains('..')) {
-      throw GameException('压缩包包含上级目录引用：$name');
-    }
-    _resolveWithin(Directory.systemTemp.path, name);
-  }
-
-  /// 将相对路径解析为 [root] 内的绝对路径；越界时抛出异常。
-  static String _resolveWithin(String root, String relative) {
-    final normalized = p.normalize(p.join(root, relative));
-    final rel = p.relative(normalized, from: root);
-    if (rel.startsWith('..') || p.isAbsolute(rel)) {
-      throw GameException('压缩包路径越界：$relative');
-    }
-    return normalized;
+  static Future<int> directorySize(String dirPath) {
+    return ZipExtractor.directorySize(dirPath);
   }
 }
