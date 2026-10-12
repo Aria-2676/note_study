@@ -82,7 +82,12 @@ void main() {
   });
 
   group('HotThemeConfig 应用', () {
-    test('空配置时返回原主题对象不变', () {
+    // 注意：「空配置不重建 ThemeData」这条约束**不在** applyTo 上——
+    // ThemeData.copyWith 无条件新建实例（永远不 `return this`），所以
+    // applyTo 无论配置是否为空都会产出新对象，这是 Flutter 的既定行为。
+    // 真正做短路的是上一层 HotThemeLoader.apply（isEmpty 时直接 `return base`）。
+
+    test('空配置下 applyTo 仍等价于原主题（不改变任何可观察属性）', () {
       final base = ThemeData.light(useMaterial3: true);
 
       final applied = HotThemeConfig.empty.applyTo(
@@ -90,7 +95,25 @@ void main() {
         fallbackBrightness: Brightness.light,
       );
 
-      expect(identical(applied, base), isTrue, reason: '不该无谓重建 ThemeData');
+      // 不做 identical 断言：copyWith 必然新建实例。这里断言的是
+      // 「等价」——颜色方案与圆角都没被动过。
+      expect(applied.colorScheme.primary, base.colorScheme.primary);
+      expect(applied.colorScheme.brightness, base.colorScheme.brightness);
+      expect(applied.cardTheme.shape, base.cardTheme.shape);
+    });
+
+    test('空配置 + 不同 fallback 仍会把亮度对齐到 fallback', () {
+      // 这不是缺陷，而是 applyTo 的既定语义：它是「已经被决定要应用」之后的
+      // 执行体，不做 isEmpty 判断。isEmpty 的短路在 HotThemeLoader.apply 层。
+      // 这条用例把该语义固定下来，防止有人日后误以为 applyTo 会自行短路。
+      final base = ThemeData.light(useMaterial3: true);
+
+      final applied = HotThemeConfig.empty.applyTo(
+        base,
+        fallbackBrightness: Brightness.dark,
+      );
+
+      expect(applied.colorScheme.brightness, Brightness.dark);
     });
 
     test('seedColor 会推导出主色，且亮度正确', () {

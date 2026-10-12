@@ -248,10 +248,17 @@ void main() {
     test('resolveRoot 未注入时回落到应用支持目录', () async {
       // path_provider 通过 MethodChannel 与宿主通信，测试里没有宿主，
       // 因此显式给出一个假的通道实现。
+      //
+      // ⚠️ 通道方法名与 Dart 侧方法名**不一样**，这是极易踩的坑：
+      //   Dart 层 getApplicationSupportPath() → 通道里发 'getApplicationSupportDirectory'
+      //   Dart 层 getTemporaryPath()          → 通道里发 'getTemporaryDirectory'
+      // （见 path_provider_platform_interface 的 MethodChannelPathProvider）
+      // 按 Dart 方法名 mock 永远不会被命中，handler 返回 null，
+      // path_provider 随即抛 MissingPlatformDirectoryException。
       const channel = MethodChannel('plugins.flutter.io/path_provider');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'getApplicationSupportPath') return sandbox.path;
+        if (call.method == 'getApplicationSupportDirectory') return sandbox.path;
         return null;
       });
       addTearDown(() {
