@@ -9,7 +9,7 @@ import '../models/installed_game_model.dart';
 import '../repositories/game_entry_repository.dart';
 import '../services/game_exception.dart';
 import '../services/game_module_service.dart';
-import '../utils/game_version_utils.dart';
+import '../../../core/utils/version_utils.dart';
 
 /// 小游戏模块的状态中枢。
 class GameProvider extends ChangeNotifier {
@@ -68,7 +68,7 @@ class GameProvider extends ChangeNotifier {
   bool isUpdateAvailable(GameInfo game) {
     final local = _installed.byId(game.id);
     if (local == null) return false;
-    return GameVersionUtils.isNewer(game.latestVersion, local.installedVersion);
+    return VersionUtils.isNewer(game.latestVersion, local.installedVersion);
   }
 
   /// 某游戏的下载进度（0~1）；未在下载则为 null。

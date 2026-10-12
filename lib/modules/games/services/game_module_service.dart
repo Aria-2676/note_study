@@ -9,7 +9,7 @@ import '../models/game_manifest_model.dart';
 import '../models/installed_game_model.dart';
 import '../repositories/game_install_repository.dart';
 import '../utils/game_cdn_config.dart';
-import '../utils/game_version_utils.dart';
+import '../../../core/utils/version_utils.dart';
 import 'game_exception.dart';
 import 'game_installer.dart';
 
@@ -176,7 +176,7 @@ class GameModuleService {
   Future<String?> _latestInstalledVersion(String gameId) async {
     final versions = await _installRepository.listInstalledVersions(gameId);
     if (versions.isEmpty) return null;
-    versions.sort((a, b) => GameVersionUtils.compare(b, a));
+    versions.sort((a, b) => VersionUtils.compare(b, a));
     return versions.first;
   }
 

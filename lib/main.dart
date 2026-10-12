@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'core/services/widget_service.dart';
 import 'core/services/statistic_service.dart';
 import 'core/services/database/database_service.dart';
+import 'core/updater/providers/app_update_provider.dart';
+import 'core/updater/widgets/app_update_dialog.dart';
 import 'modules/pomodoro/services/pomodoro_notification_service.dart';
 import 'modules/pomodoro/services/pomodoro_background_service.dart';
 import 'modules/tasks/repositories/task_repository.dart';
@@ -86,6 +90,15 @@ class MyApp extends StatelessWidget {
           update: (context, pointsProvider, taskProvider) =>
               taskProvider!..updatePointsProvider(pointsProvider),
         ),
+        ChangeNotifierProvider(
+          create: (_) {
+            final provider = AppUpdateProvider();
+            // 版本检查不阻断启动：初始化失败或网络不通时安静跳过，
+            // 后续回到前台还会再按间隔重试（见 AppUpdatePromptHost）。
+            unawaited(provider.initialize().then((_) => provider.checkIfDue()));
+            return provider;
+          },
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settingsProvider, child) {
@@ -102,7 +115,7 @@ class MyApp extends StatelessWidget {
             ],
             supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
             locale: const Locale('zh', 'CN'),
-            home: const TasksHomePage(),
+            home: const AppUpdatePromptHost(child: TasksHomePage()),
           );
         },
       ),

@@ -44,3 +44,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android 发布签名：密钥库与口令绝不能入库。
+# 一旦泄漏，任何人都能伪造以你的名义发布的安装包。
+/android/key.properties
+*.jks
+*.keystore

@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "App 更新清单：人工维护，提交到仓库后经 CDN 分发，客户端启动/回前台时拉取。",
+    "发新整包：改 latest.version，并在 downloads.<平台> 里填构建产物的 url + sha256 + sizeBytes。",
+    "开资源热更：新增 assets 块，build 用单调递增的整数（每次重打包 +1）。",
+    "强制更新：把 minSupported 提到「必须换包」的下限；留空/删掉表示不强制。",
+    "level 可省略，缺省时客户端按版本号差值自动推断（主版本变化才会弹窗）。",
+    "注意：downloads 里的地址必须是 https/http，其它协议会被客户端直接丢弃。"
+  ],
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-09T14:30:00Z",
+  "minSupported": "5.0.0",
+  "latest": {
+    "version": "5.5.10",
+    "notes": [],
+    "downloads": {}
+  }
+}

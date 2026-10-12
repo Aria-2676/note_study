@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- 自签分发：应用内下载新版本 APK 后需要拉起系统安装器。
+         Android 8.0+ 必须声明该权限，且用户首次仍需手动允许「安装未知应用」。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="任务管家"
         android:name="${applicationName}"

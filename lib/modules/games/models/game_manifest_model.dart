@@ -1,4 +1,4 @@
-import '../utils/game_version_utils.dart';
+import '../../../core/utils/version_utils.dart';
 
 /// 游戏包的下载与校验信息。
 class GamePackageInfo {
@@ -92,7 +92,7 @@ class GameInfo {
     final package = GamePackageInfo.tryFromJson(raw['package']);
 
     if (id == null || name is! String || name.isEmpty) return null;
-    if (version is! String || !GameVersionUtils.isValid(version)) return null;
+    if (version is! String || !VersionUtils.isValid(version)) return null;
     if (entry == null || package == null) return null;
 
     final cost = raw['cost'];

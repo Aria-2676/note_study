@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:convert/convert.dart';
-import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../core/services/file_downloader.dart';
 import 'game_exception.dart';
 
 /// 游戏包的下载、校验与解压。
@@ -19,6 +17,8 @@ class GameInstaller {
   ///
   /// [onProgress] 的 `total` 在服务端未返回 `Content-Length` 时为 null。
   /// [isCancelled] 返回 true 时中止下载并抛出 [GameException]。
+  /// 实现在 [FileDownloader]（App 更新包也用同一套）；这里把
+  /// [FileDownloadException] 转成 [GameException]，维持游戏模块原有的错误契约。
   static Future<void> downloadZip({
     required Uri url,
     required String destPath,
@@ -26,52 +26,22 @@ class GameInstaller {
     bool Function()? isCancelled,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    final client = HttpClient()..connectionTimeout = timeout;
-    IOSink? sink;
     try {
-      final request = await client.getUrl(url);
-      final response = await request.close().timeout(timeout);
-      if (response.statusCode != HttpStatus.ok) {
-        throw GameException('下载失败：HTTP ${response.statusCode}');
-      }
-
-      final contentLength = response.contentLength;
-      final total = contentLength >= 0 ? contentLength : null;
-      sink = File(destPath).openWrite();
-
-      var received = 0;
-      await for (final chunk in response.timeout(timeout)) {
-        if (isCancelled?.call() ?? false) {
-          throw const GameException('下载已取消');
-        }
-        received += chunk.length;
-        sink.add(chunk);
-        onProgress?.call(received, total);
-      }
-      await sink.flush();
-    } on GameException {
-      rethrow;
-    } catch (error) {
-      throw GameException('下载失败：$error');
-    } finally {
-      try {
-        await sink?.close();
-      } catch (_) {
-        // 写入流可能已因异常关闭，忽略。
-      }
-      client.close(force: true);
+      await FileDownloader.download(
+        url: url,
+        destPath: destPath,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+        timeout: timeout,
+      );
+    } on FileDownloadException catch (error) {
+      throw GameException(error.message);
     }
   }
 
   /// 计算文件的 sha256（小写十六进制），流式处理避免大文件占内存。
-  static Future<String> sha256OfFile(String path) async {
-    final output = AccumulatorSink<Digest>();
-    final input = sha256.startChunkedConversion(output);
-    await for (final chunk in File(path).openRead()) {
-      input.add(chunk);
-    }
-    input.close();
-    return output.events.single.toString();
+  static Future<String> sha256OfFile(String path) {
+    return FileDownloader.sha256OfFile(path);
   }
 
   /// 解压 [zipPath] 到 [targetDir]。

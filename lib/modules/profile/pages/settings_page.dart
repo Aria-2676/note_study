@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../core/updater/pages/app_update_page.dart';
 import './appearance_settings_page.dart';
 import './task_settings_page.dart';
 import './data_management_page.dart';
@@ -55,6 +56,15 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
             subtitle: '导出、备份、恢复、清除缓存',
             color: Colors.teal,
             onTap: () => _navigateTo(DataManagementPage()),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryCard(
+            context,
+            icon: Icons.system_update_alt,
+            title: '版本更新',
+            subtitle: '检查新版本、更新提醒开关',
+            color: Colors.indigo,
+            onTap: () => _navigateTo(const AppUpdatePage()),
           ),
           const SizedBox(height: 12),
           _buildCategoryCard(
