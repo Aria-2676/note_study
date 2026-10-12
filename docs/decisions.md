@@ -56,6 +56,39 @@ Android 要求更新包与已安装包同签名，否则 `INSTALL_FAILED_UPDATE_
 用户只能卸载重装并丢数据。密钥库因此**刻意放在仓库外**（仓库是公开的），
 且口令**不由 AI 生成或记录**——它不该进对话日志，丢了也不可恢复。
 
+### 口令外露时的处置：把密钥库降级为「本机测试用」
+
+密钥库一旦用「已经出现在对话记录/日志里的口令」生成，它就不再是干净的密钥。
+正确的分层是：
+
+| 用途 | 该用哪个密钥库 |
+|---|---|
+| 本机调试、验证构建链路 | 现有这个（口令已外露，无所谓） |
+| 对外分发、给真实用户更新 | **另生成一个**，口令亲手输入且从未外传 |
+
+关键判断依据不是「口令强不强」，而是**口令有没有离开过你的机器**。
+`setup_android_keystore_auto.ps1` 因此被标注为「仅本机测试用」。
+
+### 为什么备份脚本会打包口令
+
+密钥库和口令是**一对**：只备份 `.jks` 而不备份口令 = 没备份（口令无法从密钥库反推）。
+所以 `backup_android_keystore.ps1` 把两者打进同一个 zip，并附 `README.txt` 说明恢复步骤。
+
+代价是这个 zip 的敏感度**等同于房子的钥匙**：绝不入库、绝不放公开云盘，
+只放密码管理器附件 / 加密 U 盘 / 私密保管库。`.gitignore` 里的排除规则
+（`**/taskmaster-signing-*.zip`）是**纵深防御**——真正的密钥库本就在仓库外。
+
+### keytool 在 PowerShell 5.1 下的 stderr 陷阱
+
+`keytool -v` 把进度横幅打到 stderr。PowerShell 5.1 会把**原生 stderr 升级成
+`NativeCommandError`**，脚本顶层 `$ErrorActionPreference='Stop'` 会因此在
+**写完密钥库、但还没写 `key.properties`** 的那一刻中断——表现为「脚本失败但
+.jks 已经生成」，极易误判成 keytool 出错。
+
+处置：在调用点降级 `$ErrorActionPreference` 并用退出码判定成败
+（`setup_android_keystore_auto.ps1` 走 `cmd /c ... 2>nul` 把 stderr 交给 OS 丢弃；
+`setup_android_keystore.ps1` 局部降级 preference）。改这段时别改回去。
+
 ## 为什么现在有 `CLAUDE.md`、`.trae/rules/`、本文件三份
 
 它们**不是三份规范**，而是三种不同职责：

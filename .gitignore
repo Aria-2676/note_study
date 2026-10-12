@@ -47,6 +47,14 @@ app.*.map.json
 
 # Android 发布签名：密钥库与口令绝不能入库。
 # 一旦泄漏，任何人都能伪造以你的名义发布的安装包。
+#
+# 注意：真正的密钥库位于 D:\Dev\keystore\（在仓库之外），下列规则是纵深防御——
+# 万一有人在仓库里就地生成或复制了一份，也不会被误提交。
 /android/key.properties
 *.jks
 *.keystore
+*.jceks
+PASSWORD.txt
+key.properties
+/keystore/
+**/taskmaster-signing-*.zip

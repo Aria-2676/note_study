@@ -130,11 +130,19 @@ git cat-file commit HEAD | head -20       # 字节级回读确认中文未坏
 老用户**只能卸载重装（丢数据）**。
 
 - 密钥库 `D:\Dev\keystore\taskmaster-release.jks`（**刻意在仓库外**，仓库是公开的）
-- 生成：`tool/setup_android_keystore.ps1`（交互式）
+- 生成：`tool/setup_android_keystore.ps1`（交互式输密码，**推荐**）
+  或 `tool/setup_android_keystore_auto.ps1`（脚本自生成口令——口令会外露，**仅本机测试用**）
+- 备份：`tool/backup_android_keystore.ps1` → 生成含密钥库+口令+恢复说明的 zip，须拷到本机之外
 - `android/app/build.gradle.kts` 读 `android/key.properties`，缺失回落 debug
-- `.gitignore` 已排除 `key.properties` / `*.jks` / `*.keystore`
+- `.gitignore` 已排除 `key.properties` / `*.jks` / `*.keystore` / `PASSWORD.txt` /
+  `**/taskmaster-signing-*.zip` 等（纵深防御；真正的密钥库本就在仓库外）
 
 **纪律**：绝不生成、记录或输出签名口令；密钥库与口令丢失不可恢复，须存密码管理器。
+
+**Windows 坑**：`keytool -v` 把进度打到 stderr，PowerShell 5.1 会把原生 stderr
+升级成 `NativeCommandError`，脚本顶层 `$ErrorActionPreference='Stop'` 会因此在
+**写 `key.properties` 之前中断**（密钥库其实已生成，但配置没写、脚本报失败）。
+两个脚本都已在该调用点降级 preference 并改判退出码——改这段代码时别改回去。
 
 ---
 
