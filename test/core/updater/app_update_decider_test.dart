@@ -7,6 +7,10 @@ import 'package:v5_app/core/utils/version_utils.dart';
 const String _current = '5.5.10';
 
 /// 构造一份「有整包更新」的清单。
+///
+/// 注意 [version] 默认为 `6.0.0`，即**一定**比 [_current] 新。
+/// 只想验证「资源热更」而**不**希望掺入整包更新时，用
+/// [manifestWithAssetsOnly]——它把版本设成当前版本，整包分支不会命中。
 AppUpdateManifest manifestWithRelease({
   String version = '6.0.0',
   String? level,
@@ -27,6 +31,25 @@ AppUpdateManifest manifestWithRelease({
     },
     if (assetBuild != null)
       'assets': {'build': assetBuild, 'url': assetUrl},
+  });
+}
+
+/// 构造一份**只有资源热更、没有整包更新**的清单（版本等于当前版本）。
+///
+/// 用它来测资源分支，避免误用 [manifestWithRelease] 的 `6.0.0` 默认值——
+/// 那样会命中整包分支，断言到 `optional` 而不是 `assetsOnly`。
+AppUpdateManifest manifestWithAssetsOnly({
+  int assetBuild = 3,
+  String assetUrl = 'https://example.com/assets.zip',
+}) {
+  return AppUpdateManifest.fromJson({
+    'latest': {
+      'version': _current,
+      'downloads': {
+        'android': {'url': 'https://example.com/app-android'},
+      },
+    },
+    'assets': {'build': assetBuild, 'url': assetUrl},
   });
 }
 
@@ -204,7 +227,7 @@ void main() {
 
   group('AppUpdateDecider 资源热更新', () {
     test('首次安装（本地构建号 0）应判定为有资源更新', () {
-      final decision = decide(manifestWithRelease(assetBuild: 3));
+      final decision = decide(manifestWithAssetsOnly(assetBuild: 3));
       expect(decision.kind, AppUpdateKind.assetsOnly);
       expect(decision.shouldPrompt, isFalse);
       expect(decision.hasAssets, isTrue);
@@ -212,7 +235,7 @@ void main() {
 
     test('构建号相同不算更新', () {
       final decision = decide(
-        manifestWithRelease(assetBuild: 3),
+        manifestWithAssetsOnly(assetBuild: 3),
         currentAssetBuild: 3,
       );
       expect(decision.kind, AppUpdateKind.none);
@@ -221,7 +244,7 @@ void main() {
 
     test('本地构建号更大时不算更新（防止回滚到旧包）', () {
       final decision = decide(
-        manifestWithRelease(assetBuild: 3),
+        manifestWithAssetsOnly(assetBuild: 3),
         currentAssetBuild: 9,
       );
       expect(decision.kind, AppUpdateKind.none);

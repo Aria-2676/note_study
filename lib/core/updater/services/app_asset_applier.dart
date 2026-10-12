@@ -44,9 +44,26 @@ class AppAssetApplier {
   }
 
   /// 临时工作目录。
+  ///
+  /// 优先用 path_provider 的系统临时目录；插件不可用时退回
+  /// [Directory.systemTemp]——它只依赖 dart:io，不需要平台通道。
+  ///
+  /// 之所以要能降级：[workDir] 只是「放下载包和解压暂存」的地方，
+  /// 它拿不到不该让整个热更失败；而 [rootDir] 是真正要落位的位置，
+  /// 那种情况下失败必须暴露出来。
   Future<String> resolveWorkDir() async {
     if (workDir != null) return workDir!;
-    return (await getTemporaryDirectory()).path;
+    try {
+      return (await getTemporaryDirectory()).path;
+    } catch (error, stack) {
+      AppLogger.warn(
+        'AppAssetApplier',
+        'path_provider 取临时目录失败，改用 Directory.systemTemp',
+        error,
+        stack,
+      );
+      return Directory.systemTemp.path;
+    }
   }
 
   /// 应用 [assets] 资源包，成功返回 true。
@@ -62,9 +79,24 @@ class AppAssetApplier {
       throw const AppUpdateException('资源包地址不合法');
     }
 
-    final targetRoot = await resolveRoot();
-    final workRoot = await resolveWorkDir();
     final stamp = DateTime.now().millisecondsSinceEpoch;
+
+    // 路径解析也要纳入异常转换：resolveRoot / resolveWorkDir 会走
+    // path_provider 的平台通道，绑定未初始化或插件不可用时抛的是
+    // FlutterError / MissingPluginException，而不是本项目异常。
+    // 若放在 try 之外，调用方会拿到一个它没打算 catch 的类型。
+    final String targetRoot;
+    final String workRoot;
+    try {
+      targetRoot = await resolveRoot();
+      workRoot = await resolveWorkDir();
+    } on AppUpdateException {
+      rethrow;
+    } catch (error, stack) {
+      AppLogger.warn('AppAssetApplier', '资源目录解析失败', error, stack);
+      throw AppUpdateException('无法确定资源目录：$error');
+    }
+
     final zipPath = p.join(workRoot, 'asset-$stamp.zip');
     final stageDir = p.join(workRoot, 'asset-stage-$stamp');
 

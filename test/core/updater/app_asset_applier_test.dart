@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:v5_app/core/updater/models/app_update_manifest.dart';
@@ -46,6 +47,10 @@ class _ZipServer {
 }
 
 void main() {
+  // path_provider 走 MethodChannel；下面的用例会真的调用它，
+  // 因此必须先初始化绑定，否则 ServicesBinding.instance 不可用。
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late Directory sandbox;
   late _ZipServer server;
   late String root;
@@ -209,9 +214,35 @@ void main() {
     });
 
     test('resolveRoot 未注入时回落到应用支持目录', () async {
+      // path_provider 通过 MethodChannel 与宿主通信，测试里没有宿主，
+      // 因此显式给出一个假的通道实现。
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getApplicationSupportPath') return sandbox.path;
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
       const applier = AppAssetApplier();
       final resolved = await applier.resolveRoot();
-      expect(resolved.endsWith('hot_assets'), isTrue);
+      expect(resolved, p.join(sandbox.path, 'hot_assets'));
+    });
+
+    test('平台通道不可用时 apply 抛 AppUpdateException 而不是 FlutterError', () async {
+      // 只注入 workDir，让 resolveRoot 走真实平台通道。
+      // 这里没有注册通道实现，path_provider 会失败：
+      // 路径解析若在 try 之外，调用方拿到的是 FlutterError；
+      // 这正是本次修复要覆盖的回归点。
+      final (pkg, _) = makePackage({'a.txt': utf8.encode('x')});
+
+      await expectLater(
+        AppAssetApplier(workDir: sandbox.path).apply(pkg),
+        throwsA(isA<AppUpdateException>()),
+      );
     });
   });
 }
