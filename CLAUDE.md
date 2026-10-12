@@ -185,10 +185,26 @@ git add pubspec.yaml && git commit -F "$TEMP/ver.txt"
 - 下载 URL 只接受 `http` / `https`；**先校验 sha256 再安装/解压**。
 - `update.json` 手工维护，自带 `_comment` 说明。改完务必确认非目标平台不会误触发。
 
+### 5.4 整包更新 vs 资源热更（两条路，别混淆）
+
+| | 整包更新 | 资源热更 |
+|---|---|---|
+| 决策类别 | `available` / `optional` / `forced` | `assetsOnly` |
+| 是否打扰用户 | 大版本弹窗，可跳过 | **完全不打扰**，后台静默 |
+| 落地方式 | 下载 APK → 唤起系统安装器 | 下载 zip → 校验 → 原子替换目录 |
+| 实现 | `AppUpdateLauncher` | `AppAssetApplier` |
+| 失败处理 | 提示用户 | **只记日志**，下次检查自动重试 |
+
+**整包**的下载路径已端到端可用。**资源热更**的「下载 → 校验 → 解压 → 原子落位 →
+写回 build」链路已实现并有测试覆盖；⚠️ **但当前还没有模块去读 `hot_assets` 目录** ——
+即「能安全地把资源放到本地」这一半已完成，「业务侧消费这些资源」尚未接线。
+接入消费方时记得用它替换硬编码资源，并保留内置兜底（资源缺失时不可崩）。
+
 > **字段名易错备忘**（以 `app_update_manifest.dart` 为准）：
 > `minSupported` 在**顶层**而非 `latest` 内；平台映射键是 **`downloads`**（不是 targets）；
-> 大小字段是 **`sizeBytes`**（不是 size）；`notes` 是**数组**；另有可选 `level`
-> 与 `schemaVersion` / `updatedAt` / `publishedAt`。
+> 大小字段是 **`sizeBytes`**（不是 size）；`notes` 是**数组**；
+> **`assets` 是单个对象**（`build`/`url`/`sha256`/`sizeBytes`），**不是 `packages` 数组**；
+> 另有可选 `level` 与 `schemaVersion` / `updatedAt` / `publishedAt`。
 
 详见 skill **`v5-update-distribution`**。
 
