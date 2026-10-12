@@ -4,6 +4,17 @@
 架构与编码规则的完整版在 [`docs/重构后项目开发规范.md`](docs/重构后项目开发规范.md)。
 两者事实性内容必须一致；若发现冲突，**以代码为准**，并同时修正两份文档。
 
+### 规范文件的分层（三层，改动时必须同步）
+
+| 层 | 位置 | 作用 | 详略 |
+|---|---|---|---|
+| **详版** | `docs/重构后项目开发规范.md` | 权威全文，含理由与示例 | 最详 |
+| **规则卡** | `.trae/rules/rule-1.md` ~ `rule-6.md` | IDE 规则引擎加载的强制条目 | 精简 |
+| **AI 摘要** | 本文件 `CLAUDE.md` | 给 AI 的快速上下文 | 摘要 |
+
+三层内容**必须一致**。改架构或约定时，**三处都要改** —— 只改一份会让另外两份变成误导源。
+（`.trae/documents/*.md` 是已完工模块的**实施方案记录**，属历史档案，不需要跟随更新。）
+
 ---
 
 ## 0. 一句话概览
@@ -236,3 +247,19 @@ git add pubspec.yaml && git commit -F "$TEMP/ver.txt"
 | `v5-update-distribution` | 更新清单契约、五档决策、CDN 镜像、发版清单 |
 | `v5-module-dev-conventions` | 项目强制编码规则（行数/Provider/异常/fail-soft/命名） |
 | `dart-large-file-splitting` | 超限 Dart 文件的安全拆分手册 |
+
+## 10. 改动时的「同步清单」（避免规范腐化）
+
+改到下列内容时，**逐项确认三处文档是否都要同步**（详版 / 规则卡 / 本文件）：
+
+- [ ] Provider 新增或注册顺序变化 → `docs/` §2.2 + `.trae/rules/rule-1.md` + 本文件 §2
+- [ ] 统计埋点规范或存储限制变化 → `docs/` §3 + `rule-2.md`
+- [ ] 目录结构调整、新增 `core/` 子目录 → `docs/` §4 + `rule-3.md` + 本文件 §2
+- [ ] 入口初始化顺序 / home 结构变化 → `docs/` §2.1 + `rule-4.md`
+- [ ] 测试要求变化 → `docs/` §6 + `rule-5.md`
+- [ ] 行数上限或拆分约定变化 → `docs/` §7 + `rule-6.md`
+- [ ] `update.json` 契约变化 → 本文件 §5 + skill `v5-update-distribution`
+- [ ] 签名/密钥流程变化 → 本文件 §6 + skill `v5-update-distribution`
+
+**验证方式**：改完用 `git diff --stat` 确认改到的文件数符合预期，
+只改一两处通常是漏了。
