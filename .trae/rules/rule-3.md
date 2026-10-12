@@ -1,5 +1,7 @@
 规范 3：工程结构与依赖方向
 
+适用：新建目录/文件/模块，或判断某段逻辑该放在 core 还是某个 modules 下。
+
 目录结构
 lib/core/            跨模块基础设施
   config/            app_config（常量、DB 名与版本）、cdn_bases（CDN 基址唯一来源）

@@ -1,5 +1,7 @@
 规范 1：Provider 状态管理（强制）
 
+适用：新增/修改 Provider、在 UI 或非 Widget 层读取 Provider 数据。
+
 注册
 无依赖 Provider 用 ChangeNotifierProvider；
 依赖型（Task / Shop / Game 依赖 Points）用 ChangeNotifierProxyProvider；

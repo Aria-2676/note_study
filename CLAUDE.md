@@ -1,8 +1,8 @@
 # CLAUDE.md — 任务管家（V5）
 
 **本文件只讲「怎么干活」：项目事实、验证命令、环境坑、操作纪律。**
-**不写编码规范** —— 规则只有一份，在 `.trae/rules/rule-1.md` ~ `rule-7.md`，
-动手前读那几份。
+**不写编码规范** —— 规则只有一份，在 `.trae/rules/`，动手前先读
+[`.trae/rules/README.md`](.trae/rules/README.md) 找该读哪张卡。
 
 > 设计取舍与历史原因在 [`docs/decisions.md`](docs/decisions.md)。
 > 三者**不再互相复述**：规则改动只改 `.trae/rules/`，本文件不需跟着改。
@@ -24,7 +24,7 @@ Flutter 应用「任务管家」：任务管理 + 积分 + 番茄钟 + 商城 + 
 | 规模 | lib ~210 个 Dart 文件、test ~50 个 |
 | 版本 | 见 `pubspec.yaml`，与最近提交号一致 |
 
-架构与目录见 `rule-3`；Provider 清单见 `rule-1`；统计见 `rule-2`。
+架构与目录见规则「依赖方向」；Provider 清单见规则「Provider」；统计见规则「统计」。
 
 ---
 
@@ -81,7 +81,7 @@ url_launcher / package_info_plus）与 **UI 层**；这两层只有静态分析�
 
 ## 3. 提交
 
-规则见 `rule-7`。最易踩坑的三条：
+规则见规则「提交、版本与兼容性」。最易踩坑的三条：
 
 1. **中文提交信息必须写成 UTF-8 文件后 `git commit -F <文件>`**，
    禁止 `-m "中文"`（会被控制台编码破坏）。

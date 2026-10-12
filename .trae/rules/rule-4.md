@@ -1,5 +1,7 @@
 规范 4：编码、入口与异常
 
+适用：改 `main.dart`、写异步 I/O、定义/转换异常、解析来自外网的数据。
+
 main.dart 顺序（强制）
 WidgetsFlutterBinding.ensureInitialized()
 → WidgetService.init()
