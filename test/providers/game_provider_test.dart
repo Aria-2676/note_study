@@ -41,6 +41,7 @@ class _FakeGameModuleService extends GameModuleService {
     GameInfo game, {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
+    Duration downloadTimeout = const Duration(seconds: 30),
   }) async {
     final handler = onInstall;
     if (handler != null) return handler(game, onProgress);

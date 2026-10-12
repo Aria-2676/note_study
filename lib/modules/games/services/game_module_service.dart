@@ -47,10 +47,15 @@ class GameModuleService {
   ///
   /// 流程：下载 → sha256 校验 → 解压 → 断言入口存在 → 原子落位到版本目录 →
   /// 写索引 → 清理旧版本。失败时清理临时文件并抛出 [GameException]。
+  ///
+  /// [downloadTimeout] 是**每个镜像**的连接/读取超时。候选源可能有 3~4 个，
+  /// 最坏情况总耗时 ≈ 镜像数 × 该值，所以别设得过大，否则弱网下用户要等很久
+  /// 才能看到失败提示。默认 30s 沿用 [GameInstaller.downloadZip] 的设定。
   Future<InstalledGame> install(
     GameInfo game, {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
+    Duration downloadTimeout = const Duration(seconds: 30),
   }) async {
     final tempDir = await _installRepository.tempDirectory();
     final stamp = DateTime.now().microsecondsSinceEpoch;
@@ -63,6 +68,7 @@ class GameModuleService {
         zipPath,
         onProgress: onProgress,
         isCancelled: isCancelled,
+        timeout: downloadTimeout,
       );
       await Isolate.run(
         () => GameInstaller.extractZip(zipPath: zipPath, targetDir: extractDir),
@@ -199,11 +205,15 @@ class GameModuleService {
   /// 各镜像节点对 `@main` 的缓存彼此独立，某节点可能仍返回旧包（清单已更新、
   /// 包未更新），此时校验会失败；本方法会清理残包并回退到下一个候选源，
   /// 直至某个源返回内容与清单一致。全部失败时抛出 [GameException]。
+  ///
+  /// [timeout] 是**每个源**的超时；不要把总预算除以源数量后传进来，
+  /// 否则单个慢源会被过早掐断。
   Future<void> _downloadVerifiedZip(
     GameInfo game,
     String zipPath, {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     Object? lastError;
     for (final uri in GameCdnConfig.packageUris(game.package.path)) {
@@ -213,6 +223,7 @@ class GameModuleService {
           destPath: zipPath,
           onProgress: onProgress,
           isCancelled: isCancelled,
+          timeout: timeout,
         );
         await _verifyChecksum(zipPath, game.package.sha256);
         return;

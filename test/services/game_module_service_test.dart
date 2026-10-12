@@ -308,7 +308,17 @@ void main() {
         entry: 'index.html',
       );
 
-      await expectLater(service.install(game), throwsA(isA<GameException>()));
+      // 关键：把每个镜像的超时压到 1ms，让所有候选源「立刻」失败。
+      //
+      // 用例要验证的是「全部源都失败 → 抛 GameException + 清理临时目录」，
+      // 与「某台 CDN 现在通不通」无关。若沿用默认 30s：
+      //   - 某个镜像挂起时，4 个源累计可能超过测试框架 30s 的整体超时；
+      //   - 结果取决于公网状态，是典型的 flaky。
+      // 压到 1ms 后，无论网络通不通都在毫秒级失败，断言也就只测业务逻辑。
+      await expectLater(
+        service.install(game, downloadTimeout: const Duration(milliseconds: 1)),
+        throwsA(isA<GameException>()),
+      );
 
       final temp = await repository.tempDirectory();
       expect(await temp.list().isEmpty, isTrue);
