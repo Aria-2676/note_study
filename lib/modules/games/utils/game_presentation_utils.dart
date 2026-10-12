@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/updater/services/hot_asset_store.dart';
+
 /// 清单字段到 UI 呈现的映射。
 ///
 /// 图标刻意用白名单映射而非动态 `IconData`：Flutter 的图标 tree-shaking 会
 /// 移除构建时未静态引用的字形，动态构造会在 release 下渲染成空白。
+/// 若确实需要「云端换图标」，走 [_icons] 之外的另一条路——热更图片，
+/// 见 [iconAssetFor]。
 class GamePresentationUtils {
   const GamePresentationUtils._();
 
@@ -28,6 +32,20 @@ class GamePresentationUtils {
 
   /// 按名称取图标；未知名称回退到通用游戏图标。
   static IconData iconFor(String name) => _icons[name] ?? _fallbackIcon;
+
+  /// 该游戏图标在热更目录下的相对路径。
+  ///
+  /// 约定 `games/icons/<gameId>.png`。用 id 而不是图标名，是因为换图标通常
+  /// 是「给某一款游戏换个皮」，按游戏定位更直观；同名冲突也不存在。
+  static String iconAssetPathFor(String gameId) => 'games/icons/$gameId.png';
+
+  /// 查该游戏是否有热更图标；有则返回其绝对路径，没有返回 null。
+  ///
+  /// 调用方拿到非 null 就渲染 [Image.file]，否则退回 [iconFor] 的字形。
+  /// 不做同步阻塞：底层只查一次缓存过的目录，未命中后不再重复查盘。
+  static Future<String?> iconAssetFor(String gameId) {
+    return HotAssetStore.instance.resolvePath(iconAssetPathFor(gameId));
+  }
 
   /// 解析 `#RRGGBB` 或 `#AARRGGBB` 形式的颜色；非法时回退到紫色。
   static Color colorFor(String value) {

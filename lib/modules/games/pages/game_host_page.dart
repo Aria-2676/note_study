@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../../core/updater/services/hot_asset_store.dart';
 import '../../../core/utils/app_logger.dart';
 import '../../../providers/points_provider.dart';
 import '../models/game_manifest_model.dart';
@@ -104,6 +106,7 @@ class _GameHostPageState extends State<GameHostPage> {
       final entryUri = await _server.start(
         rootDir: directory,
         entry: widget.installed.entry,
+        overlayDir: await _overlayDirectoryFor(widget.game.id),
       );
 
       _bestScore = await _loadBestScore();
@@ -131,6 +134,18 @@ class _GameHostPageState extends State<GameHostPage> {
     }
   }
 
+  /// 该游戏在热更目录下的素材叠加目录；没有就返回 null。
+  ///
+  /// 约定路径 `games/<gameId>/`：整包下发的热更资源与原游戏目录**同构**，
+  /// 因此这里只算一次根路径就能整个叠加，不需要逐个文件登记。
+  Future<String?> _overlayDirectoryFor(String gameId) async {
+    final root = await HotAssetStore.instance.rootDirectory();
+    if (root == null) return null;
+    final dir = p.join(root, 'games', gameId);
+    if (!await Directory(dir).exists()) return null;
+    return dir;
+  }
+
   WebViewController _buildController(Uri entryUri) {
     final allowedPrefix = 'http://127.0.0.1:${_server.port}/';
     return WebViewController()
@@ -138,9 +153,8 @@ class _GameHostPageState extends State<GameHostPage> {
       ..addJavaScriptChannel('GameBridge', onMessageReceived: _onJsMessage)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onNavigationRequest: (request) => request.url.startsWith(
-            allowedPrefix,
-          )
+          onNavigationRequest: (request) =>
+              request.url.startsWith(allowedPrefix)
               ? NavigationDecision.navigate
               : NavigationDecision.prevent,
           onWebResourceError: (error) => AppLogger.warn(
@@ -412,7 +426,8 @@ class _GameHostPageState extends State<GameHostPage> {
         return _buildNotice(
           icon: Icons.savings_outlined,
           title: '积分不足',
-          message: '进入「${widget.game.name}」需要 ${widget.game.cost} 积分，'
+          message:
+              '进入「${widget.game.name}」需要 ${widget.game.cost} 积分，'
               '当前积分不足以支付。',
         );
       case GameHostStatus.error:
@@ -447,10 +462,7 @@ class _GameHostPageState extends State<GameHostPage> {
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -459,10 +471,7 @@ class _GameHostPageState extends State<GameHostPage> {
               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _exitToCenter,
-              child: const Text('返回'),
-            ),
+            FilledButton(onPressed: _exitToCenter, child: const Text('返回')),
           ],
         ),
       ),

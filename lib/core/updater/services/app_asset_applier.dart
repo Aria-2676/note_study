@@ -8,6 +8,7 @@ import '../../services/zip_extractor.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_manifest.dart';
 import 'app_update_exception.dart';
+import 'hot_asset_store.dart';
 
 /// 资源热更新包的落地。
 ///
@@ -132,6 +133,9 @@ class AppAssetApplier {
       await ZipExtractor.extract(zipPath: zipPath, targetDir: stageDir);
 
       await _promote(stageDir: stageDir, targetRoot: targetRoot, stamp: stamp);
+      // 目录里的文件整批换过了，读取器缓存里的「不存在」结论已经失效；
+      // 不清掉的话新素材要等下次冷启动才生效。
+      HotAssetStore.instance.invalidate();
       return true;
     } on AppUpdateException {
       rethrow;

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../models/game_manifest_model.dart';
@@ -19,6 +21,7 @@ class GameCardWidget extends StatelessWidget {
     required this.onDownload,
     required this.onLaunch,
     required this.onUninstall,
+    this.hotIconPath,
   });
 
   /// 云端游戏信息。
@@ -44,6 +47,11 @@ class GameCardWidget extends StatelessWidget {
 
   /// 卸载回调。
   final VoidCallback onUninstall;
+
+  /// 热更图标的本地绝对路径；为 null 时用 [GamePresentationUtils.iconFor] 的字形。
+  ///
+  /// 由父级异步解析后传入——本组件是 [StatelessWidget]，不能自己 await。
+  final String? hotIconPath;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +87,7 @@ class GameCardWidget extends StatelessWidget {
   }
 
   Widget _buildIcon(Color accent) {
+    final hotIcon = hotIconPath;
     return Container(
       width: 56,
       height: 56,
@@ -86,11 +95,26 @@ class GameCardWidget extends StatelessWidget {
         color: accent.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(
-        GamePresentationUtils.iconFor(game.icon),
-        color: accent,
-        size: 32,
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: hotIcon == null
+          ? Icon(
+              GamePresentationUtils.iconFor(game.icon),
+              color: accent,
+              size: 32,
+            )
+          : Image.file(
+              File(hotIcon),
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+              // 热更图片可能被中途替换成半截文件，解码失败时退回字形图标，
+              // 不把异常抛进 build。
+              errorBuilder: (_, _, _) => Icon(
+                GamePresentationUtils.iconFor(game.icon),
+                color: accent,
+                size: 32,
+              ),
+            ),
     );
   }
 
@@ -102,10 +126,7 @@ class GameCardWidget extends StatelessWidget {
           children: [
             Text(
               game.name,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             if (installedGame != null) ...[
               const SizedBox(width: 8),

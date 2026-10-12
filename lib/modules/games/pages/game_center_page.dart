@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,6 +7,7 @@ import '../models/game_manifest_model.dart';
 import '../models/installed_game_model.dart';
 import '../providers/game_provider.dart';
 import '../utils/game_platform_utils.dart';
+import '../utils/game_presentation_utils.dart';
 import '../widgets/game_card_widget.dart';
 import '../widgets/game_unsupported_placeholder_widget.dart';
 import 'game_host_page.dart';
@@ -21,6 +23,11 @@ class GameCenterPage extends StatefulWidget {
 }
 
 class _GameCenterPageState extends State<GameCenterPage> {
+  /// gameId → 热更图标本地路径。只放**有**热更图的条目，缺失即查表失败。
+  ///
+  /// 图标路径要查盘，不能放在 `build()` 里同步取，因此在状态里缓存一份。
+  final Map<String, String> _hotIcons = {};
+
   @override
   void initState() {
     super.initState();
@@ -36,8 +43,40 @@ class _GameCenterPageState extends State<GameCenterPage> {
       await provider.cleanTemp();
     }
     if (!provider.isManifestLoaded) {
-      await provider.refreshManifest();
+      await _refreshManifestAndIcons();
+    } else {
+      await _resolveHotIcons(provider.games);
     }
+  }
+
+  /// 拉清单并把热更图标一起解析掉。
+  ///
+  /// 两件事必须成对出现：清单换了 → 游戏集合可能变了 → 图标缓存得跟着换。
+  /// 刷新按钮和下拉刷新都走这里，避免漏掉其中一步。
+  Future<void> _refreshManifestAndIcons() async {
+    final provider = context.read<GameProvider>();
+    await provider.refreshManifest();
+    await _resolveHotIcons(provider.games);
+  }
+
+  /// 解析列表里各游戏的热更图标路径。
+  ///
+  /// 资源热更落地后会清掉读取器缓存，但本页若已渲染则仍是旧图；下次进入
+  /// 本页（或下拉刷新）时重新解析即可，不做实时监听——换图标属于低频事件，
+  /// 不值得为它上一套监听。
+  Future<void> _resolveHotIcons(List<GameInfo> games) async {
+    final resolved = <String, String>{};
+    for (final game in games) {
+      final path = await GamePresentationUtils.iconAssetFor(game.id);
+      if (path != null) resolved[game.id] = path;
+    }
+    if (!mounted) return;
+    if (mapEquals(resolved, _hotIcons)) return;
+    setState(() {
+      _hotIcons
+        ..clear()
+        ..addAll(resolved);
+    });
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -59,7 +98,10 @@ class _GameCenterPageState extends State<GameCenterPage> {
     if (success) {
       _showSnack('「${game.name}」安装完成');
     } else {
-      _showSnack(provider.installErrorOf(game.id) ?? '安装失败，请稍后重试', isError: true);
+      _showSnack(
+        provider.installErrorOf(game.id) ?? '安装失败，请稍后重试',
+        isError: true,
+      );
     }
   }
 
@@ -121,14 +163,14 @@ class _GameCenterPageState extends State<GameCenterPage> {
             tooltip: '刷新列表',
             onPressed: provider.isLoadingManifest
                 ? null
-                : () => provider.refreshManifest(),
+                : () => _refreshManifestAndIcons(),
           ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
           await provider.loadInstalled();
-          await provider.refreshManifest();
+          await _refreshManifestAndIcons();
         },
         child: _buildContent(provider, points),
       ),
@@ -141,9 +183,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
     }
     if (provider.games.isEmpty) {
       return _buildScrollable(
-        _buildEmptyState(
-          provider.manifestError ?? '暂时没有可下载的游戏，请稍后再来',
-        ),
+        _buildEmptyState(provider.manifestError ?? '暂时没有可下载的游戏，请稍后再来'),
       );
     }
 
@@ -177,6 +217,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
       isInstalling: provider.isInstallingGame(game.id),
       hasUpdate: provider.isUpdateAvailable(game),
       progress: provider.downloadProgressOf(game.id),
+      hotIconPath: _hotIcons[game.id],
       onDownload: () => _handleDownload(game),
       onLaunch: installed == null
           ? () {}
@@ -230,7 +271,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
             ),
           ),
           TextButton(
-            onPressed: () => provider.refreshManifest(),
+            onPressed: () => _refreshManifestAndIcons(),
             child: const Text('重试'),
           ),
         ],
@@ -243,11 +284,7 @@ class _GameCenterPageState extends State<GameCenterPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.cloud_off,
-            size: 56,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.cloud_off, size: 56, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
             message,

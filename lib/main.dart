@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import 'core/services/widget_service.dart';
 import 'core/services/statistic_service.dart';
 import 'core/services/database/database_service.dart';
+import 'core/updater/models/hot_theme_config.dart';
 import 'core/updater/providers/app_update_provider.dart';
+import 'core/updater/services/hot_theme_loader.dart';
 import 'core/updater/widgets/app_update_dialog.dart';
 import 'modules/pomodoro/services/pomodoro_notification_service.dart';
 import 'modules/pomodoro/services/pomodoro_background_service.dart';
@@ -36,18 +38,30 @@ void main() async {
   // 设置读取会首次打开数据库（冷启动的主要耗时），与通知/番茄钟初始化互不依赖，
   // 故并行以缩短启动；两个通知服务之间保持串行，避免插件内部状态竞争。
   final settingsFuture = settingsProvider.initialize();
+  // 热更主题只在启动时读一次：主题变更需要整树重建，运行中热换会闪屏，
+  // 而换主题是低频操作，重启生效可接受。读不到就用内置主题，不阻断启动。
+  final hotThemeFuture = HotThemeLoader.load();
   await PomodoroNotificationService.init();
   await PomodoroBackgroundService.init();
   await settingsFuture;
 
-  runApp(MyApp(settingsProvider: settingsProvider));
+  runApp(
+    MyApp(settingsProvider: settingsProvider, hotTheme: await hotThemeFuture),
+  );
 }
 
 /// 应用程序根组件
 class MyApp extends StatelessWidget {
   final SettingsProvider settingsProvider;
 
-  const MyApp({super.key, required this.settingsProvider});
+  /// 热更主题配置；无热更主题时为 [HotThemeConfig.empty]。
+  final HotThemeConfig hotTheme;
+
+  const MyApp({
+    super.key,
+    required this.settingsProvider,
+    this.hotTheme = HotThemeConfig.empty,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +119,18 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: '任务管家',
             debugShowCheckedModeBanner: false,
-            theme: ThemeData.light(useMaterial3: true),
-            darkTheme: ThemeData.dark(useMaterial3: true),
+            // 内置主题先建好，再让热更主题在其上做定点覆写。两者分开是为了
+            // 保证「没有热更主题」时与改造前的表现完全一致。
+            theme: HotThemeLoader.apply(
+              ThemeData.light(useMaterial3: true),
+              hotTheme,
+              fallbackBrightness: Brightness.light,
+            ),
+            darkTheme: HotThemeLoader.apply(
+              ThemeData.dark(useMaterial3: true),
+              hotTheme,
+              fallbackBrightness: Brightness.dark,
+            ),
             themeMode: settingsProvider.themeMode,
             localizationsDelegates: const [
               GlobalMaterialLocalizations.delegate,

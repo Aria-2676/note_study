@@ -10,11 +10,15 @@ import '../../../core/utils/app_logger.dart';
 /// 同源策略拦截，导致依赖外部素材的游戏无法运行。因此这里在应用内起一个
 /// **仅绑定 IPv4 回环、端口由系统分配**的 HTTP 服务，让游戏以普通同源站点方式运行。
 ///
+/// 支持一层**热更叠加**：请求先查 [overlayDir]（`hot_assets/` 下的同名目录），
+/// 命中就用热更版本，否则回落游戏自带的资源。这样素材修图、换素材不必重打游戏包。
+///
 /// 注意：本实现不支持 HTTP `Range` 请求，`<audio>`/`<video>` 会退化为整体下载；
 /// 当前休闲小游戏无大音频，可接受。
 class GameAssetServer {
   HttpServer? _server;
   String? _root;
+  String? _overlay;
 
   /// 服务是否正在运行。
   bool get isRunning => _server != null;
@@ -53,17 +57,26 @@ class GameAssetServer {
   /// 启动服务并返回游戏入口的完整地址。
   ///
   /// [rootDir] 为游戏版本目录，[entry] 为入口文件相对路径。
+  /// [overlayDir] 为热更素材的叠加目录（`hot_assets/` 下的对应子目录）；
+  /// 为 null 时不做叠加，与旧行为一致。
   /// 重复调用会先停止既有服务，避免端口泄漏。
-  Future<Uri> start({required String rootDir, required String entry}) async {
+  Future<Uri> start({
+    required String rootDir,
+    required String entry,
+    String? overlayDir,
+  }) async {
     await stop();
 
     final root = Directory(rootDir).absolute.path;
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _root = root;
+    // 叠加目录只是「优先查这里」，它不存在不算错误——直接置空退化为无叠加。
+    _overlay = overlayDir == null ? null : Directory(overlayDir).absolute.path;
     _server = server;
     server.listen(
       _handle,
-      onError: (Object error) => AppLogger.warn('GameAssetServer', 'listen', error),
+      onError: (Object error) =>
+          AppLogger.warn('GameAssetServer', 'listen', error),
     );
     return Uri.parse('http://127.0.0.1:${server.port}/$entry');
   }
@@ -73,6 +86,7 @@ class GameAssetServer {
     final server = _server;
     _server = null;
     _root = null;
+    _overlay = null;
     if (server == null) return;
     try {
       await server.close(force: true);
@@ -112,13 +126,13 @@ class GameAssetServer {
       return;
     }
 
-    final target = _resolveTarget(root, request.uri.path);
-    if (target == null) {
+    final resolved = _resolveWithOverlay(root, request.uri.path);
+    if (resolved == null) {
       response.statusCode = HttpStatus.forbidden;
       return;
     }
 
-    final file = File(target);
+    final file = File(resolved);
     if (!await file.exists()) {
       response.statusCode = HttpStatus.notFound;
       return;
@@ -127,7 +141,7 @@ class GameAssetServer {
     response.headers
       ..set(
         HttpHeaders.contentTypeHeader,
-        _mimeTypes[p.extension(target).toLowerCase()] ??
+        _mimeTypes[p.extension(resolved).toLowerCase()] ??
             'application/octet-stream',
       )
       ..set(HttpHeaders.cacheControlHeader, 'no-store')
@@ -137,6 +151,20 @@ class GameAssetServer {
 
     if (request.method == 'HEAD') return;
     await response.addStream(file.openRead());
+  }
+
+  /// 先查热更叠加目录，未命中再回落游戏自带资源。
+  ///
+  /// 两个目录用**同一份** [_resolveTarget] 校验，越界规则完全一致——
+  /// 叠加目录同样来自外网，不能因为「是自己下发的内容」就放宽路径检查。
+  /// 返回 null 表示路径非法（越界），由调用方回 403。
+  String? _resolveWithOverlay(String root, String rawPath) {
+    final overlay = _overlay;
+    if (overlay != null) {
+      final candidate = _resolveTarget(overlay, rawPath);
+      if (candidate != null && File(candidate).existsSync()) return candidate;
+    }
+    return _resolveTarget(root, rawPath);
   }
 
   /// 将请求路径解析为 root 内的绝对文件路径；越界时返回 null。

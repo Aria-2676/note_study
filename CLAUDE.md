@@ -116,11 +116,32 @@ git cat-file commit HEAD | head -20       # 字节级回读确认中文未坏
 | 实现 | `AppUpdateLauncher` | `AppAssetApplier` |
 | 失败 | 提示用户 | **只记日志**，下次重试 |
 
-⚠️ **资源热更只打通了一半**：落位链路可用且已测，但**当前没有模块读
-`hot_assets` 目录** ——「安全放到本地」完成，「业务侧消费」尚未接线。
-
 打包、发版清单、字段坑（`downloads` / `sizeBytes` / `minSupported` 在顶层 /
 `assets` 是单个对象）见 skill `v5-update-distribution`。
+
+### 4.1 热更资源的消费端（读入口）
+
+`HotAssetStore`（`core/updater/services/`）是 `hot_assets/` 的**唯一读入口**。
+放在 `core/` 是被铁律逼出来的：`core` 不能 import `modules/*`，读取逻辑若写在
+某个业务模块里，其他模块就没法复用。约定「**同名文件以热更目录为准，缺失回落
+包内**」，所以业务改造永远是「先问 store，拿不到再用自带」，没有热更包也不会坏。
+
+- 目录只解析一次并缓存（UI 的 `build()` 可能每帧查询，逐次查盘会掉帧）；
+- `AppAssetApplier.apply()` 成功后**必须**调 `HotAssetStore.instance.invalidate()`，
+  否则旧文件被记住「不存在」，新素材要等冷启动才生效；
+- 路径做了**两道**越界校验（`_sanitize` 拒 `..`/绝对路径/盘符 + `p.relative` 复核），
+  与 `GameAssetServer._resolveTarget` 同一套纵深防御。
+
+目前的消费者：
+
+| 消费者 | 热更约定路径 | 说明 |
+|---|---|---|
+| `GameAssetServer` | `games/<gameId>/…` | `overlayDir` 优先命中，整目录同构叠加 |
+| `GameCardWidget` | `games/icons/<gameId>.png` | 游戏中心图标，缺图回落字形 |
+| `MaterialApp` 主题 | `theme.json` | 种子色/亮度/主色/圆角，**启动时读一次** |
+
+新模块接入时：先在那个模块里定好子目录约定，再用 `HotAssetStore.instance`
+读取；**不要**各自 `new HotAssetStore()`（缓存会分散，`invalidate` 失效不彻底）。
 
 ---
 
