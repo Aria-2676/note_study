@@ -61,6 +61,18 @@ How to restore on a new machine
   3. Verify:  flutter build apk --release
      A release build must NOT print "falling back to the DEBUG key" in the log.
 
+  !! storeFile must use DOUBLED backslashes, e.g.
+       storeFile=D:\\Dev\\keystore\\taskmaster-release.jks
+     java.util.Properties.load() (used by android/app/build.gradle.kts) treats
+     backslash as an escape character, so a path written with single backslashes
+     gets silently corrupted ('\t' becomes a TAB) and the build fails with
+     "Keystore file ... not found" pointing at a mangled path.
+     If you hand-edit the path, double every backslash.
+
+  Note: if the keystore is regenerated (rather than restored), the password in
+  PASSWORD.txt no longer applies -- keytool cannot change a keystore's password
+  in place without the old one. Keep the .jks and its password together.
+
 Why this matters
   Android refuses to update an installed app unless the new APK is signed with
   the SAME key. Lose this keystore or its password and every existing user must

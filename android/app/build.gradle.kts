@@ -61,7 +61,36 @@ android {
                 storePassword = keystoreProperties.getProperty("storePassword")
                 // Absolute path, as written by the setup script. Using a raw
                 // File() avoids depending on the enclosing DSL's file() scope.
-                storeFile = keystoreProperties.getProperty("storeFile")?.let { File(it) }
+                //
+                // java.util.Properties.load() unescapes backslashes, so a Windows
+                // path must be stored doubled ('D:\\Dev\\...'). If it was written
+                // verbatim, '\t' becomes a TAB and the path is silently mangled --
+                // AGP would then fail with a confusing "Keystore file ... not
+                // found" naming a path that looks nothing like what was typed.
+                // Fail here with the real value and the fix instead.
+                val storeFilePath = keystoreProperties.getProperty("storeFile")
+                if (storeFilePath != null && storeFilePath.contains('\t')) {
+                    throw GradleException(
+                        "[signing] android/key.properties has a corrupted storeFile: " +
+                            "it contains a TAB, which means the path was written with " +
+                            "single backslashes. java.util.Properties.load() treats " +
+                            "'\\t' as an escape. Rewrite it with doubled backslashes, " +
+                            "e.g. storeFile=D:\\\\Dev\\\\keystore\\\\taskmaster-release.jks " +
+                            "(or re-run tool/setup_android_keystore_auto.ps1).",
+                    )
+                }
+                storeFile = storeFilePath?.let { File(it) }
+                // Catch a missing keystore here so the message names the resolved
+                // absolute path, rather than letting validateSigningRelease report
+                // it against a gradle-relative path that is hard to interpret.
+                val resolvedStoreFile = storeFile
+                if (resolvedStoreFile != null && !resolvedStoreFile.exists()) {
+                    throw GradleException(
+                        "[signing] keystore not found at ${resolvedStoreFile.absolutePath}. " +
+                            "Fix storeFile in android/key.properties, or run " +
+                            "tool/setup_android_keystore_auto.ps1 to regenerate.",
+                    )
+                }
             }
         }
     }
