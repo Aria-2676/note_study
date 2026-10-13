@@ -10,14 +10,39 @@
     "  客户端优先匹配该类键、匹配不到再回落泛化的 'android'（见 AppRelease.resolveTarget）。",
     "  若要兼顾尚未升级的老客户端，必须**同时**保留一个泛化 'android' 键指向 fat 包，",
     "  否则老客户端查不到产物、更新会静默消失（不报错）。",
-    "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。"
+    "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。",
+    "URL 基址：大文件必须用 gcore.jsdelivr.net（cdn.jsdelivr.net 对 .apk 会 301 到",
+    "  raw.githubusercontent.com，国内常被间歇性 reset）。见 lib/core/config/cdn_bases.dart。"
   ],
   "schemaVersion": 1,
-  "updatedAt": "2026-10-09T14:30:00Z",
+  "updatedAt": "2026-10-13T03:53:00Z",
   "minSupported": "5.0.0",
   "latest": {
-    "version": "5.5.10",
-    "notes": [],
-    "downloads": {}
+    "version": "5.5.21",
+    "notes": [
+      "关于弹窗显示当前版本号，便于确认更新是否生效。"
+    ],
+    "downloads": {
+      "android": {
+        "url": "https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main/releases/app-release.apk",
+        "sha256": "c9c320ec99eee504dc50715de15b0c3fb343661a199eabf2c1632a144ad79853",
+        "sizeBytes": 64825873
+      },
+      "android-arm64-v8a": {
+        "url": "https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main/releases/app-arm64-v8a-release.apk",
+        "sha256": "bd006a545b163ee27d27150b04ef65198b98d13c9b483e980747e574b397b610",
+        "sizeBytes": 24167343
+      },
+      "android-armeabi-v7a": {
+        "url": "https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main/releases/app-armeabi-v7a-release.apk",
+        "sha256": "a936757a97ae4e9f58983e3900637b28956efd72b36a45cdc6553cd9243465a7",
+        "sizeBytes": 21969275
+      },
+      "android-x86_64": {
+        "url": "https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main/releases/app-x86_64-release.apk",
+        "sha256": "56a10715e964e982a3c02535183a537954f2777e5b70c0203ec37b4c7d81e7ce",
+        "sizeBytes": 25716651
+      }
+    }
   }
 }
