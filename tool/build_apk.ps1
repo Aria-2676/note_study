@@ -12,17 +12,30 @@
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1
 #   powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1 -Flavor fat
+#   powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1 -Flavor both   # 过渡期推荐
 #   powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1 -SkipTests
 #
+# Flavor 三选一：
+#   split  只出分 ABI 包（每个 21~25MB）—— 新客户端最优
+#   fat    只出单包全 ABI（约 62MB）
+#   both   两者都出，并生成**含泛化 android 回落键**的完整 JSON —— 过渡期用
+#
 # 产出：
-#   build\app\outputs\flutter-apk\app-<abi>-release.apk     （split 模式，默认）
-#   build\app\outputs\flutter-apk\app-release.apk           （fat 模式）
-#   build\app\outputs\release-manifest.txt                  sha256 / 大小 / 版本清单
+#   build\app\outputs\flutter-apk\app-<abi>-release.apk     （split / both）
+#   build\app\outputs\flutter-apk\app-release.apk           （fat / both）
+#   build\app\outputs\release-manifest.txt                  sha256 / 大小 / 可直接粘贴的 JSON
 
 [CmdletBinding()]
 param(
-    # split = 每个 ABI 一个包（默认，推荐分发）；fat = 单包全 ABI（体积大）。
-    [ValidateSet('split', 'fat')]
+    # split = 每个 ABI 一个包（默认，推荐分发）；fat = 单包全 ABI（体积大）；
+    # both  = 两者都构建，并生成**含泛化 android 回落键**的完整 JSON 片段。
+    #
+    # 为什么需要 both：客户端 AppRelease.resolveTarget 的匹配顺序是
+    # `<platform>-<abi>` → `<platform>`。已经装了老版本的用户，代码里没有 ABI
+    # 逻辑，只会查泛化的 `android` 键 —— 如果只发布 split 键，老用户会
+    # **静默收不到更新（不报错）**。过渡期必须同时提供一个泛化 android 键
+    # （指向 fat 包）。both 就是把这个过渡态一次做出来。
+    [ValidateSet('split', 'fat', 'both')]
     [string]$Flavor = 'split',
 
     # 跳过 flutter test。默认会跑，因为「签名错了」这类问题只有构建才暴露，
@@ -85,30 +98,47 @@ if (-not $SkipTests) {
 
 # ---- 构建 --------------------------------------------------------------------
 
-Write-Step 'flutter build apk --release'
-
 # --no-tree-shake-icons 不是「优化取舍」而是**本机的必需项**：
 # font-subset.exe 被 Smart App Control 拦截，不加构建必失败。
 # 代价是 APK 保留全量 MaterialIcons 字形（约 +1.5MB）。
-$buildArgs = @('build', 'apk', '--release', '--no-tree-shake-icons')
-if ($Flavor -eq 'split') { $buildArgs += '--split-per-abi' }
+#
+# both 模式要构建两次：先 split（会清掉旧的 app-release.apk），再 fat。
+# 顺序不能反 —— `flutter build apk` 每次都会清理 flutter-apk 目录里
+# 与本次模式不匹配的产物，若先 fat 再 split，fat 包会被第二次构建删掉。
+$buildPasses = if ($Flavor -eq 'both') { @('split', 'fat') } else { @($Flavor) }
 
-Write-Host "flutter $($buildArgs -join ' ')"
-& flutter @buildArgs
-if ($LASTEXITCODE -ne 0) { throw "构建失败（exit $LASTEXITCODE）。" }
+foreach ($pass in $buildPasses) {
+    Write-Step "flutter build apk --release（$pass）"
+    $buildArgs = @('build', 'apk', '--release', '--no-tree-shake-icons')
+    if ($pass -eq 'split') { $buildArgs += '--split-per-abi' }
 
-# ---- 产出清单 ----------------------------------------------------------------
+    Write-Host "flutter $($buildArgs -join ' ')"
+    & flutter @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw "构建失败（exit $LASTEXITCODE，pass=$pass）。" }
+}
+
+# ---- 收集产物 ----------------------------------------------------------------
+#
+# both 模式下 split 与 fat 的产物**同时存在**于 flutter-apk 目录
+# （fat 用 app-release.apk，split 用 app-<abi>-release.apk，文件名不冲突）。
 
 Write-Step 'release manifest'
 
-if ($Flavor -eq 'split') {
-    $apks = Get-ChildItem -LiteralPath $apkDir -Filter 'app-*-release.apk' |
-        Sort-Object Name
-} else {
-    $apks = Get-ChildItem -LiteralPath $apkDir -Filter 'app-release.apk'
+$wanted = if ($Flavor -eq 'both') { 'both' } else { $Flavor }
+# 显式初始化为空数组：未启用 StrictMode 时，未赋值的变量是 $null，
+# 而 @($null) 会得到一个「含一个 null 元素」的数组，让后面的 .Count 判断失真。
+$splitApks = @()
+$fatApks = @()
+if ($wanted -eq 'split' -or $wanted -eq 'both') {
+    $splitApks = @(Get-ChildItem -LiteralPath $apkDir -Filter 'app-*-release.apk' |
+        Sort-Object Name)
 }
+if ($wanted -eq 'fat' -or $wanted -eq 'both') {
+    $fatApks = @(Get-ChildItem -LiteralPath $apkDir -Filter 'app-release.apk')
+}
+$apks = @($splitApks) + @($fatApks)
 
-if (-not $apks -or $apks.Count -eq 0) { throw "在 $apkDir 没找到构建产物。" }
+if ($apks.Count -eq 0) { throw "在 $apkDir 没找到构建产物（flavor=$Flavor）。" }
 
 # ---- 签名归属校验（关键）-----------------------------------------------------
 #
@@ -167,7 +197,9 @@ $appVersion = ($version -split '\+')[0]        # 5.5.19+0 -> 5.5.19
 $buildNumber = ($version -split '\+')[1]       # 5.5.19+0 -> 0
 
 $usedFlags = '--no-tree-shake-icons'
-if ($Flavor -eq 'split') { $usedFlags = $usedFlags + ' --split-per-abi' }
+if ($Flavor -eq 'split' -or $Flavor -eq 'both') {
+    $usedFlags = $usedFlags + ' --split-per-abi'
+}
 
 $lines = @(
     "TaskMaster release APK manifest",
@@ -192,9 +224,15 @@ function Get-DownloadKey($fileName) {
     return 'android'
 }
 
+# fat 的泛化键排在最前，读起来更像「默认 + 细分」，也便于确认过渡键在位。
+$orderedApks = @(
+    @($apks | Where-Object { $_.Name -eq 'app-release.apk' })
+    @($apks | Where-Object { $_.Name -ne 'app-release.apk' } | Sort-Object Name)
+)
+
 $jsonEntries = @()
 Write-Host ''
-foreach ($apk in $apks) {
+foreach ($apk in $orderedApks) {
     $hash = (Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLower()
     $size = $apk.Length
     $key = Get-DownloadKey $apk.Name
@@ -209,15 +247,22 @@ $lines += '    "downloads": {'
 $lines += ($jsonEntries -join ",`n")
 $lines += '    }'
 
+$hasFallbackKey = $jsonEntries -match '"android"'
 $lines += @(
     "",
     "---- 提醒 ----",
     "  - 更新包必须与已安装包**同签名**，否则用户安装报 INSTALL_FAILED_UPDATE_INCOMPATIBLE。",
     "  - 上传到 GitHub 仓库 releases/ 后，用 gcore.jsdelivr.net 取（cdn.jsdelivr.net 对 .apk 会 301）。",
-    "  - split 模式的键是 android-<abi>，由客户端 resolveTarget 优先匹配；",
-    "    若想同时兼容尚未升级的老客户端，需**额外**保留一个泛化 android 键（指向 fat 包）。",
+    "  - 上传时**文件名不要改**：上面的键是从文件名推导的，改名会让键与产物对不上。",
     "  - fat APK（单包）约 62MB；split 后每个约 21~25MB。自更新优先给用户 arm64-v8a。"
 )
+if ($hasFallbackKey) {
+    $lines += "  - [OK] 已包含泛化 android 键（指向 fat 包）—— 未升级的老客户端也能收到更新。"
+} else {
+    $lines += "  - [注意] **没有**泛化 android 键：只有 ABI 键时，尚未升级的老客户端"
+    $lines += "          会静默查不到产物（不报错）。过渡期请用 -Flavor both 补一个 fat 包，"
+    $lines += "          或在 downloads 里手工加回泛化 android 键。"
+}
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $manifestPath) | Out-Null
 Set-Content -LiteralPath $manifestPath -Value $lines -Encoding UTF8
