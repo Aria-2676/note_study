@@ -6,10 +6,14 @@ main.dart 顺序（强制）
 WidgetsFlutterBinding.ensureInitialized()
 → WidgetService.init()
 → StatisticService.init()
-→ 并行：SettingsProvider.initialize() 与 PomodoroNotificationService.init()
-  （两者互不依赖，并行以缩短冷启动；两个通知服务之间保持串行）
-→ PomodoroBackgroundService.init()
-→ runApp；
+→ 并行起两条不 await 的 future：SettingsProvider.initialize()（首次开库，冷启动
+  主要耗时）与 HotThemeLoader.load()（热更主题，启动时只读一次；读不到回落内置
+  主题，不阻断启动）
+→ PomodoroNotificationService.init() → PomodoroBackgroundService.init()
+  （两个通知服务**必须串行**，避免插件内部状态竞争）
+→ await settingsFuture → runApp
+注意：**没有 Future.wait**，真并行靠「先起不 await 的 future、末尾再 await」。
+别"按文档优化"改成 Future.wait —— 会破坏通知服务的串行约束。
 MaterialApp 绑定 settingsProvider.themeMode；
 home 为 AppUpdatePromptHost(child: TasksHomePage())
   —— 更新弹窗宿主必须在 MaterialApp/Navigator 之下，否则 showDialog 无效。

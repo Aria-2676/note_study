@@ -15,15 +15,21 @@ lib/core/            跨模块基础设施
   utils/             通用工具：version_utils、date_utils、num_utils、string_utils…
 lib/modules/<业务>/  业务模块，自成一个世界，内部结构：
   models / services / repositories / providers / pages / widgets / adapters / utils
-lib/providers/       历史遗留的跨模块 Provider（仅 app_state 等少数几个）
+lib/providers/       核心 Provider 的当前实现位置（9 个文件 + mixins/）
                      新模块的 Provider 优先放自己的模块目录下
 lib/ui/              全局 UI 组件
 lib/main.dart        入口：服务初始化 + MultiProvider + 路由
 
 依赖方向（铁律）
 modules/* → core/* 单向依赖；
-core 内出现任何 modules 的 import 都算违规，无法举例也无法豁免；
 业务模块之间禁止直接互相引用，交互只能经由 Provider。
+
+core → modules 是**目标态**，当前有已知例外（勿"顺手修正"，改错会编译失败）：
+  1. core/router/app_router.dart —— 路由表必须引用各模块的 Page，天然例外；
+  2. core/services/database/database_*_mixin.dart（task/pomodoro/points/purchase/
+     scratch/shop/tag 七个）—— 按域拆分的 DB mixin 需要各模块的 model 建表/映射；
+  3. core/utils/task_sort_utils.dart —— 依赖 Task model 与 TaskSortOption 枚举。
+这些例外是**已知技术债**，不要再新加；新增 core 代码仍须遵守单向依赖。
 
 命名
 目录与文件：小写 + 下划线（task_provider.dart、app_update_decider.dart）；
@@ -39,6 +45,9 @@ core 内出现任何 modules 的 import 都算违规，无法举例也无法豁�
 - core 不得依赖 modules：core 是「所有模块的地基」，一旦反向依赖，
   它就无法被单独测试与复用，且模块增删会波及全项目。
 - 「业务模块完全独立」是目标而非现状：模块间确有经由 Provider 的数据流动，
-  但那是运行时依赖，不是编译期依赖——代码里不该出现跨模块 import。
-- lib/providers/ 是历史包袱：早期所有 Provider 集中于此，后改为随模块走。
-  新代码不要往 lib/providers/ 加东西。
+  但那是运行时依赖，不是编译期依赖——代码里不该出现跨模块 import
+  （core → modules 的已知例外见上文，不在此列）。
+- lib/providers/ 不是废弃目录：rule-1 列的 11 个 Provider 里，除 AppUpdate
+  在 core/updater/providers/ 外，其余**全部**实现在这里（含 7 个 import modules
+  的文件，见上文已知例外）。它同时是「跨模块 Provider 的落脚点」，
+  但**新代码不要往这里加** —— 新 Provider 随模块走。

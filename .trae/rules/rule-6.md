@@ -4,7 +4,15 @@
 
 硬性上限
 单文件 500 行；单类 300 行；单方法 50 行。超出必须拆分。
-（当前 lib/ 下无任何文件超过 500 行，改动时不要把文件推过线。）
+
+现状（2026-10 核查，别被「文件都合规」误导）：
+  文件层：无任何文件超过 500 行（最大 menu_panel_widget.dart = 500 整，贴线）；
+  类层：**有 7 处已知超标**，均为待偿还的拆分债，改动时应顺手拆：
+    _MenuPanelWidgetState    ≈470  _GameHostPageState       ≈424
+    TaskBatchDialogsMixin    ≈426  _ShopPageState           ≈404
+    _TaskPageState           ≈400  _TagManagementPageState  ≈395
+    TaskRepositoryImpl       ≈384
+  即「无超限文件」不等于「无拆分债」——大 State 类躲在合规文件里。
 
 命名约定
 提取的 Widget：[功能]_widget.dart（task_card_widget.dart），放同目录；
