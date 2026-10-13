@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/services/database/database_service.dart';
-import '../about_app_dialog_widget.dart';
 import '../backup_list_dialog_widget.dart';
 import '../backup_path_settings_dialog_widget.dart';
 import '../backup_success_dialog_widget.dart';
@@ -44,11 +43,6 @@ mixin SettingsDialogsMixin<T extends StatefulWidget> on State<T> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('缓存已清除'), backgroundColor: Colors.green),
     );
-  }
-
-  /// 关于应用弹窗。
-  void showAboutDialogCustom(BuildContext context) {
-    showDialog<void>(context: context, builder: (_) => const AboutAppDialog());
   }
 
   /// 分享应用底部弹窗。

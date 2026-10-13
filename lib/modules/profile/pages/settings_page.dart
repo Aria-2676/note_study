@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../core/updater/pages/app_update_page.dart';
+import './about_app_dialog_widget.dart';
 import './appearance_settings_page.dart';
 import './task_settings_page.dart';
 import './data_management_page.dart';
@@ -82,7 +83,7 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
             title: '关于',
             subtitle: '了解任务管家',
             color: Colors.orange,
-            onTap: () => _showAboutDialog(context),
+            onTap: () => AboutAppDialog.show(context),
           ),
           const SizedBox(height: 16),
           _buildEditPinnedCard(context, colorScheme),
@@ -305,41 +306,5 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
   void _navigateTo(Widget page) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('关于'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('任务管家'),
-            SizedBox(height: 16),
-            Text('一款带积分系统的任务管理应用'),
-            SizedBox(height: 8),
-            Text('功能亮点：'),
-            SizedBox(height: 4),
-            Text('• 任务管理与追踪'),
-            Text('• 积分奖励系统'),
-            Text('• 积分商城兑换'),
-            Text('• 桌面小组件支持'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
