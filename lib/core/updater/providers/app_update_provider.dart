@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../utils/abi_utils.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_decision.dart';
 import '../models/app_update_manifest.dart';
@@ -25,12 +26,14 @@ class AppUpdateProvider extends ChangeNotifier {
     AppAssetApplier? assetApplier,
     Future<String> Function()? currentVersionLoader,
     Future<String> Function()? platformLoader,
+    Future<String?> Function()? abiLoader,
   }) : _service = service ?? AppUpdateService(),
        _settings = settings ?? const AppUpdateSettings(),
        _launcher = launcher ?? const AppUpdateLauncher(),
        _assetApplier = assetApplier ?? const AppAssetApplier(),
        _versionLoader = currentVersionLoader ?? loadVersionFromPackageInfo,
-       _platformLoader = platformLoader ?? loadPlatform;
+       _platformLoader = platformLoader ?? loadPlatform,
+       _abiLoader = abiLoader ?? loadAbi;
 
   final AppUpdateService _service;
   final AppUpdateSettings _settings;
@@ -38,11 +41,13 @@ class AppUpdateProvider extends ChangeNotifier {
   final AppAssetApplier _assetApplier;
   final Future<String> Function() _versionLoader;
   final Future<String> Function() _platformLoader;
+  final Future<String?> Function() _abiLoader;
 
   AppUpdateManifest? _manifest;
   AppUpdateDecision _decision = AppUpdateDecision.none;
   String _currentVersion = '';
   String _currentPlatform = 'android';
+  String? _currentAbi;
   bool _isChecking = false;
   bool _isApplying = false;
   bool _isApplyingAssets = false;
@@ -79,10 +84,14 @@ class AppUpdateProvider extends ChangeNotifier {
   bool get promptPending => _promptPending;
 
   /// 当前平台对应的下载产物；没有则为 null。
+  ///
+  /// 走 [AppRelease.resolveTarget] 的回落链（`<platform>-<abi>` → `<platform>`），
+  /// 与 [AppUpdateDecider.decide] 用同一套判据 —— 两处若不一致，会出现
+  /// 「决策说有更新、点下去却取不到地址」的错位。
   AppDownloadTarget? get downloadTarget {
     final release = _decision.release;
     if (release == null) return null;
-    return release.downloads[_currentPlatform];
+    return release.resolveTarget(_currentPlatform, abi: _currentAbi);
   }
 
   /// 更新说明（逐行）。
@@ -91,13 +100,22 @@ class AppUpdateProvider extends ChangeNotifier {
   /// 读取当前版本号与本地开关。应用启动时调用一次。
   Future<void> initialize() async {
     try {
-      _currentVersion = await _versionLoader();
-      _currentPlatform = await _platformLoader();
+      await _refreshEnvironment();
       _notificationsEnabled = await _settings.notificationsEnabled();
     } catch (error, stack) {
       AppLogger.warn('AppUpdateProvider', '读取版本信息失败', error, stack);
     }
     notifyListeners();
+  }
+
+  /// 刷新「本机环境」三要素：版本号 / 平台 / ABI。
+  ///
+  /// 集中在一处，避免 _currentPlatform 与 _currentAbi 在不同调用点各自为政
+  /// ——两者必须同时更新，否则会出现「平台变了、ABI 还是旧的」这类错位匹配。
+  Future<void> _refreshEnvironment() async {
+    _currentVersion = await _versionLoader();
+    _currentPlatform = await _platformLoader();
+    _currentAbi = await _abiLoader();
   }
 
   /// 冷启动 / 回到前台时调用：**只有超过间隔才真正发请求**。
@@ -123,8 +141,7 @@ class AppUpdateProvider extends ChangeNotifier {
 
     try {
       if (_currentVersion.isEmpty) {
-        _currentVersion = await _versionLoader();
-        _currentPlatform = await _platformLoader();
+        await _refreshEnvironment();
       }
       final manifest = await _service.tryFetchManifest();
       if (manifest != null) _manifest = manifest;
@@ -152,6 +169,7 @@ class AppUpdateProvider extends ChangeNotifier {
       manifest: _manifest,
       currentVersion: _currentVersion,
       platform: _currentPlatform,
+      abi: _currentAbi,
       currentAssetBuild: await _settings.assetBuild(),
       ignoredVersion: ignored,
       notificationsDisabled: !_notificationsEnabled,
@@ -277,5 +295,28 @@ class AppUpdateProvider extends ChangeNotifier {
     if (Platform.isMacOS) return 'macos';
     if (Platform.isLinux) return 'linux';
     return 'unknown';
+  }
+
+  /// 本机 ABI（如 `arm64-v8a`），用于匹配 `android-arm64-v8a` 这类细分产物。
+  ///
+  /// **刻意做成「尽力而为 + 失败返回 null」**：拿不到就回落到泛化键
+  /// `downloads[platform]`，更新功能不受影响。宁可少一次精准匹配，
+  /// 也不能因为探测失败就让用户收不到更新。
+  ///
+  /// 实现不引入新依赖：Android 上读系统属性 `ro.product.cpu.abi`
+  /// （`getprop` 是 Android 标准命令，普通 App 可直接调用）。
+  /// 该值即 Google 官方 ABI 命名（`arm64-v8a` / `armeabi-v7a` / `x86_64`），
+  /// 与 `flutter build apk --split-per-abi` 产出的后缀一致。
+  /// 规整逻辑在 [AbiProperty]（纯函数，可离线单测）。
+  static Future<String?> loadAbi() async {
+    if (kIsWeb || !Platform.isAndroid) return null;
+    try {
+      final result = await Process.run('getprop', ['ro.product.cpu.abi']);
+      if (result.exitCode != 0) return null;
+      return AbiProperty.normalize(result.stdout.toString());
+    } catch (error, stack) {
+      AppLogger.warn('AppUpdateProvider', '读取 ABI 失败，回落泛化产物', error, stack);
+      return null;
+    }
   }
 }

@@ -177,28 +177,45 @@ $lines = @(
     "flavor      : $Flavor",
     "flags       : $usedFlags",
     "",
-    "把下面这些填进仓库根的 update.json 的 downloads.<平台> 里：",
-    "  url       = <CDN 基址>/releases/<文件名>",
-    "  sha256    = 下面每行的 sha256",
-    "  sizeBytes = 下面每行的大小",
-    "",
-    ("{0,-34} {1,12}  {2}" -f 'file', 'sizeBytes', 'sha256')
+    "---- 可直接粘贴进 update.json 的 latest（下载键已按 ABI 生成）----",
+    ""
 )
 
+# 从文件名 app-<abi>-release.apk 里取出 ABI，拼成 downloads 的键。
+# 客户端按 <platform>-<abi> 优先匹配，匹配不到再回落 <platform>
+# （见 AppRelease.resolveTarget）；因此 split 模式下键必须是 android-<abi>。
+function Get-DownloadKey($fileName) {
+    if ($fileName -match '^app-(?<abi>[A-Za-z0-9_\-]+)-release\.apk$') {
+        return "android-$($Matches['abi'])"
+    }
+    # fat 包：泛化键，兼容旧客户端
+    return 'android'
+}
+
+$jsonEntries = @()
 Write-Host ''
 foreach ($apk in $apks) {
     $hash = (Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLower()
     $size = $apk.Length
-    $lines += ("{0,-34} {1,12}  {2}" -f $apk.Name, $size, $hash)
+    $key = Get-DownloadKey $apk.Name
+    $jsonEntries += ('      "{0}": {{ "url": "<CDN>/releases/{1}", "sha256": "{2}", "sizeBytes": {3} }}' -f $key, $apk.Name, $hash, $size)
     Write-Host ("{0}  {1,12:N0} 字节  {2}" -f $apk.Name, $size, $hash)
-    Write-Host ("   {0,-31} -> {1:N1} MB" -f '', ($size / 1MB))
+    Write-Host ("   {0,-31} -> {1:N1} MB   key={2}" -f '', ($size / 1MB), $key)
 }
+
+$lines += ('    "version": "{0}",' -f $appVersion)
+$lines += '    "notes": [],'
+$lines += '    "downloads": {'
+$lines += ($jsonEntries -join ",`n")
+$lines += '    }'
 
 $lines += @(
     "",
-    "提醒：",
+    "---- 提醒 ----",
     "  - 更新包必须与已安装包**同签名**，否则用户安装报 INSTALL_FAILED_UPDATE_INCOMPATIBLE。",
     "  - 上传到 GitHub 仓库 releases/ 后，用 gcore.jsdelivr.net 取（cdn.jsdelivr.net 对 .apk 会 301）。",
+    "  - split 模式的键是 android-<abi>，由客户端 resolveTarget 优先匹配；",
+    "    若想同时兼容尚未升级的老客户端，需**额外**保留一个泛化 android 键（指向 fat 包）。",
     "  - fat APK（单包）约 62MB；split 后每个约 21~25MB。自更新优先给用户 arm64-v8a。"
 )
 

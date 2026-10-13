@@ -171,6 +171,51 @@ class AppRelease {
   /// 指定平台是否有可下载的产物。
   bool supportsPlatform(String platform) => downloads.containsKey(platform);
 
+  /// 按 [platform] 挑下载产物，支持 ABI 细分 + 向后兼容回落。
+  ///
+  /// `downloads` 的 key 是**自由字符串**（`tryFromJson` 不校验枚举），因此可以写
+  /// `android-arm64` / `android-armeabi-v7a` 这类 ABI 细分键。但旧版客户端只会
+  /// 拿 `'android'` 来查，所以必须同时保留一个泛化的 `android` 键作为兜底 ——
+  /// 否则老用户会静默地「查不到更新」（[supportsPlatform] 返回 false，
+  /// 决策降级为无更新，且**不报错**）。
+  ///
+  /// 本方法把这条兼容链显式化：
+  /// 1. 先试最具体键 `<platform>-<abi>`（如 `android-arm64`）；
+  /// 2. 再试 `<platform>`（如 `android`）。
+  /// 返回第一个命中的产物；都没有则 null。
+  ///
+  /// 匹配**大小写不敏感**：`update.json` 由人手维护，`Android` 与
+  /// `Android-ARM64-V8A` 这类大小写偏差不该导致静默失联。
+  /// 但优先精确匹配，避免歧义。
+  ///
+  /// [abi] 为 null / 空时只走第 2 步（i.e. 等价于旧的 `downloads[platform]`）。
+  AppDownloadTarget? resolveTarget(String platform, {String? abi}) {
+    if (platform.isEmpty) return null;
+    final normalizedAbi = abi?.trim().toLowerCase();
+    if (normalizedAbi != null && normalizedAbi.isNotEmpty) {
+      final specific = _lookup('$platform-$normalizedAbi');
+      if (specific != null) return specific;
+    }
+    return _lookup(platform);
+  }
+
+  /// 先精确查 key，未命中再做一次大小写不敏感的查。
+  ///
+  /// 单独抽出来是因为 [resolveTarget] 有两处查询，逻辑必须一致 ——
+  /// 若只在一处做小写化，就会出现「ABI 键能匹配、平台键不能」的不对称 bug。
+  AppDownloadTarget? _lookup(String key) {
+    final exact = downloads[key];
+    if (exact != null) return exact;
+    final lowered = key.toLowerCase();
+    for (final entry in downloads.entries) {
+      if (entry.key.toLowerCase() == lowered) return entry.value;
+    }
+    return null;
+  }
+
+  /// 清单里实际提供产物的所有 key（用于排查「为什么没匹配上」）。
+  List<String> get availablePlatformKeys => downloads.keys.toList(growable: false);
+
   static VersionChangeLevel? _parseLevel(Object? raw) {
     if (raw is VersionChangeLevel) return raw;
     switch (raw?.toString().trim().toLowerCase()) {

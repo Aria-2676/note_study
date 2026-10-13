@@ -56,6 +56,7 @@ AppUpdateManifest manifestWithAssetsOnly({
 AppUpdateDecision decide(
   AppUpdateManifest? manifest, {
   String platform = 'android',
+  String? abi,
   int currentAssetBuild = 0,
   String? ignoredVersion,
   bool notificationsDisabled = false,
@@ -64,6 +65,7 @@ AppUpdateDecision decide(
     manifest: manifest,
     currentVersion: _current,
     platform: platform,
+    abi: abi,
     currentAssetBuild: currentAssetBuild,
     ignoredVersion: ignoredVersion,
     notificationsDisabled: notificationsDisabled,
@@ -265,6 +267,47 @@ void main() {
       );
       expect(decision.kind, AppUpdateKind.available);
       expect(decision.hasAssets, isTrue);
+    });
+  });
+
+  group('ABI 细分产物（split-per-abi 分发）', () {
+    /// 只提供 ABI 细分键、**没有**泛化 `android` 键的清单。
+    /// 这正是「只发 split 包」时的形态，旧客户端会在这里静默失联。
+    AppUpdateManifest manifestAbiOnly() => AppUpdateManifest.fromJson({
+      'latest': {
+        'version': '6.0.0',
+        'downloads': {
+          'android-arm64-v8a': {'url': 'https://example.com/arm64.apk'},
+          'android-armeabi-v7a': {'url': 'https://example.com/v7a.apk'},
+        },
+      },
+    });
+
+    test('有泛化键时：不带 abi 的老客户端仍能收到更新', () {
+      final decision = decide(manifestWithRelease(version: '6.0.0'));
+      expect(decision.kind, AppUpdateKind.optional);
+    });
+
+    test('只有 ABI 键时：不带 abi 会判定为无产物（这暴露了兼容风险）', () {
+      final decision = decide(manifestAbiOnly());
+      expect(
+        decision.kind,
+        AppUpdateKind.none,
+        reason: '清单没有泛化 android 键 → 旧客户端查不到，更新静默消失',
+      );
+      expect(decision.reason, contains('android'));
+    });
+
+    test('只有 ABI 键时：带正确 abi 就能正常判定为有更新', () {
+      final decision = decide(manifestAbiOnly(), abi: 'arm64-v8a');
+      expect(decision.kind, AppUpdateKind.optional);
+    });
+
+    test('abi 不匹配且无泛化键时，回落失败并给出可用键便于排查', () {
+      final decision = decide(manifestAbiOnly(), abi: 'x86_64');
+      expect(decision.kind, AppUpdateKind.none);
+      // reason 里应列出实际可用的键，避免「为什么没匹配上」无从查起。
+      expect(decision.reason, contains('android-arm64-v8a'));
     });
   });
 

@@ -205,4 +205,67 @@ void main() {
       );
     });
   });
+
+  group('AppRelease.resolveTarget（ABI 细分 + 回落）', () {
+    AppRelease releaseWith(Map<String, Object> downloads) => AppRelease(
+      version: '6.0.0',
+      downloads: downloads.map(
+        (key, value) => MapEntry(key, AppDownloadTarget.tryFromJson(value)!),
+      ),
+    );
+
+    Map<String, Object> apk(String name) => {
+      'url': 'https://example.com/$name',
+      'sha256': 'aa',
+      'sizeBytes': 100,
+    };
+
+    test('有精确 ABI 键时优先取它，而不是泛化键', () {
+      final release = releaseWith({
+        'android': apk('fat.apk'),
+        'android-arm64-v8a': apk('arm64.apk'),
+      });
+
+      final picked = release.resolveTarget('android', abi: 'arm64-v8a');
+      expect(picked!.url, 'https://example.com/arm64.apk');
+    });
+
+    test('没有精确 ABI 键时回落到泛化键', () {
+      final release = releaseWith({'android': apk('fat.apk')});
+
+      final picked = release.resolveTarget('android', abi: 'arm64-v8a');
+      expect(picked!.url, 'https://example.com/fat.apk');
+    });
+
+    test('不传 abi 时等价于旧的 downloads[platform] 行为', () {
+      final release = releaseWith({
+        'android': apk('fat.apk'),
+        'android-arm64-v8a': apk('arm64.apk'),
+      });
+
+      expect(release.resolveTarget('android')!.url, 'https://example.com/fat.apk');
+    });
+
+    test('ABI 大小写不敏感（getprop 输出可能大小写不一）', () {
+      final release = releaseWith({'android-ARM64-V8A': apk('arm64.apk')});
+      expect(
+        release.resolveTarget('android', abi: 'ARM64-V8A')!.url,
+        'https://example.com/arm64.apk',
+      );
+    });
+
+    test('平台或 ABI 都没有对应产物时返回 null', () {
+      final release = releaseWith({'ios': apk('ios.ipa')});
+      expect(release.resolveTarget('android'), isNull);
+      expect(release.resolveTarget('android', abi: 'arm64-v8a'), isNull);
+    });
+
+    test('空 abi 字符串等同不传（不产生 android- 这种空后缀键）', () {
+      final release = releaseWith({'android': apk('fat.apk')});
+      expect(release.resolveTarget('android', abi: '')!.url,
+          'https://example.com/fat.apk');
+      expect(release.resolveTarget('android', abi: '   ')!.url,
+          'https://example.com/fat.apk');
+    });
+  });
 }

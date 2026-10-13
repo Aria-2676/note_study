@@ -16,6 +16,10 @@ class AppUpdateDecider {
   ///   绝不在网络异常时打扰用户。
   /// - [platform] 取 `android` / `ios` / `windows` 等，用于挑选整包产物；
   ///   清单没提供该平台产物时视为无整包更新（例如只发了 Android 包）。
+  /// - [abi] 可选的应用 ABI（如 `arm64-v8a`）。提供时会优先匹配
+  ///   `<platform>-<abi>` 这类细分产物，匹配不到再回落到 `<platform>` 泛化产物。
+  ///   这条回落链是 ABI 分发的兼容基础：旧客户端不传 [abi]，
+  ///   只要清单里保留了泛化键就照常能收到更新。
   /// - [currentAssetBuild] 是本地已应用的资源包构建号；0 表示从未应用过。
   /// - [ignoredVersion] 是用户点过「跳过此版本」的版本号。
   /// - [notificationsDisabled] 是用户在设置里彻底关掉了「大版本更新提醒」。
@@ -27,6 +31,7 @@ class AppUpdateDecider {
     required AppUpdateManifest? manifest,
     required String currentVersion,
     required String platform,
+    String? abi,
     int currentAssetBuild = 0,
     String? ignoredVersion,
     bool notificationsDisabled = false,
@@ -56,11 +61,15 @@ class AppUpdateDecider {
 
     // 2) 整包更新。
     if (release != null && VersionUtils.isNewer(release.version, currentVersion)) {
-      if (!release.supportsPlatform(platform)) {
+      // 用与取产物相同的解析逻辑判断「有没有包」，避免两处判据不一致：
+      // 若这里只查 downloads[platform]，清单写成 android-arm64 时会被误判为无产物。
+      if (release.resolveTarget(platform, abi: abi) == null) {
         return AppUpdateDecision(
           kind: assets != null ? AppUpdateKind.assetsOnly : AppUpdateKind.none,
           assets: assets,
-          reason: '清单未提供 $platform 平台的下载产物',
+          reason: '清单未提供 $platform 平台的下载产物'
+              '${abi == null ? '' : '（含 $abi 细分）'}，'
+              '可用键：${release.availablePlatformKeys.join(', ')}',
         );
       }
 
