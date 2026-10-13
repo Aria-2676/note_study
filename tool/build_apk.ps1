@@ -110,6 +110,58 @@ if ($Flavor -eq 'split') {
 
 if (-not $apks -or $apks.Count -eq 0) { throw "在 $apkDir 没找到构建产物。" }
 
+# ---- 签名归属校验（关键）-----------------------------------------------------
+#
+# 为什么必须做：`flutter build apk --release` 在 key.properties 缺失/写坏时
+# 会**静默回落到 debug key**，构建照样成功、APK 照样产出，只是签名是
+# "Android Debug"。这种包一旦发出去，用户装上后用真 release key 签的新版本
+# 会因签名不一致而**无法覆盖安装**（INSTALL_FAILED_UPDATE_INCOMPATIBLE），
+# 只能卸载重装（丢数据）。所以「构建成功」不等于「可以分发」。
+#
+# 本机就踩过：build-apk 目录里躺着 2026-10-09 的三个 split APK，是
+# key.properties 修好之前产的，签的是 Android Debug —— 体积/命名都跟正常
+# 产物一模一样，极易误传。这里用 apksigner 读真实签名，从源头拦住。
+$apksigner = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Android\Sdk\build-tools') -Filter 'apksigner.bat' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object { [version]($_.Directory.Name) } -Descending |
+    Select-Object -First 1
+if (-not $apksigner) {
+    # 也试试 sdk.dir 指向的机器级 SDK
+    $localProps = Join-Path $repoRoot 'android\local.properties'
+    if (Test-Path -LiteralPath $localProps) {
+        $sdkDir = (Get-Content -LiteralPath $localProps |
+            Where-Object { $_ -match '^\s*sdk\.dir\s*=' } |
+            Select-Object -First 1) -replace '^\s*sdk\.dir\s*=\s*', '' -replace '\\\\', '\'
+        if ($sdkDir -and (Test-Path -LiteralPath $sdkDir)) {
+            $apksigner = Get-ChildItem -Path (Join-Path $sdkDir 'build-tools') -Filter 'apksigner.bat' -Recurse -ErrorAction SilentlyContinue |
+                Sort-Object { [version]($_.Directory.Name) } -Descending |
+                Select-Object -First 1
+        }
+    }
+}
+
+$expectCn = 'TaskMaster'
+if ($apksigner) {
+    Write-Step 'verify signing cert'
+    foreach ($apk in $apks) {
+        $subject = & $apksigner.FullName 'verify' '--print-certs' $apk.FullName 2>&1 |
+            Select-String -Pattern '^Signer #1 certificate DN:' |
+            Select-Object -First 1
+        if (-not $subject) {
+            throw "无法读取 $($apk.Name) 的签名证书（apksigner 无输出）。"
+        }
+        if ($subject.Line -notmatch $expectCn) {
+            throw ("$($apk.Name) 的签名不是 $expectCn —— 实际是：$($subject.Line)`n" +
+                   "  这通常意味着构建回退到了 debug key（key.properties 缺失或写坏）。`n" +
+                   "  这种包**绝对不能分发**：与已发布版本签名不一致，用户无法覆盖安装。`n" +
+                   "  请先跑 tool\setup_android_keystore_auto.ps1 生成 key.properties 再重新构建。")
+        }
+        Write-Host "$($apk.Name) 签名 OK（$expectCn）" -ForegroundColor Green
+    }
+} else {
+    Write-Host '未找到 apksigner —— 跳过签名归属校验。' -ForegroundColor Yellow
+    Write-Host '请在能访问 Android SDK build-tools 的终端手动确认签名是 TaskMaster。' -ForegroundColor Yellow
+}
+
 $version = (Select-String -LiteralPath (Join-Path $repoRoot 'pubspec.yaml') -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value
 $appVersion = ($version -split '\+')[0]        # 5.5.19+0 -> 5.5.19
 $buildNumber = ($version -split '\+')[1]       # 5.5.19+0 -> 0
