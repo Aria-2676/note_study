@@ -119,6 +119,14 @@ git cat-file commit HEAD | head -20       # 字节级回读确认中文未坏
 打包、发版清单、字段坑（`downloads` / `sizeBytes` / `minSupported` 在顶层 /
 `assets` 是单个对象）见 skill `v5-update-distribution`。
 
+**发版动作 checklist（APK 走 GitHub Releases，三步缺一不可）：**
+
+1. 打 tag 并 push，**创建 Release**（`update.json` 里的 url 指向不存在的
+   Release 时，客户端会把 404 HTML 存成 .apk，表现为「包损坏」）；
+2. 逐个上传 APK 资产，每个都校验 size+digest，不匹配就删掉重传；
+3. 回读 Release 资产列表逐一核对 sha256 与 `update.json` 一致，再提交
+   `update.json` 的改动。
+
 ### 4.1 热更资源的消费端（读入口）
 
 `HotAssetStore`（`core/updater/services/`）是 `hot_assets/` 的**唯一读入口**。

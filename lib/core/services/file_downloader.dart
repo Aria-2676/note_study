@@ -44,6 +44,14 @@ class FileDownloader {
         onProgress?.call(received, total);
       }
       await sink.flush();
+      // 静默截断防线：服务端声明了 Content-Length 但实收不足时，
+      // 部分网络栈不会抛错（连接被中间设备优雅关闭），不核对就会
+      // 把半个文件当成功，只能靠调用方的 sha256 兜底——太单薄。
+      if (contentLength >= 0 && received != contentLength) {
+        throw FileDownloadException(
+          '下载不完整：期望 $contentLength 字节，实收 $received 字节',
+        );
+      }
     } on FileDownloadException {
       rethrow;
     } catch (error) {

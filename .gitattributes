@@ -1,0 +1,8 @@
+# Prevent line-ending conversion for binaries
+*.apk binary
+*.keystore binary
+*.jks binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
