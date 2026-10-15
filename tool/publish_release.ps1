@@ -137,11 +137,14 @@ foreach ($root in $buildToolsRoots) {
 }
 if ($aapt) {
     $dump = & $aapt.FullName dump badging (Join-Path $AssetDir 'app-release.apk') 2>$null
-    $vn = ($dump | Select-String -Pattern "^package: name='[^']+' versionName='([^']+)'").Matches.Groups[1].Value
+    # badging 行形如 package: name='...' versionCode='23' versionName='5.5.23'，
+    # versionCode 在 versionName 前面，别假设它们相邻。
+    $m = $dump | Select-String -Pattern "versionName='([^']+)'" | Select-Object -First 1
+    $vn = if ($m) { $m.Matches[0].Groups[1].Value } else { $null }
     if ($vn -and $vn -ne $Version) {
         throw "fat 包 versionName='$vn' 与 -Version '$Version' 不符 —— 先在 pubspec.yaml 改版本号并重新构建。"
     }
-    Log "  versionName 核对：$vn"
+    if ($vn) { Log "  versionName 核对：$vn" }
 } else {
     Log '  [警告] 未找到 aapt2，跳过 versionName 核对。'
 }
