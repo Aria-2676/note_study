@@ -57,46 +57,22 @@ class MultiSourceDownloader {
         destDir.path,
         '$filePrefix-$stamp-$i$extension',
       );
-      try {
-        await FileDownloader.download(
-          url: Uri.parse(source),
-          destPath: attemptPath,
-          timeout: idleTimeout,
-          connectTimeout: connectTimeout,
-          responseTimeout: responseTimeout,
-          onProgress: (received, total) {
-            if (total == null || total <= 0) return;
-            onProgress?.call(received / total);
-          },
-        );
-
-        // 校验必须在把文件交给安装器/解压器**之前**：
-        // sha256 不符意味着这个源的内容和清单不一致（镜像缓存旧包或被篡改），
-        // 立刻换下一个源——不能直接报错让用户绝望。
-        if (!await FileDownloader.verifySha256(attemptPath, expectedSha256)) {
-          throw const FileDownloadException('sha256 校验失败');
-        }
-        if (expectedSize > 0) {
-          final actual = await File(attemptPath).length();
-          if (actual != expectedSize) {
-            throw FileDownloadException(
-              '大小不符（期望 $expectedSize，实收 $actual）',
-            );
-          }
-        }
-        verifiedPath = attemptPath;
+      final result = await _trySourceWithRetry(
+        source: source,
+        attemptPath: attemptPath,
+        connectTimeout: connectTimeout,
+        responseTimeout: responseTimeout,
+        idleTimeout: idleTimeout,
+        expectedSha256: expectedSha256,
+        expectedSize: expectedSize,
+        onProgress: onProgress,
+      );
+      if (result.path != null) {
+        verifiedPath = result.path;
         break;
-      } catch (error, stack) {
-        AppLogger.warn(
-          'MultiSourceDownloader',
-          '下载源失败（${i + 1}/${candidates.length}）: $source',
-          error,
-          stack,
-        );
-        errors.add('${Uri.tryParse(source)?.host ?? source}: $error');
-        await _deleteQuietly(attemptPath);
-        onProgress?.call(0);
       }
+      errors.add('${Uri.tryParse(source)?.host ?? source}: ${result.error}');
+      onProgress?.call(0);
     }
 
     if (verifiedPath == null) {
@@ -120,6 +96,73 @@ class MultiSourceDownloader {
       return '.bin';
     }
     return ext;
+  }
+
+  /// 单源最多重试 3 次，网络错误用指数退避（1s/2s/4s），校验失败直接放弃。
+  static Future<({String? path, String? error})> _trySourceWithRetry({
+    required String source,
+    required String attemptPath,
+    required Duration connectTimeout,
+    required Duration responseTimeout,
+    required Duration idleTimeout,
+    required String expectedSha256,
+    required int expectedSize,
+    void Function(double progress)? onProgress,
+  }) async {
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await FileDownloader.download(
+          url: Uri.parse(source),
+          destPath: attemptPath,
+          timeout: idleTimeout,
+          connectTimeout: connectTimeout,
+          responseTimeout: responseTimeout,
+          onProgress: (received, total) {
+            if (total == null || total <= 0) return;
+            onProgress?.call(received / total);
+          },
+        );
+
+        if (!await FileDownloader.verifySha256(attemptPath, expectedSha256)) {
+          await _deleteQuietly(attemptPath);
+          return (path: null, error: 'sha256 校验失败');
+        }
+        if (expectedSize > 0) {
+          final actual = await File(attemptPath).length();
+          if (actual != expectedSize) {
+            await _deleteQuietly(attemptPath);
+            return (
+              path: null,
+              error: '大小不符（期望 $expectedSize，实收 $actual）',
+            );
+          }
+        }
+        return (path: attemptPath, error: null);
+      } catch (error, stack) {
+        AppLogger.warn(
+          'MultiSourceDownloader',
+          '下载源失败（$attempt/$maxAttempts）: $source',
+          error,
+          stack,
+        );
+        await _deleteQuietly(attemptPath);
+        final isLastAttempt = attempt == maxAttempts;
+        if (isLastAttempt) {
+          return (path: null, error: '$error');
+        }
+        // 网络错误（连接断开/超时）才值得重试，校验类错误已在上层处理
+        final isNetworkError = error is SocketException ||
+            error is HttpException ||
+            error.toString().contains('TimeoutException');
+        if (!isNetworkError) {
+          return (path: null, error: '$error');
+        }
+        onProgress?.call(0);
+        await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+    }
+    return (path: null, error: '未知错误');
   }
 
   static Future<void> _deleteQuietly(String path) async {

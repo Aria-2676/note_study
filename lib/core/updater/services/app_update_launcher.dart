@@ -104,7 +104,8 @@ class AppUpdateLauncher {
         onProgress: onProgress,
       );
     } on FileDownloadException catch (error) {
-      throw AppUpdateException(error.message);
+      final msg = _userFriendlyMessage(error.message);
+      throw AppUpdateException(msg);
     }
 
     try {
@@ -121,6 +122,29 @@ class AppUpdateLauncher {
       await _deleteQuietly(apkPath);
       rethrow;
     }
+  }
+
+  /// 把底层网络/校验异常翻译成用户能看懂的话。
+  static String _userFriendlyMessage(String raw) {
+    if (raw.contains('Connection closed') ||
+        raw.contains('Connection reset') ||
+        raw.contains('Connection refused')) {
+      return '下载到一半网络断了，所有备用线路都试过了，请检查网络后重试';
+    }
+    if (raw.contains('TimeoutException') || raw.contains('timed out')) {
+      return '下载太慢自动超时了，请换个网络环境再试';
+    }
+    if (raw.contains('sha256')) {
+      return '下载内容不完整（校验失败），请重试';
+    }
+    if (raw.contains('大小不符')) {
+      return '下载到一半中断了，文件不完整，请重试';
+    }
+    if (raw.contains('SocketException') ||
+        raw.contains('Failed host lookup')) {
+      return '连不上下载服务器，请检查网络或稍后重试';
+    }
+    return '下载失败，请稍后重试（$raw）';
   }
 
   Future<void> _deleteQuietly(String path) async {
