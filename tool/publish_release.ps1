@@ -188,19 +188,22 @@ function Throw-Transient($detail) {
 
 # 调原生命令（curl/git）的统一入口。
 #
-# 关键坑：脚本顶部 $ErrorActionPreference='Stop' 时，原生命令写往 stderr 的
-# 每一行（git push 的进度、curl 报错）都会被 PowerShell 提升成**终止性错误**，
-# 直接逃出重试循环——表现为「第一次失败脚本就死，根本不重试」。
-# 这里临时切到 Continue、合并 stderr，只认退出码，把文本交回调用方解析。
+# 两个坑：
+# 1) 脚本顶部 $ErrorActionPreference='Stop' 时，原生命令写往 stderr 的
+#    每一行（git push 的进度、curl 报错）都会被 PowerShell 提升成**终止性错误**，
+#    直接逃出重试循环——表现为「第一次失败脚本就死，根本不重试」。
+# 2) 参数不能用 ValueFromRemainingArguments：curl 的 -w 会被 PowerShell 当成
+#    -WarningAction/-WarningVariable 的歧义前缀。所以参数必须作为**一个数组**传入。
+# 调用方：Invoke-Native 'curl.exe' @('-sS', '--max-time', '60', $url)
 function Invoke-Native {
     param(
-        [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(ValueFromRemainingArguments = $true)][string[]]$ArgList
+        [Parameter(Mandatory = $true, Position = 0)][string]$FilePath,
+        [Parameter(Mandatory = $true, Position = 1)][AllowEmptyCollection()][string[]]$Arguments
     )
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & $FilePath @ArgList 2>&1 | ForEach-Object { $_.ToString() }
+        $lines = & $FilePath @Arguments 2>&1 | ForEach-Object { $_.ToString() }
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $prev
@@ -210,7 +213,7 @@ function Invoke-Native {
 
 # GET JSON：返回对象；404 抛业务异常（由调用方识别 __NOTFOUND__）。
 function Api-Get($url) {
-    $r = Invoke-Native 'curl.exe' -sS --max-time 60 @authHeaders $url -w "`n%{http_code}"
+    $r = Invoke-Native 'curl.exe' (@('-sS', '--max-time', '60') + $authHeaders + @($url, '-w', "`n%{http_code}"))
     $raw = $r.Text
     $idx = $raw.LastIndexOf("`n")
     $body = $raw.Substring(0, $idx).Trim()
@@ -234,9 +237,10 @@ function Api-Json($method, $url, $obj) {
                 (New-Object System.Text.UTF8Encoding($false))
             )
         }
-        $args2 = @('-sS', '--max-time', '60', '-X', $method, '-w', "`n%{http_code}") + $authHeaders
-        if ($null -ne $obj) { $args2 += @('--data-binary', "@$tmp") }
-        $r = Invoke-Native 'curl.exe' @args2 $url
+        $curlArgs = @('-sS', '--max-time', '60', '-X', $method, '-w', "`n%{http_code}") + $authHeaders
+        if ($null -ne $obj) { $curlArgs += @('--data-binary', "@$tmp") }
+        $curlArgs += $url
+        $r = Invoke-Native 'curl.exe' $curlArgs
         $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $body = $raw.Substring(0, $idx).Trim()
@@ -252,7 +256,7 @@ function Api-Json($method, $url, $obj) {
 
 function Invoke-GitRetry($argList, $name) {
     Invoke-Retry -Name $name -Block {
-        $r = Invoke-Native 'git' @argList
+        $r = Invoke-Native 'git' $argList
         if ($r.ExitCode -ne 0) { Throw-Transient ($r.Text.Trim()) }
         if ($r.Text.Trim()) { Log "  git $($argList[0]): $(($r.Text.Trim().Split("`n")[0]))" }
     }
@@ -351,11 +355,13 @@ foreach ($a in $assets) {
         if ($ok) { return }
 
         $upUrl = "https://uploads.github.com/repos/$owner/$repo/releases/$releaseId/assets?name=$([uri]::EscapeDataString($a.Name))"
-        $r = Invoke-Native 'curl.exe' -sS --max-time 600 -X POST `
-            @authHeaders `
-            '-H', 'Content-Type: application/vnd.android.package-archive' `
-            '--data-binary', "@$($a.Path)" `
-            $upUrl -w "`n%{http_code}"
+        $upArgs = @(
+            '-sS', '--max-time', '600', '-X', 'POST',
+            '-H', 'Content-Type: application/vnd.android.package-archive',
+            '--data-binary', "@$($a.Path)",
+            $upUrl, '-w', "`n%{http_code}"
+        ) + $authHeaders
+        $r = Invoke-Native 'curl.exe' $upArgs
         $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $body = $raw.Substring(0, $idx).Trim()
@@ -477,7 +483,7 @@ if (-not $SkipPurge) {
     Log '步骤 7：purge.jsdelivr.net 刷新 update.json'
     Invoke-Retry -Name 'purge-jsdelivr' -Block {
         $purgeUrl = "https://purge.jsdelivr.net/gh/$owner/$repo@$Branch/update.json"
-        $r = Invoke-Native 'curl.exe' -sS --max-time 60 $purgeUrl -w "`n%{http_code}"
+        $r = Invoke-Native 'curl.exe' @('-sS', '--max-time', '60', $purgeUrl, '-w', "`n%{http_code}")
         $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $code = $raw.Substring($idx + 1).Trim()
