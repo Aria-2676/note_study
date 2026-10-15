@@ -18,7 +18,7 @@ void main() {
     test('scheme/host 大小写不影响识别，但保留原始 URL 形态', () {
       const upper = 'HTTPS://GitHub.COM/owner/repo/releases/download/v/a.apk';
       final list = DownloadMirrors.expand(upper);
-      expect(list.first, 'https://gh-proxy.com/$upper');
+      expect(list.first, 'https://ghfast.top/$upper');
       expect(list.last, upper);
     });
 
@@ -66,8 +66,8 @@ void main() {
     test('空白镜像条目被丢弃', () {
       final list = DownloadMirrors.expand(gh, explicitMirrors: ['  ', '']);
       expect(list, [
-        'https://gh-proxy.com/$gh',
         'https://ghfast.top/$gh',
+        'https://gh-proxy.com/$gh',
         gh,
       ]);
     });
