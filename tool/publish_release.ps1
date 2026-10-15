@@ -465,7 +465,7 @@ if ($SkipManifestCommit) {
         try {
             [System.IO.File]::WriteAllText(
                 $msgFile,
-                "V5.${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n",
+                "V${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n",
                 (New-Object System.Text.UTF8Encoding($false))
             )
             & git commit -F $msgFile
@@ -505,5 +505,7 @@ Log "       https://api.github.com/repos/$owner/$repo/contents/update.json"
 foreach ($a in $assets) {
     $u = "https://github.com/$owner/$repo/releases/download/$tag/$($a.Name)"
     Log "  $($a.Name)：$u"
-    Log "             https://ghfast.top/$u"
+    foreach ($pre in $MirrorPrefixes) {
+        Log "             $pre/$u"
+    }
 }
