@@ -1,54 +1,73 @@
 {
-  "_comment": [
-    "App 更新清单：人工维护，提交到仓库后经 CDN 分发，客户端启动/回前台时拉取。",
-    "发新整包：改 latest.version，并在 downloads.<平台> 里填构建产物的 url + sha256 + sizeBytes。",
-    "开资源热更：新增 assets 块，build 用单调递增的整数（每次重打包 +1）。",
-    "强制更新：把 minSupported 提到「必须换包」的下限；留空/删掉表示不强制。",
-    "level 可省略，缺省时客户端按版本号差值自动推断（主版本变化才会弹窗）。",
-    "注意：downloads 里的地址必须是 https/http，其它协议会被客户端直接丢弃。",
-    "ABI 细分：分 ABI 发包时用 'android-<abi>' 键（如 android-arm64-v8a），",
-    "  客户端优先匹配该类键、匹配不到再回落泛化的 'android'（见 AppRelease.resolveTarget）。",
-    "  若要兼顾尚未升级的老客户端，必须**同时**保留一个泛化 'android' 键指向 fat 包，",
-    "  否则老客户端查不到产物、更新会静默消失（不报错）。",
-    "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。",
-    "⚠️ 为什么 APK 不走 jsDelivr：jsDelivr（含 gcore/testingcf 各镜像）对单文件有",
-    "  20MB 硬上限，超出返回 403 'File size exceeded the configured limit of 20 MB.'。",
-    "  本 App 的 APK 最小 21MB（split）~ 62MB（fat），**必然超限**，故改用 GitHub Releases。",
-    "  实测证据：gcore 取 releases/app-arm64-v8a-release.apk → 403。",
-    "  GitHub Releases 单文件上限 2GB，下载地址会 302 到 objects.githubusercontent.com，",
-    "  客户端 HttpClient 默认 followRedirects=true 会自动跟随（已核对 dart:io 文档），无需改代码。",
-    "  代价：objects.githubusercontent.com 在国内可能较慢或间歇失败——自签小圈子分发可接受。",
-    "  游戏包（game_center/packages/*.zip）均在 1MB 级，不受此限制，仍走 jsDelivr。"
-  ],
-  "schemaVersion": 1,
-  "updatedAt": "2026-10-13T04:50:00Z",
-  "minSupported": "5.0.0",
-  "latest": {
-    "version": "5.5.21",
-    "notes": [
-      "关于弹窗显示当前版本号，便于确认更新是否生效。"
-    ],
-    "downloads": {
-      "android": {
-        "url": "https://github.com/Aria-2676/note_study/releases/download/v5.5.21/app-release.apk",
-        "sha256": "c9c320ec99eee504dc50715de15b0c3fb343661a199eabf2c1632a144ad79853",
-        "sizeBytes": 64825873
-      },
-      "android-arm64-v8a": {
-        "url": "https://github.com/Aria-2676/note_study/releases/download/v5.5.21/app-arm64-v8a-release.apk",
-        "sha256": "bd006a545b163ee27d27150b04ef65198b98d13c9b483e980747e574b397b610",
-        "sizeBytes": 24167343
-      },
-      "android-armeabi-v7a": {
-        "url": "https://github.com/Aria-2676/note_study/releases/download/v5.5.21/app-armeabi-v7a-release.apk",
-        "sha256": "a936757a97ae4e9f58983e3900637b28956efd72b36a45cdc6553cd9243465a7",
-        "sizeBytes": 21969275
-      },
-      "android-x86_64": {
-        "url": "https://github.com/Aria-2676/note_study/releases/download/v5.5.21/app-x86_64-release.apk",
-        "sha256": "56a10715e964e982a3c02535183a537954f2777e5b70c0203ec37b4c7d81e7ce",
-        "sizeBytes": 25716651
-      }
-    }
-  }
+    "_comment":  [
+                     "App 更新清单：人工维护，提交到仓库后经 CDN 分发，客户端启动/回前台时拉取。",
+                     "发新整包：改 latest.version，并在 downloads.<平台> 里填构建产物的 url + sha256 + sizeBytes。",
+                     "开资源热更：新增 assets 块，build 用单调递增的整数（每次重打包 +1）。",
+                     "强制更新：把 minSupported 提到「必须换包」的下限；留空/删掉表示不强制。",
+                     "level 可省略，缺省时客户端按版本号差值自动推断（主版本变化才会弹窗）。",
+                     "注意：downloads 里的地址必须是 https/http，其它协议会被客户端直接丢弃。",
+                     "ABI 细分：分 ABI 发包时用 'android-<abi>' 键（如 android-arm64-v8a），",
+                     "  客户端优先匹配该类键、匹配不到再回落泛化的 'android'（见 AppRelease.resolveTarget）。",
+                     "  若要兼顾尚未升级的老客户端，必须**同时**保留一个泛化 'android' 键指向 fat 包，",
+                     "  否则老客户端查不到产物、更新会静默消失（不报错）。",
+                     "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。",
+                     "⚠️ 为什么 APK 不走 jsDelivr：jsDelivr（含 gcore/testingcf 各镜像）对单文件有",
+                     "  20MB 硬上限，超出返回 403 'File size exceeded the configured limit of 20 MB.'。",
+                     "  本 App 的 APK 最小 21MB（split）~ 62MB（fat），**必然超限**，故改用 GitHub Releases。",
+                     "  实测证据：gcore 取 releases/app-arm64-v8a-release.apk → 403。",
+                     "  GitHub Releases 单文件上限 2GB，下载地址会 302 到 objects.githubusercontent.com，",
+                     "  客户端 HttpClient 默认 followRedirects=true 会自动跟随（已核对 dart:io 文档），无需改代码。",
+                     "  代价：objects.githubusercontent.com 在国内可能较慢或间歇失败——自签小圈子分发可接受。",
+                     "  游戏包（game_center/packages/*.zip）均在 1MB 级，不受此限制，仍走 jsDelivr。"
+                 ],
+    "schemaVersion":  1,
+    "updatedAt":  "2026-10-15T15:09:24Z",
+    "minSupported":  "5.0.0",
+    "latest":  {
+                   "version":  "5.5.23",
+                   "notes":  [
+                                 "修复部分网络环境下检测不到新版本、更新包下载失败的问题。",
+                                 "新增后台定时检查：发现新版本时在通知栏提醒，同一版本只提醒一次。",
+                                 "更新包下载增加多条备用线路，自动切换，下载更快更稳。",
+                                 "今后任何整包更新都会及时弹窗提示，不再只在大版本更新时提醒。"
+                             ],
+                   "downloads":  {
+                                     "android":  {
+                                                     "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-release.apk",
+                                                     "mirrors":  [
+                                                                     "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-release.apk",
+                                                                     "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-release.apk"
+                                                                 ],
+                                                     "sha256":  "d2ead98b7eb1622eb3a4f7d1bae9771b37526982828d9dea08cefaca1d11a80b",
+                                                     "sizeBytes":  65255396
+                                                 },
+                                     "android-arm64-v8a":  {
+                                                               "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-arm64-v8a-release.apk",
+                                                               "mirrors":  [
+                                                                               "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-arm64-v8a-release.apk",
+                                                                               "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-arm64-v8a-release.apk"
+                                                                           ],
+                                                               "sha256":  "e992e217bd7ffe95a50e69e508713bb314c3fb4c866aee4abc9f30aee78de1c2",
+                                                               "sizeBytes":  24367490
+                                                           },
+                                     "android-armeabi-v7a":  {
+                                                                 "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-armeabi-v7a-release.apk",
+                                                                 "mirrors":  [
+                                                                                 "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-armeabi-v7a-release.apk",
+                                                                                 "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-armeabi-v7a-release.apk"
+                                                                             ],
+                                                                 "sha256":  "7522c3ef54c0674b8be4a9602dc93e1efcd0b1799fc2f85616445db983f4e959",
+                                                                 "sizeBytes":  22136658
+                                                             },
+                                     "android-x86_64":  {
+                                                            "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-x86_64-release.apk",
+                                                            "mirrors":  [
+                                                                            "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-x86_64-release.apk",
+                                                                            "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.23/app-x86_64-release.apk"
+                                                                        ],
+                                                            "sha256":  "2c13d78961a6935d257c744aa88a440befa31ee866e6e73285e1fe5540c991f2",
+                                                            "sizeBytes":  25916798
+                                                        }
+                                 }
+               }
 }
