@@ -186,16 +186,39 @@ function Throw-Transient($detail) {
     throw (New-Object System.Management.Automation.RuntimeException('__TRANSIENT__', $detail))
 }
 
+# 调原生命令（curl/git）的统一入口。
+#
+# 关键坑：脚本顶部 $ErrorActionPreference='Stop' 时，原生命令写往 stderr 的
+# 每一行（git push 的进度、curl 报错）都会被 PowerShell 提升成**终止性错误**，
+# 直接逃出重试循环——表现为「第一次失败脚本就死，根本不重试」。
+# 这里临时切到 Continue、合并 stderr，只认退出码，把文本交回调用方解析。
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$ArgList
+    )
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = & $FilePath @ArgList 2>&1 | ForEach-Object { $_.ToString() }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    return [pscustomobject]@{ ExitCode = $code; Text = ($lines -join "`n") }
+}
+
 # GET JSON：返回对象；404 抛业务异常（由调用方识别 __NOTFOUND__）。
 function Api-Get($url) {
-    $raw = (& curl.exe -sS --max-time 60 @authHeaders $url -w "`n%{http_code}") -join "`n"
+    $r = Invoke-Native 'curl.exe' -sS --max-time 60 @authHeaders $url -w "`n%{http_code}"
+    $raw = $r.Text
     $idx = $raw.LastIndexOf("`n")
     $body = $raw.Substring(0, $idx).Trim()
     $code = $raw.Substring($idx + 1).Trim()
     if ($code -eq '404') {
         throw (New-Object System.Management.Automation.RuntimeException('__NOTFOUND__'))
     }
-    if (Test-Transient $LASTEXITCODE $code) { Throw-Transient "http=$code" }
+    if (Test-Transient $r.ExitCode $code) { Throw-Transient "http=$code curlExit=$($r.ExitCode)" }
     if ($code -notmatch '^2\d\d$') { throw "GET $url 失败 http=$code body=$body" }
     return ($body | ConvertFrom-Json)
 }
@@ -213,11 +236,12 @@ function Api-Json($method, $url, $obj) {
         }
         $args2 = @('-sS', '--max-time', '60', '-X', $method, '-w', "`n%{http_code}") + $authHeaders
         if ($null -ne $obj) { $args2 += @('--data-binary', "@$tmp") }
-        $raw = (& curl.exe @args2 $url) -join "`n"
+        $r = Invoke-Native 'curl.exe' @args2 $url
+        $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $body = $raw.Substring(0, $idx).Trim()
         $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $LASTEXITCODE $code) { Throw-Transient "http=$code body=$body" }
+        if (Test-Transient $r.ExitCode $code) { Throw-Transient "http=$code body=$body" }
         return [pscustomobject]@{ Code = $code; Body = $body; Obj = ($body | ConvertFrom-Json -ErrorAction SilentlyContinue) }
     } finally {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
@@ -228,9 +252,9 @@ function Api-Json($method, $url, $obj) {
 
 function Invoke-GitRetry($argList, $name) {
     Invoke-Retry -Name $name -Block {
-        $output = & git @argList 2>&1
-        if ($LASTEXITCODE -ne 0) { Throw-Transient (($output | Out-String).Trim()) }
-        if ($output) { Log "  git $($argList[0]): $(($output | Select-Object -First 1))" }
+        $r = Invoke-Native 'git' @argList
+        if ($r.ExitCode -ne 0) { Throw-Transient ($r.Text.Trim()) }
+        if ($r.Text.Trim()) { Log "  git $($argList[0]): $(($r.Text.Trim().Split("`n")[0]))" }
     }
 }
 
@@ -327,15 +351,16 @@ foreach ($a in $assets) {
         if ($ok) { return }
 
         $upUrl = "https://uploads.github.com/repos/$owner/$repo/releases/$releaseId/assets?name=$([uri]::EscapeDataString($a.Name))"
-        $raw = (& curl.exe -sS --max-time 600 -X POST `
+        $r = Invoke-Native 'curl.exe' -sS --max-time 600 -X POST `
             @authHeaders `
             '-H', 'Content-Type: application/vnd.android.package-archive' `
             '--data-binary', "@$($a.Path)" `
-            $upUrl -w "`n%{http_code}") -join "`n"
+            $upUrl -w "`n%{http_code}"
+        $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $body = $raw.Substring(0, $idx).Trim()
         $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $LASTEXITCODE $code) { Throw-Transient "upload http=$code" }
+        if (Test-Transient $r.ExitCode $code) { Throw-Transient "upload http=$code curlExit=$($r.ExitCode)" }
         if ($code -eq '422') {
             # 同名资产残留（常见于删除后副本延迟）：下一轮重新 list → 清理。
             Throw-Transient "upload 422（同名残留，下一轮清理）"
@@ -452,10 +477,11 @@ if (-not $SkipPurge) {
     Log '步骤 7：purge.jsdelivr.net 刷新 update.json'
     Invoke-Retry -Name 'purge-jsdelivr' -Block {
         $purgeUrl = "https://purge.jsdelivr.net/gh/$owner/$repo@$Branch/update.json"
-        $raw = (& curl.exe -sS --max-time 60 $purgeUrl -w "`n%{http_code}") -join "`n"
+        $r = Invoke-Native 'curl.exe' -sS --max-time 60 $purgeUrl -w "`n%{http_code}"
+        $raw = $r.Text
         $idx = $raw.LastIndexOf("`n")
         $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $LASTEXITCODE $code) {
+        if (Test-Transient $r.ExitCode $code) {
             Throw-Transient "purge http=$code"
         }
         if ($code -notmatch '^2\d\d$') {
