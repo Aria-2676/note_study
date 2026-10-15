@@ -74,7 +74,11 @@ class AppUpdateDecider {
       }
 
       final level = release.levelAgainst(currentVersion);
-      final wantsPrompt = level == VersionChangeLevel.major;
+      // 只要有整包更新就主动提示一次：自签小圈子分发没有应用商店，用户无法
+      // 靠商店看到更新，静默（available）等于更新不存在。是否打扰改由两个
+      // 用户可控开关决定——「跳过此版本」与「关闭更新提醒」，命中则降级为
+      // 设置页可见但不弹窗，更新本身不会消失。
+      final wantsPrompt = true;
       final suppressed =
           notificationsDisabled ||
           (ignoredVersion != null && ignoredVersion == release.version);
@@ -85,7 +89,7 @@ class AppUpdateDecider {
           release: release,
           assets: assets,
           effectiveLevel: level,
-          reason: '主版本更新 ${release.version}，建议提示用户',
+          reason: '发现新版本 ${release.version}（${level.name}），提示用户',
         );
       }
 
@@ -96,7 +100,7 @@ class AppUpdateDecider {
         effectiveLevel: level,
         reason: suppressed
             ? '更新 ${release.version} 已被用户忽略，降级为设置页提示'
-            : '小版本更新 ${release.version}，不主动打扰',
+            : '更新 ${release.version} 未弹窗（状态异常）',
       );
     }
 

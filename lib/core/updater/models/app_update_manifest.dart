@@ -72,6 +72,12 @@ class AppDownloadTarget {
   /// 下载地址；必须是 http/https。
   final String url;
 
+  /// 额外的镜像地址（均须 http/https），按声明顺序优先于内置加速镜像尝试。
+  ///
+  /// 用途：内置公益镜像失效时，运维只需改清单就能给所有客户端换新下载源，
+  /// 不必发新版 App。为空表示只用代码内置镜像 + 直连。
+  final List<String> mirrors;
+
   /// 文件的 sha256（小写十六进制）；为空表示下载后不做校验。
   final String sha256;
 
@@ -80,6 +86,7 @@ class AppDownloadTarget {
 
   const AppDownloadTarget({
     required this.url,
+    this.mirrors = const [],
     this.sha256 = '',
     this.sizeBytes = 0,
   });
@@ -91,8 +98,18 @@ class AppDownloadTarget {
     if (url is! String || !isSafeDownloadUrl(url)) return null;
     final sha = raw['sha256'];
     final size = raw['sizeBytes'];
+
+    final mirrors = <String>[];
+    final rawMirrors = raw['mirrors'];
+    if (rawMirrors is List) {
+      for (final item in rawMirrors) {
+        if (item is String && isSafeDownloadUrl(item)) mirrors.add(item);
+      }
+    }
+
     return AppDownloadTarget(
       url: url,
+      mirrors: mirrors,
       sha256: sha is String ? sha.toLowerCase() : '',
       sizeBytes: size is int && size > 0 ? size : 0,
     );
@@ -109,6 +126,7 @@ class AppDownloadTarget {
 
   Map<String, dynamic> toJson() => {
     'url': url,
+    if (mirrors.isNotEmpty) 'mirrors': mirrors,
     'sha256': sha256,
     'sizeBytes': sizeBytes,
   };

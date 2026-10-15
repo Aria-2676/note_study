@@ -58,3 +58,5 @@ PASSWORD.txt
 key.properties
 /keystore/
 **/taskmaster-signing-*.zip
+# Widget Preview related
+.widget_preview/

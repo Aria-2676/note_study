@@ -2,11 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/download_mirrors.dart';
 import '../../services/file_downloader.dart';
+import '../../services/multi_source_downloader.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_manifest.dart';
 import 'app_update_exception.dart';
@@ -30,13 +31,18 @@ enum AppUpdateLaunchResult {
 ///   用户手动允许「安装未知应用」，这是系统行为，App 无法代劳。
 /// - **iOS**：**不能**自行下载安装，只能打开 App Store / 下载页。
 /// - **桌面**：没有统一安装器，交给浏览器下载。
+///
+/// Android 下载走**多源回退**：清单镜像 → 内置公益加速镜像 → GitHub 直链，
+/// 任一源失败（网络错误、sha256 不符、大小不符）就删掉残缺包换下一个，
+/// 全部失败才报错。详见 [DownloadMirrors]。
 class AppUpdateLauncher {
-  const AppUpdateLauncher();
+  const AppUpdateLauncher({
+    Future<Directory> Function()? tempDirProvider,
+  }) : _tempDirProvider = tempDirProvider ?? getTemporaryDirectory;
+
+  final Future<Directory> Function() _tempDirProvider;
 
   static const String _apkMimeType = 'application/vnd.android.package-archive';
-
-  /// 下载大包时给足超时（APK 可能几十 MB）。
-  static const Duration _downloadTimeout = Duration(minutes: 10);
 
   /// 是否应该走「应用内下载 + 调系统安装器」。
   ///
@@ -48,7 +54,7 @@ class AppUpdateLauncher {
     return path.endsWith('.apk');
   }
 
-  /// 应用更新。[onProgress] 仅在走应用内下载时回调（0~1）。
+  /// 应用更新。[onProgress] 仅在走应用内下载时回调（0~1，换源后从 0 重新计）。
   Future<AppUpdateLaunchResult> apply(
     AppDownloadTarget target, {
     void Function(double progress)? onProgress,
@@ -64,7 +70,7 @@ class AppUpdateLauncher {
           ? AppUpdateLaunchResult.openedDownloadPage
           : AppUpdateLaunchResult.failed;
     }
-    return _downloadAndInstall(target, uri, onProgress: onProgress);
+    return _downloadAndInstall(target, onProgress: onProgress);
   }
 
   /// 用外部浏览器 / 应用商店打开地址。
@@ -78,40 +84,30 @@ class AppUpdateLauncher {
   }
 
   Future<AppUpdateLaunchResult> _downloadAndInstall(
-    AppDownloadTarget target,
-    Uri uri, {
+    AppDownloadTarget target, {
     void Function(double progress)? onProgress,
   }) async {
-    final dir = await getTemporaryDirectory();
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final apkPath = p.join(dir.path, 'update-$stamp.apk');
+    final candidates = DownloadMirrors.expand(
+      target.url,
+      explicitMirrors: target.mirrors,
+    );
+    final dir = await _tempDirProvider();
+
+    final String apkPath;
+    try {
+      apkPath = await MultiSourceDownloader.downloadVerified(
+        candidates: candidates,
+        destDir: dir,
+        filePrefix: 'update',
+        expectedSha256: target.sha256,
+        expectedSize: target.sizeBytes,
+        onProgress: onProgress,
+      );
+    } on FileDownloadException catch (error) {
+      throw AppUpdateException(error.message);
+    }
 
     try {
-      await FileDownloader.download(
-        url: uri,
-        destPath: apkPath,
-        timeout: _downloadTimeout,
-        onProgress: (received, total) {
-          if (total == null || total <= 0) return;
-          onProgress?.call(received / total);
-        },
-      );
-
-      // 校验必须在拉起安装器**之前**：安装器一旦接手就无从拦截了。
-      if (!await FileDownloader.verifySha256(apkPath, target.sha256)) {
-        await _deleteQuietly(apkPath);
-        throw const AppUpdateException('安装包校验失败，已丢弃（可能被篡改或 CDN 缓存不同步）');
-      }
-      if (target.sizeBytes > 0) {
-        final actual = await File(apkPath).length();
-        if (actual != target.sizeBytes) {
-          await _deleteQuietly(apkPath);
-          throw AppUpdateException(
-            '安装包大小不符（期望 ${target.sizeBytes} 字节，实际 $actual 字节）',
-          );
-        }
-      }
-
       final result = await OpenFilex.open(apkPath, type: _apkMimeType);
       if (result.type == ResultType.done) {
         // 安装器已经接手，此时不能删 APK——它还在读这个文件。
@@ -121,9 +117,9 @@ class AppUpdateLauncher {
         '无法拉起安装器：${result.message}。'
         '若是首次安装，请在系统设置里允许本应用「安装未知应用」。',
       );
-    } on FileDownloadException catch (error) {
+    } catch (error) {
       await _deleteQuietly(apkPath);
-      throw AppUpdateException(error.message);
+      rethrow;
     }
   }
 

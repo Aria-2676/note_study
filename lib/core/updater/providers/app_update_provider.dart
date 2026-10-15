@@ -112,10 +112,18 @@ class AppUpdateProvider extends ChangeNotifier {
   ///
   /// 集中在一处，避免 _currentPlatform 与 _currentAbi 在不同调用点各自为政
   /// ——两者必须同时更新，否则会出现「平台变了、ABI 还是旧的」这类错位匹配。
+  ///
+  /// 顺手把结果快照进 SharedPreferences：后台 WorkManager 任务跑在独立
+  /// isolate 里，不适合调 package_info/getprop，直接读这份快照。
   Future<void> _refreshEnvironment() async {
     _currentVersion = await _versionLoader();
     _currentPlatform = await _platformLoader();
     _currentAbi = await _abiLoader();
+    await _settings.saveEnvironmentSnapshot(
+      version: _currentVersion,
+      platform: _currentPlatform,
+      abi: _currentAbi,
+    );
   }
 
   /// 冷启动 / 回到前台时调用：**只有超过间隔才真正发请求**。

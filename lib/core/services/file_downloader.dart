@@ -12,6 +12,12 @@ class FileDownloader {
 
   /// 下载 [url] 到 [destPath]，并通过 [onProgress] 回调进度。
   ///
+  /// 超时拆成三段，避免「连不上的源要干等十分钟才换下一个」：
+  /// - [connectTimeout]：建立 TCP/TLS 连接的上限；
+  /// - [responseTimeout]：发出请求到收到响应头的上限；
+  /// - [timeout]：下载过程中**两个数据块之间**的最大空闲（不是总时长，
+  ///   慢而稳的大包可以慢慢下，但彻底静默必须及早判死换源）。
+  ///
   /// [onProgress] 的 `total` 在服务端未返回 `Content-Length` 时为 null。
   /// [isCancelled] 返回 true 时中止下载并抛出 [FileDownloadException]。
   static Future<void> download({
@@ -20,12 +26,14 @@ class FileDownloader {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
     Duration timeout = const Duration(seconds: 30),
+    Duration connectTimeout = const Duration(seconds: 20),
+    Duration responseTimeout = const Duration(seconds: 30),
   }) async {
-    final client = HttpClient()..connectionTimeout = timeout;
+    final client = HttpClient()..connectionTimeout = connectTimeout;
     IOSink? sink;
     try {
       final request = await client.getUrl(url);
-      final response = await request.close().timeout(timeout);
+      final response = await request.close().timeout(responseTimeout);
       if (response.statusCode != HttpStatus.ok) {
         throw FileDownloadException('下载失败：HTTP ${response.statusCode}');
       }

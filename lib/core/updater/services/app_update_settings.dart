@@ -11,9 +11,17 @@ class AppUpdateSettings {
   static const String _kNotificationsEnabled = 'app_update_notifications_enabled';
   static const String _kLastCheckAt = 'app_update_last_check_at';
   static const String _kAssetBuild = 'app_update_asset_build';
+  static const String _kBgVersion = 'app_update_env_version';
+  static const String _kBgPlatform = 'app_update_env_platform';
+  static const String _kBgAbi = 'app_update_env_abi';
+  static const String _kLastNotifiedVersion = 'app_update_last_notified_version';
 
   /// 自动检查的最小间隔；手动「检查更新」不受此限制。
-  static const Duration autoCheckInterval = Duration(hours: 6);
+  ///
+  /// 1 小时：清单只有几 KB，且有多源回退，请求成本可忽略；短间隔能让新版本
+  /// 在「下次打开/回前台」时基本必被发现（真正的后台唤醒由 WorkManager
+  /// 周期任务负责）。
+  static const Duration autoCheckInterval = Duration(hours: 1);
 
   Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
@@ -84,5 +92,46 @@ class AppUpdateSettings {
   Future<void> setAssetBuild(int build) async {
     final prefs = await _prefs();
     await prefs.setInt(_kAssetBuild, build);
+  }
+
+  /// 把「本机环境」快照落盘，供后台 WorkManager 任务读取。
+  ///
+  /// 后台 isolate 里不宜跑 package_info / getprop（插件注册与进程调用都不稳），
+  /// 主 App 每次刷新环境时顺手存一份，后台只读 SharedPreferences 即可。
+  Future<void> saveEnvironmentSnapshot({
+    required String version,
+    required String platform,
+    String? abi,
+  }) async {
+    final prefs = await _prefs();
+    await prefs.setString(_kBgVersion, version);
+    await prefs.setString(_kBgPlatform, platform);
+    if (abi != null) {
+      await prefs.setString(_kBgAbi, abi);
+    } else {
+      await prefs.remove(_kBgAbi);
+    }
+  }
+
+  Future<({String version, String platform, String? abi})>
+  readEnvironmentSnapshot() async {
+    final prefs = await _prefs();
+    return (
+      version: prefs.getString(_kBgVersion) ?? '',
+      platform: prefs.getString(_kBgPlatform) ?? 'android',
+      abi: prefs.getString(_kBgAbi),
+    );
+  }
+
+  /// 后台已经发过通知的版本号；用于「同一版本只通知一次」。
+  Future<String?> lastNotifiedVersion() async {
+    final prefs = await _prefs();
+    final value = prefs.getString(_kLastNotifiedVersion);
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  Future<void> setLastNotifiedVersion(String version) async {
+    final prefs = await _prefs();
+    await prefs.setString(_kLastNotifiedVersion, version);
   }
 }

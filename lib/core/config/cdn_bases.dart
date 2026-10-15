@@ -13,11 +13,13 @@ class CdnBases {
 
   /// 小文件（清单类，如 manifest.json / update.json）的基址。
   ///
-  /// 默认走 jsDelivr 的 GitHub 代理；它对分支引用有约 12 小时缓存，
-  /// 因此新内容上架后短时间内可能拉到的还是旧版本。
+  /// 默认走 jsDelivr 的 GCore 节点：2026-10 实测 `cdn.jsdelivr.net` 在本机
+  /// 连接被重置、而 `gcore` / `testingcf` 稳定，故主站用 gcore，把 cdn
+  /// 放进回退列表。jsDelivr 对分支引用有约 12 小时缓存，发布后由发布脚本
+  /// 主动调 purge API 清缓存，客户端侧则另有 raw / GitHub API 两个近实时源。
   static const String manifest = String.fromEnvironment(
     'GAME_CDN_BASE',
-    defaultValue: 'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
+    defaultValue: 'https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main',
   );
 
   /// 大文件（游戏包、App 更新包）的基址。
@@ -35,12 +37,13 @@ class CdnBases {
 
   /// 清单类文件的回退基址（按顺序尝试）。
   ///
-  /// 优先 jsDelivr 的镜像节点：实测本机 `cdn.jsdelivr.net` / `gcore.jsdelivr.net`
-  /// / `testingcf.jsdelivr.net` 均可正常返回，而 `raw.githubusercontent.com`
-  /// 虽 TCP 可连、HTTP 却常被中途重置（Connection reset by peer），故置末位兜底。
+  /// 主站 gcore 之外的 jsDelivr 节点在前；`raw.githubusercontent.com`
+  /// 虽 TCP 可连、HTTP 却曾常被中途重置，故置末位兜底。
+  /// App 更新清单还另有 GitHub Contents API 一路（见 AppUpdateService），
+  /// 游戏清单不走那条，因此不放进这里。
   static const List<String> manifestFallbacks = [
-    'https://gcore.jsdelivr.net/gh/Aria-2676/note_study@main',
     'https://testingcf.jsdelivr.net/gh/Aria-2676/note_study@main',
+    'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
     'https://raw.githubusercontent.com/Aria-2676/note_study/main',
   ];
 
@@ -51,8 +54,8 @@ class CdnBases {
   /// 镜像上可能新旧不一：清单已更新、包却仍是旧版，导致 sha256 校验失败。
   /// 下载时若校验不通过，依次回退到其它镜像，最后落到不受 CDN 缓存影响的源站。
   static const List<String> largeFileFallbacks = [
-    'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
     'https://testingcf.jsdelivr.net/gh/Aria-2676/note_study@main',
+    'https://cdn.jsdelivr.net/gh/Aria-2676/note_study@main',
     'https://raw.githubusercontent.com/Aria-2676/note_study/main',
   ];
 

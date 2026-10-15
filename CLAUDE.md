@@ -100,32 +100,66 @@ git cat-file commit HEAD | head -20       # 字节级回读确认中文未坏
 ## 4. 分发与更新体系
 
 托管仓库 `Aria-2676/note_study`：`update.json`（仓库根）、`releases/`、
-`game_center/`。**CDN 基址唯一来源是 `lib/core/config/cdn_bases.dart`**，
-大文件（.zip/.apk）必须走 `gcore.jsdelivr.net`（`cdn.jsdelivr.net` 会 301 到
-国内常被 reset 的 raw）。
+`game_center/`。**CDN 基址唯一来源是 `lib/core/config/cdn_bases.dart`**。
+**小文件**（清单、游戏 zip，<20MB）走 jsDelivr 多节点（gcore 主，
+testingcf/cdn/raw 依次回退）；**APK 必走 GitHub Releases**（jsDelivr 单文件
+20MB 硬上限，fat 包 62MB 必然 403）。
+
+**及时性链路（2026-10 改造，三层保证「发布后尽快被发现」）：**
+
+1. 清单候选顺序：gcore → testingcf → cdn → raw.githubusercontent →
+   **GitHub Contents API 兜底**（`AppUpdateService.manifestApiUrl`，读仓库
+   实时内容、无 jsDelivr 最长 12h 缓存，拆 76 列 base64 信封；未认证
+   60 次/小时/IP 限速，自签小圈子用不完）；全部请求带 `Cache-Control: no-cache`。
+2. 前台自动检查间隔 1 小时（`AppUpdateSettings`），回前台到点也查
+   （`AppUpdatePromptHost`）。
+3. 后台 WorkManager 周期任务（`BackgroundUpdateWorker`，仅 Android，
+   uniqueId `v5-app-update-periodic-check`，keep/update 策略幂等注册）：
+   后台拉清单 → 复用同一把决策尺 → 命中发本地通知，**同版本只通知一次**
+   （闸门是纯函数 `shouldNotifyInBackground`，必须有测试）。后台读
+   SharedPreferences 环境快照，不碰 package_info/getprop。
 
 **五档决策**（`AppUpdateDecider`，纯函数）：
-`minSupported` 更高 → `forced`（免疫跳过与关闭提醒）；正式包更高 →
-大版本且未跳过 → `optional`，否则 `available`；仅资源包且 build 更高 →
-`assetsOnly`；其余 → `none`。
+`minSupported` 更高 → `forced`（免疫跳过与关闭提醒）；正式包更高且未被
+「跳过/关闭提醒」抑制 → **一律 `optional` 并弹窗**（自签分发无商店兜底，
+patch 也可能是紧急修复；2026-10 起不再只让 major 弹窗）；被抑制 → `available`
+（设置页可见不打扰）；仅资源包且 build 更高 → `assetsOnly`；其余 → `none`。
 
 | | 整包更新 | 资源热更 |
 |---|---|---|
-| 是否打扰 | 大版本弹窗，可跳过 | **完全不打扰**，后台静默 |
-| 落地 | 下载 APK → 唤起安装器 | 下载 zip → 校验 → **原子替换**目录 |
-| 实现 | `AppUpdateLauncher` | `AppAssetApplier` |
-| 失败 | 提示用户 | **只记日志**，下次重试 |
+| 是否打扰 | **任何整包版本都弹窗**，可跳过/抑制 | **完全不打扰**，后台静默 |
+| 落地 | 多源下载 APK → sha256/大小校验 → 唤起安装器 | 下载 zip → 校验 → **原子替换**目录 |
+| 实现 | `AppUpdateLauncher` + `MultiSourceDownloader` | `AppAssetApplier` |
+| 失败 | 换下一个源，全失败才提示用户 | **只记日志**，下次重试 |
+
+**APK 多源下载**（`DownloadMirrors.expand` + `MultiSourceDownloader`，
+平台无关逻辑在 `core/services/` 必须可主机单测）：
+
+- 候选顺序：清单 `mirrors` 显式热下发源 → 内置公益镜像前缀
+  （`ghfast.top` → `gh-proxy.com`，顺序按实测吞吐排）→ GitHub 直连兜底。
+  直连置最后：实测它可能连续数小时不可达，先试纯浪费超时；自动去重。
+- 每个源独立临时文件，sha256 或大小不符立即删包换源、进度归零；
+  超时拆三段（连接 15s / 响应头 30s / **数据块间隔** 60s，慢而稳可继续，
+  静默假死快速判死），别用一个总时长超时。
+- 镜像不可信没关系：端到端 sha256 校验把住内容，多源只增可用性。
 
 打包、发版清单、字段坑（`downloads` / `sizeBytes` / `minSupported` 在顶层 /
 `assets` 是单个对象）见 skill `v5-update-distribution`。
 
-**发版动作 checklist（APK 走 GitHub Releases，三步缺一不可）：**
+**发版动作：一条命令，`tool/publish_release.ps1 -Version x.y.z`（幂等可重跑）。**
+前置：pubspec 改版本 → `tool/build_apk.ps1 -Flavor both`（fat+3 split 缺一不可）
+→ 代码先提交。工具自动完成：tag → push（无限重试）→ 建/取 Release →
+资产 size+digest 核对、不符删后重传、422 靠下一轮 list 自愈 → 重写
+`update.json`（version/updatedAt/url/sha256/sizeBytes/mirrors，notes 用
+`-Notes` 传或保留原文）→ UTF-8 文件 `-F` 单独提交清单 → push →
+purge.jsdelivr.net。token 只认 `$env:GITHUB_TOKEN`，不落盘。
 
-1. 打 tag 并 push，**创建 Release**（`update.json` 里的 url 指向不存在的
-   Release 时，客户端会把 404 HTML 存成 .apk，表现为「包损坏」）；
-2. 逐个上传 APK 资产，每个都校验 size+digest，不匹配就删掉重传；
-3. 回读 Release 资产列表逐一核对 sha256 与 `update.json` 一致，再提交
-   `update.json` 的改动。
+手工发版时踩过、工具已固化的坑（勿回退）：① PS5.1 给 curl.exe 内联 `-d`
+JSON 会被剥双引号 → 400，必须临时文件 `--data-binary "@file"`；
+② sha256 一律运行时 `Get-FileHash` 现算，手写进脚本会丢字符（63/64 位
+肉眼分不出），会造成「正确上传被循环删除」；③ Release 不存在时
+下载 URL 返回 404 HTML，会被存成 .apk 表现为「包损坏」，必须先 Release
+后清单。
 
 ### 4.1 热更资源的消费端（读入口）
 

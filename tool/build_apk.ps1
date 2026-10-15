@@ -252,7 +252,8 @@ $lines += @(
     "",
     "---- 提醒 ----",
     "  - 更新包必须与已安装包**同签名**，否则用户安装报 INSTALL_FAILED_UPDATE_INCOMPATIBLE。",
-    "  - 上传到 GitHub 仓库 releases/ 后，用 gcore.jsdelivr.net 取（cdn.jsdelivr.net 对 .apk 会 301）。",
+    "  - 上传与发布已自动化：构建后跑 tool\publish_release.ps1（建 Release、传资产、",
+    "    回读 size/digest、更新 update.json、刷 CDN），不要手工网页上传。",
     "  - 上传时**文件名不要改**：上面的键是从文件名推导的，改名会让键与产物对不上。",
     "  - fat APK（单包）约 62MB；split 后每个约 21~25MB。自更新优先给用户 arm64-v8a。"
 )

@@ -8,6 +8,7 @@ import 'core/services/statistic_service.dart';
 import 'core/services/database/database_service.dart';
 import 'core/updater/models/hot_theme_config.dart';
 import 'core/updater/providers/app_update_provider.dart';
+import 'core/updater/services/background_update_worker.dart';
 import 'core/updater/services/hot_theme_loader.dart';
 import 'core/updater/widgets/app_update_dialog.dart';
 import 'modules/pomodoro/services/pomodoro_notification_service.dart';
@@ -47,6 +48,18 @@ void main() async {
 
   runApp(
     MyApp(settingsProvider: settingsProvider, hotTheme: await hotThemeFuture),
+  );
+
+  // 后台周期性版本检查：不阻断启动，失败也不影响 App 正常使用。
+  // 通知权限在 Android 13+ 上首启询问一次（拒绝后系统不再弹框，
+  // 后台检查照常，只是发不出通知）。
+  unawaited(
+    BackgroundUpdateWorker.register().then((_) {
+      return BackgroundUpdateWorker.ensureNotificationPermission();
+    }).catchError((Object error, StackTrace stack) {
+      debugPrint('BackgroundUpdateWorker register failed: $error\n$stack');
+      return false;
+    }),
   );
 }
 

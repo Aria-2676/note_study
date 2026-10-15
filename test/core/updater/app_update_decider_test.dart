@@ -108,20 +108,21 @@ void main() {
       expect(decision.release!.version, '6.0.0');
     });
 
-    test('次版本变化不弹窗', () {
+    test('次版本变化也弹窗（自签分发无商店兜底）', () {
       final decision = decide(manifestWithRelease(version: '5.6.0'));
-      expect(decision.kind, AppUpdateKind.available);
-      expect(decision.shouldPrompt, isFalse);
+      expect(decision.kind, AppUpdateKind.optional);
+      expect(decision.shouldPrompt, isTrue);
       expect(decision.effectiveLevel, VersionChangeLevel.minor);
     });
 
-    test('修订号变化不弹窗', () {
+    test('修订号变化也弹窗（补丁可能含紧急修复）', () {
       final decision = decide(manifestWithRelease(version: '5.5.11'));
-      expect(decision.kind, AppUpdateKind.available);
-      expect(decision.shouldPrompt, isFalse);
+      expect(decision.kind, AppUpdateKind.optional);
+      expect(decision.shouldPrompt, isTrue);
+      expect(decision.effectiveLevel, VersionChangeLevel.patch);
     });
 
-    test('显式声明 major 可让修订号变化也弹窗', () {
+    test('显式声明 major 时按声明的级别展示', () {
       final decision = decide(
         manifestWithRelease(version: '5.5.11', level: 'major'),
       );
@@ -261,11 +262,11 @@ void main() {
       expect(decision.hasAssets, isTrue);
     });
 
-    test('小版本更新叠加资源更新时不弹窗且带上资源', () {
+    test('补丁版本叠加资源更新时同样弹窗并带上资源', () {
       final decision = decide(
         manifestWithRelease(version: '5.5.11', assetBuild: 3),
       );
-      expect(decision.kind, AppUpdateKind.available);
+      expect(decision.kind, AppUpdateKind.optional);
       expect(decision.hasAssets, isTrue);
     });
   });
