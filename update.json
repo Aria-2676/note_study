@@ -21,10 +21,10 @@
                      "  游戏包（game_center/packages/*.zip）均在 1MB 级，不受此限制，仍走 jsDelivr。"
                  ],
     "schemaVersion":  1,
-    "updatedAt":  "2026-10-16T14:21:45Z",
+    "updatedAt":  "2026-10-16T16:35:00Z",
     "minSupported":  "5.0.0",
     "latest":  {
-                   "version":  "5.5.25",
+                   "version":  "5.5.26",
                    "notes":  [
                                  "修复部分网络环境下检测不到新版本、更新包下载失败的问题。",
                                  "新增后台定时检查：发现新版本时在通知栏提醒，同一版本只提醒一次。",
@@ -33,40 +33,40 @@
                              ],
                    "downloads":  {
                                      "android-arm64-v8a":  {
-                                                               "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-arm64-v8a-release.apk",
+                                                               "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk",
                                                                "mirrors":  [
-                                                                               "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-arm64-v8a-release.apk",
-                                                                               "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-arm64-v8a-release.apk"
+                                                                               "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk",
+                                                                               "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk"
                                                                            ],
-                                                               "sha256":  "051e9ad4fc34de1fa233870e1a9eaca19c29cf3dfa363ce59ccfb1fa58f4a31a",
-                                                               "sizeBytes":  24367970
+                                                               "sha256":  "f29112ce97310516899ddfe9fce497b9346236e98945ae17e3b44dbfb5e2121f",
+                                                               "sizeBytes":  23830599
                                                            },
                                      "android-armeabi-v7a":  {
-                                                                 "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-armeabi-v7a-release.apk",
+                                                                 "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk",
                                                                  "mirrors":  [
-                                                                                 "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-armeabi-v7a-release.apk",
-                                                                                 "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-armeabi-v7a-release.apk"
+                                                                                 "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk",
+                                                                                 "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk"
                                                                              ],
-                                                                 "sha256":  "00ae7194723e66a9926e831520410d936c64612e7fd06ecc18064ad96b497323",
-                                                                 "sizeBytes":  22137134
+                                                                 "sha256":  "4aa0882bce1a8362b8f6aea5a709d5d695ddb22d7efc8069b9c561c1a8adc220",
+                                                                 "sizeBytes":  21632531
                                                              },
                                      "android-x86_64":  {
-                                                            "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-x86_64-release.apk",
+                                                            "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk",
                                                             "mirrors":  [
-                                                                            "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-x86_64-release.apk",
-                                                                            "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-x86_64-release.apk"
+                                                                            "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk",
+                                                                            "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk"
                                                                         ],
-                                                            "sha256":  "83e59c2b243699a58b2679fff19d45633144b8b6f00e5863ccd0595eee2c3171",
-                                                            "sizeBytes":  25917278
+                                                            "sha256":  "216832f44ca9ad75b6b223108f4bd730475e899c46b468686d6113e73a883421",
+                                                            "sizeBytes":  25379907
                                                         },
                                      "android":  {
-                                                     "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-release.apk",
+                                                     "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk",
                                                      "mirrors":  [
-                                                                     "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-release.apk",
-                                                                     "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.25/app-release.apk"
+                                                                     "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk",
+                                                                     "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk"
                                                                  ],
-                                                     "sha256":  "9db71a1ae1050f79302d468db91bb3965674972e788b6a935cb3b020c723ce32",
-                                                     "sizeBytes":  65255876
+                                                     "sha256":  "388ad0a727eac76d0e40baeffb328dfd48ace1d3b902c46af38579139c17ab2f",
+                                                     "sizeBytes":  64751273
                                                  }
                                  }
                }
