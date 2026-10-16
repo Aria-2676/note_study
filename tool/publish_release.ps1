@@ -1,4 +1,4 @@
-﻿# 任务管家（V5）整包发布工具：一条命令完成「推送 → Release → 资产 → 清单 → CDN 刷新」
+# 任务管家（V5）整包发布工具：一条命令完成「推送 → Release → 资产 → 清单 → CDN 刷新」
 #
 # 存在的理由（全是真踩过的坑）：
 #   1. PowerShell 5.1 用 curl.exe 内联 -d 传 JSON 会被剥掉双引号，GitHub
@@ -241,9 +241,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 步骤 2：push
-Log '步骤 2：推送分支与 tag'
-Invoke-GitRetry -GitArgs @('push', 'origin', $Branch) -Desc '推送分支'
-Invoke-GitRetry -GitArgs @('push', 'origin', $tag) -Desc '推送 tag'
+# 企业网把 github.com 的 git 智能 HTTP 通道双向限速到 <1KB/s，git push 必挂，
+# 且上面的 Invoke-GitRetry 默认无限重试会永远卡死发版流程。
+# 改走 push_via_api.ps1（REST API：blob→tree→commit→ref），一次调用同时推分支和 tag，
+# 并自动把本地分支重建对齐到远端同号 commit，不需要 git fetch。
+Log '步骤 2：推送分支与 tag（API 通道）'
+$pushApiScript = Join-Path $PSScriptRoot 'push_via_api.ps1'
+if (-not (Test-Path $pushApiScript)) { throw "缺少 $pushApiScript" }
+& powershell -NoProfile -ExecutionPolicy Bypass -File $pushApiScript -Branch $Branch -Tag $tag
+if ($LASTEXITCODE -ne 0) { throw 'API 推送分支/tag 失败' }
 
 # 步骤 3：Release
 Log '步骤 3：创建/获取 Release'
@@ -407,7 +413,9 @@ if (-not $SkipManifestCommit) {
     & git commit -F $msgFile
     Remove-Item $msgFile -Force -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "git commit 失败" }
-    Invoke-GitRetry -GitArgs @('push', 'origin', $Branch) -Desc '推送 update.json'
+    # 同步骤 2：git push 走 API 通道，避免在企业网限速下挂死。
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $pushApiScript -Branch $Branch
+    if ($LASTEXITCODE -ne 0) { throw 'API 推送 update.json 失败' }
 } else {
     Log '  跳过 update.json 提交（-SkipManifestCommit）'
 }
