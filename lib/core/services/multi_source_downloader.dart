@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -98,7 +99,8 @@ class MultiSourceDownloader {
     return ext;
   }
 
-  /// 单源最多重试 3 次，网络错误用指数退避（1s/2s/4s），校验失败直接放弃。
+  /// 单源最多重试 3 次：网络错误保留残包、带 Range 续传并指数退避（1s/2s/4s），
+  /// 内容类错误（sha256/大小不符、HTTP 4xx/5xx）直接放弃本源换下一个。
   static Future<({String? path, String? error})> _trySourceWithRetry({
     required String source,
     required String attemptPath,
@@ -110,6 +112,7 @@ class MultiSourceDownloader {
     void Function(double progress)? onProgress,
   }) async {
     const maxAttempts = 3;
+    String? lastError;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await FileDownloader.download(
@@ -118,6 +121,8 @@ class MultiSourceDownloader {
           timeout: idleTimeout,
           connectTimeout: connectTimeout,
           responseTimeout: responseTimeout,
+          // 同一源重试时复用同一个临时文件续传，别让 24MB 每次从零开始。
+          allowResume: true,
           onProgress: (received, total) {
             if (total == null || total <= 0) return;
             onProgress?.call(received / total);
@@ -146,24 +151,54 @@ class MultiSourceDownloader {
           error,
           stack,
         );
-        await _deleteQuietly(attemptPath);
-        final isLastAttempt = attempt == maxAttempts;
-        if (isLastAttempt) {
-          return (path: null, error: '$error');
+        lastError = '$error';
+        if (!_isRetryableNetworkError(error) || attempt == maxAttempts) {
+          // 源确定失败（校验不过 / HTTP 4xx）或已用尽次数：清残包换下一个。
+          await _deleteQuietly(attemptPath);
+          return (path: null, error: lastError);
         }
-        // 网络错误（连接断开/超时）才值得重试，校验类错误已在上层处理
-        final isNetworkError = error is SocketException ||
-            error is HttpException ||
-            error.toString().contains('TimeoutException');
-        if (!isNetworkError) {
-          return (path: null, error: '$error');
-        }
-        onProgress?.call(0);
+        // 网络抖动：**不删残包**，下一轮靠 Range 从这里接着下。
         await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
       }
     }
-    return (path: null, error: '未知错误');
+    await _deleteQuietly(attemptPath);
+    return (path: null, error: lastError ?? '未知错误');
   }
+
+  /// 只有「网络层抖动」值得重试：连接被重置/中断、TLS 握手失败、超时、
+  /// 静默截断。内容类错误（sha256/大小不符、HTTP 状态码）重试多少次都一样，
+  /// 只会白白拖时间。
+  static bool _isRetryableNetworkError(Object error) {
+    bool isNetwork(Object? e) =>
+        e is SocketException ||
+        e is HttpException ||
+        e is TimeoutException ||
+        e is HandshakeException;
+
+    if (isNetwork(error)) return true;
+    final cause = error is FileDownloadException ? error.cause : null;
+    if (isNetwork(cause)) return true;
+    // 兜底：个别网络栈把 IO 异常包成别的类型，或服务端提前关连接时
+    // FileDownloader 只能靠「实收 < Content-Length」核对发现，
+    // 这种截断没有 cause 可看，按文案判定。
+    final text = cause == null ? '$error' : '$cause';
+    return _retryableMarkers.any(text.contains);
+  }
+
+  /// 弱网/断流的文案特征（[FileDownloader] 未保留 cause 时的兜底判定）。
+  static const List<String> _retryableMarkers = [
+    'SocketException',
+    'HttpException',
+    'TimeoutException',
+    'HandshakeException',
+    'Connection closed',
+    'Connection reset',
+    'Connection terminated',
+    'Connection refused',
+    'Broken pipe',
+    'OS Error',
+    '下载不完整',
+  ];
 
   static Future<void> _deleteQuietly(String path) async {
     try {

@@ -237,5 +237,85 @@ void main() {
       );
       expect(await File(result).readAsBytes(), payload);
     });
+
+    test('弱网中途断流：同源第二次请求带 Range 只补剩余字节，不再从零重下', () async {
+      final payload = List<int>.generate(400, (i) => i % 256);
+      const half = 200;
+      // 用裸 TCP 服务精确控制：第一次声明整包大小却只发一半就断连，
+      // 第二次按 Range 补发剩余字节（模拟断点续传可用但首轮抖动的镜像）。
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close());
+      var connections = 0;
+      final rangeHeaders = <String>[];
+      server.listen((socket) {
+        final completer = Completer<String>();
+        final buffer = StringBuffer();
+        socket.listen(
+          (chunk) {
+            buffer.write(utf8.decode(chunk, allowMalformed: true));
+            if (!completer.isCompleted &&
+                buffer.toString().contains('\r\n\r\n')) {
+              completer.complete(buffer.toString());
+            }
+          },
+          onError: (Object _) {
+            if (!completer.isCompleted) completer.complete(buffer.toString());
+          },
+          onDone: () {
+            if (!completer.isCompleted) completer.complete(buffer.toString());
+          },
+        );
+        completer.future.then((header) async {
+          connections++;
+          final range = RegExp(r'range:\s*(.+)', caseSensitive: false)
+              .firstMatch(header)
+              ?.group(1)
+              ?.trim();
+          if (range != null) rangeHeaders.add(range);
+
+          if (connections == 1) {
+            socket.write(
+              'HTTP/1.1 200 OK\r\n'
+              'Content-Length: ${payload.length}\r\n'
+              'Connection: close\r\n'
+              '\r\n',
+            );
+            socket.add(payload.sublist(0, half));
+            await socket.flush();
+            await socket.close();
+            return;
+          }
+
+          final start = range == null
+              ? 0
+              : int.parse(RegExp(r'bytes=(\d+)-').firstMatch(range)!.group(1)!);
+          final body = payload.sublist(start);
+          socket.write(
+            'HTTP/1.1 ${range == null ? '200 OK' : '206 Partial Content'}\r\n'
+            'Content-Length: ${body.length}\r\n'
+            '${range == null ? '' : 'Content-Range: bytes $start-${payload.length - 1}/${payload.length}\r\n'}'
+            'Connection: close\r\n'
+            '\r\n',
+          );
+          socket.add(body);
+          await socket.flush();
+          await socket.close();
+        });
+      });
+
+      final result = await MultiSourceDownloader.downloadVerified(
+        candidates: ['http://127.0.0.1:${server.port}/app.apk'],
+        destDir: sandbox,
+        filePrefix: 'update',
+        expectedSha256: sha256Hex(payload),
+        expectedSize: payload.length,
+        idleTimeout: const Duration(seconds: 5),
+      );
+
+      // 断流属于可重试网络错误 → 同源重试且残包被复用，最终内容完整。
+      expect(await File(result).readAsBytes(), payload);
+      expect(connections, greaterThan(1));
+      expect(rangeHeaders, contains('bytes=$half-'));
+    });
   });
 }

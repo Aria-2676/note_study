@@ -8,6 +8,7 @@ import 'core/services/statistic_service.dart';
 import 'core/services/database/database_service.dart';
 import 'core/updater/models/hot_theme_config.dart';
 import 'core/updater/providers/app_update_provider.dart';
+import 'core/updater/services/app_update_launcher.dart';
 import 'core/updater/services/background_update_worker.dart';
 import 'core/updater/services/hot_theme_loader.dart';
 import 'core/updater/widgets/app_update_dialog.dart';
@@ -49,6 +50,10 @@ void main() async {
   runApp(
     MyApp(settingsProvider: settingsProvider, hotTheme: await hotThemeFuture),
   );
+
+  // 清理历次更新遗留在缓存目录的安装包 / 资源包：安装器接手后不能立刻删，
+  // 事后也没有清理点，只能等下次启动回收。不阻断启动，失败静默。
+  unawaited(AppUpdateLauncher.cleanupStaleFiles());
 
   // 后台周期性版本检查：不阻断启动，失败也不影响 App 正常使用。
   // 通知权限在 Android 13+ 上首启询问一次（拒绝后系统不再弹框，

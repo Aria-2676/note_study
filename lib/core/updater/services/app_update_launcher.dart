@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -122,6 +123,55 @@ class AppUpdateLauncher {
       await _deleteQuietly(apkPath);
       rethrow;
     }
+  }
+
+  /// 清理历次更新遗留在缓存目录里的安装包 / 资源包。
+  ///
+  /// 成功拉起系统安装器后**不能**立刻删 APK（安装器还在读这个文件），
+  /// 而事后没有任何清理点，于是每成功更新一次就永久留一份 20~60MB 的残包。
+  /// 只在启动时清理**超过 [olderThan] 的旧包**：正在下载、或用户刚拿到
+  /// 安装弹窗还没点的那份不会被误删。
+  ///
+  /// 文件名里带我们写入的毫秒时间戳（`update-<ms>-0.apk` / `asset-<ms>.zip`
+  /// / `asset-stage-<ms>`），解析不出时间戳的一律跳过——同一个缓存目录里
+  /// 还可能有别的模块写入的文件，宁可漏清也不能误删。
+  static Future<void> cleanupStaleFiles({
+    Future<Directory> Function() tempDirProvider = getTemporaryDirectory,
+    Duration olderThan = const Duration(hours: 6),
+  }) async {
+    try {
+      final dir = await tempDirProvider();
+      if (!await dir.exists()) return;
+      final cutoffMs =
+          DateTime.now().subtract(olderThan).millisecondsSinceEpoch;
+      await for (final entity in dir.list()) {
+        final name = p.basename(entity.path);
+        if (!_isOwnedTempName(name)) continue;
+        final stamp = _stampOf(name);
+        if (stamp == null || stamp > cutoffMs) continue;
+        try {
+          await entity.delete(recursive: true);
+        } catch (error) {
+          AppLogger.warn(
+            'AppUpdateLauncher',
+            '清理过期更新临时文件失败: $name',
+            error,
+          );
+        }
+      }
+    } catch (error, stack) {
+      AppLogger.warn('AppUpdateLauncher', '清理更新临时文件失败', error, stack);
+    }
+  }
+
+  /// 是否本模块写进缓存目录的文件（前缀由本模块自己约定）。
+  static bool _isOwnedTempName(String name) =>
+      name.startsWith('update-') || name.startsWith('asset-');
+
+  /// 取文件名里第一个 13 位毫秒时间戳；取不到返回 null。
+  static int? _stampOf(String name) {
+    final match = RegExp(r'\d{13}').firstMatch(name);
+    return match == null ? null : int.tryParse(match.group(0)!);
   }
 
   /// 把底层网络/校验异常翻译成用户能看懂的话。
