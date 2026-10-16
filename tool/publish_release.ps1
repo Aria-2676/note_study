@@ -171,10 +171,19 @@ function Api-Json($method, $url, $bodyObj) {
 }
 
 function Invoke-GitRetry {
-    param([string[]]$Args, [string]$Desc)
+    param([string[]]$GitArgs, [string]$Desc)
     Invoke-Retry -Desc $Desc -MaxAttempts $MaxAttempts -Action {
-        & git @Args
-        if ($LASTEXITCODE -ne 0) { throw "__TRANSIENT__ git exit $LASTEXITCODE" }
+        # git 把进度（如 Everything up-to-date）写到 stderr；在 $ErrorActionPreference='Stop'
+        # 下这会被当成 NativeCommandError 终止性错误，逃逸出重试环。此处局部降级为 Continue。
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & git @GitArgs 2>&1 | Out-Host
+            $code = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prev
+        }
+        if ($code -ne 0) { throw "__TRANSIENT__ git exit $code" }
     }
 }
 
@@ -230,8 +239,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # 步骤 2：push
 Log '步骤 2：推送分支与 tag'
-Invoke-GitRetry -Args @('push', 'origin', $Branch) -Desc '推送分支'
-Invoke-GitRetry -Args @('push', 'origin', $tag) -Desc '推送 tag'
+Invoke-GitRetry -GitArgs @('push', 'origin', $Branch) -Desc '推送分支'
+Invoke-GitRetry -GitArgs @('push', 'origin', $tag) -Desc '推送 tag'
 
 # 步骤 3：Release
 Log '步骤 3：创建/获取 Release'
@@ -349,7 +358,7 @@ if (-not $SkipManifestCommit) {
     & git commit -F $msgFile
     Remove-Item $msgFile -Force -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "git commit 失败" }
-    Invoke-GitRetry -Args @('push', 'origin', $Branch) -Desc '推送 update.json'
+    Invoke-GitRetry -GitArgs @('push', 'origin', $Branch) -Desc '推送 update.json'
 } else {
     Log '  跳过 update.json 提交（-SkipManifestCommit）'
 }
