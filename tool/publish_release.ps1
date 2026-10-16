@@ -221,7 +221,7 @@ $tag = "v$Version"
 Log "步骤 1：tag $tag"
 & git rev-parse -q --verify "refs/tags/$tag" | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    & git tag -a $tag -m "V5.$Version release"
+    & git tag -a $tag -m "V$Version release"
     if ($LASTEXITCODE -ne 0) { throw "git tag 失败" }
     Log "  已创建 tag $tag"
 } else {
@@ -245,8 +245,8 @@ try {
         $release = Api-Json 'POST' "https://api.github.com/repos/$OwnerRepo/releases" @{
             tag_name         = $tag
             target_commitish = $Branch
-            name             = "V5.$Version"
-            body             = "V5.$Version 自动发布（tool/publish_release.ps1）"
+            name             = "V$Version"
+            body             = "V$Version 自动发布（tool/publish_release.ps1）"
             draft            = $false
             prerelease       = $false
         }
@@ -343,7 +343,7 @@ if (-not $SkipManifestCommit) {
     Log '步骤 6：提交并推送 update.json'
     & git add -- update.json
     if ($LASTEXITCODE -ne 0) { throw "git add 失败" }
-    $commitMsg = "V5.${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n"
+    $commitMsg = "V${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n"
     $msgFile = Join-Path $env:TEMP "v5_commit_$(Get-Random).txt"
     [System.IO.File]::WriteAllText($msgFile, $commitMsg, [System.Text.UTF8Encoding]::new($false))
     & git commit -F $msgFile
