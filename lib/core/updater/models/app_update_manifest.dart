@@ -285,6 +285,12 @@ class AssetUpdatePackage {
   /// 压缩包地址（zip）。
   final String url;
 
+  /// 额外的镜像地址（均须 http/https），按声明顺序优先于内置加速镜像尝试。
+  ///
+  /// 与 [AppDownloadTarget.mirrors] 同义：某个分发节点失效时，运维改清单
+  /// 就能给所有客户端换新下载源，不必发新版 App。
+  final List<String> mirrors;
+
   /// 压缩包的 sha256（小写十六进制）；为空表示不校验。
   final String sha256;
 
@@ -294,6 +300,7 @@ class AssetUpdatePackage {
   const AssetUpdatePackage({
     required this.build,
     required this.url,
+    this.mirrors = const [],
     this.sha256 = '',
     this.sizeBytes = 0,
   });
@@ -307,9 +314,21 @@ class AssetUpdatePackage {
     if (url is! String || !AppDownloadTarget.isSafeDownloadUrl(url)) return null;
     final sha = raw['sha256'];
     final size = raw['sizeBytes'];
+
+    final mirrors = <String>[];
+    final rawMirrors = raw['mirrors'];
+    if (rawMirrors is List) {
+      for (final item in rawMirrors) {
+        if (item is String && AppDownloadTarget.isSafeDownloadUrl(item)) {
+          mirrors.add(item);
+        }
+      }
+    }
+
     return AssetUpdatePackage(
       build: build,
       url: url,
+      mirrors: mirrors,
       sha256: sha is String ? sha.toLowerCase() : '',
       sizeBytes: size is int && size > 0 ? size : 0,
     );
@@ -318,6 +337,7 @@ class AssetUpdatePackage {
   Map<String, dynamic> toJson() => {
     'build': build,
     'url': url,
+    if (mirrors.isNotEmpty) 'mirrors': mirrors,
     'sha256': sha256,
     'sizeBytes': sizeBytes,
   };

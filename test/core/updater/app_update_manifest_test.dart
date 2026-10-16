@@ -158,6 +158,36 @@ void main() {
       );
     });
 
+    test('assets.mirrors 只保留 http(s)，非法项静默丢弃', () {
+      final assets = AppUpdateManifest.fromJson({
+        'assets': {
+          'build': 3,
+          'url': 'https://primary.example.com/a.zip',
+          'mirrors': [
+            'https://mirror-a.example.com/a.zip',
+            'http://mirror-b.example.com/a.zip',
+            'file:///C:/evil.zip',
+            'javascript:alert(1)',
+            'not-a-url',
+          ],
+        },
+      }).assets!;
+
+      expect(assets.mirrors, [
+        'https://mirror-a.example.com/a.zip',
+        'http://mirror-b.example.com/a.zip',
+      ]);
+    });
+
+    test('assets 缺省 mirrors 为空列表且 toJson 省略该字段', () {
+      final assets = AppUpdateManifest.fromJson({
+        'assets': {'build': 3, 'url': 'https://x/a.zip'},
+      }).assets!;
+      expect(assets.mirrors, isEmpty);
+      final json = assets.toJson();
+      expect(json.containsKey('mirrors'), isFalse);
+    });
+
     test('应忽略未知字段（例如 _comment）', () {
       final manifest = AppUpdateManifest.fromJson({
         '_comment': ['随便写点什么'],

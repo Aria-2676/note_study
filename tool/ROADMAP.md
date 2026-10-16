@@ -13,14 +13,15 @@
 
 ## 版本计划
 
-### v5.5.26 ｜稳定性收尾（基建版）⏳ 待真机观察期结束后启动
+### v5.5.26 ｜稳定性收尾（基建版）✅ 开发完成，待发布
 
-- [ ] 资源热更包下载（`app_asset_applier.dart`）接入断点续传与多源回退
-- [ ] 游戏 zip 下载（`game_installer.dart`）接入断点续传与多源回退
-- [ ] 「仅 WiFi 下自动下载」开关
-- [ ] 更新结果本地统计（成功/失败/取消），为链路质量评估提供数据
+- [x] 资源热更包下载（`app_asset_applier.dart`）接入断点续传与多源回退（`AssetUpdatePackage` 新增 `mirrors`）
+- [x] 游戏 zip 下载（`game_installer.dart` / `game_module_service.dart`）接入断点续传与多源回退
+- [x] 「仅 WiFi 下自动下载」开关（`NetworkInfo` + 设置持久化，手动更新不受限）
+- [x] 更新结果本地统计（整包/资源 成功·失败·取消），更新页展示并可清零
+- [x] 恢复图标树摇：实测 `font-subset.exe` 已可用（roboto-black.ttf 子集化成功），从构建命令移除 `--no-tree-shake-icons`
 
-> 验收：全 App 所有下载入口的弱网行为一致；827+ 测试全绿。
+> 验收：全 App 所有下载入口的弱网行为一致；838 测试全绿。
 
 ### v5.5.27 ｜主题画廊（看得见版）
 
@@ -61,6 +62,13 @@
 - 桌面小组件
 - 刮刮卡 / 积分商店视觉升级
 - 数据导出格式扩充（CSV/ICS 等）
+- 减体积（比差分划算）：图标树摇已于 v5.5.26 恢复（省约 1.5MB）；下一步评估 `--obfuscate --split-debug-info`
+
+## 已评估不做（决策留档）
+
+- **APK 二进制差分（BSDiff/Courgette）**：不做。① 硬墙——Android 10+ SELinux 禁止普通自签应用读取已安装的 base.apk，patch 无旧包可打；变通方案要在私有目录永久留 24MB 旧包且仅相邻版本有效。② Flutter libapp.so 为 AOT 机器码，小改也会整体重排，差分压缩率不稳。③ 当前瓶颈是连通性而非体积，断点续传+镜像已对症。
+- **资源/游戏包文件级增量**：暂缓。热更/游戏包现均 1MB 级，增量合并不抵成本；待热更素材包超过 10MB 再做（在 AssetUpdatePackage 上加文件 hash 清单，只下变化文件并入现有原子 promote）。
+
 
 ## 已发布版本
 

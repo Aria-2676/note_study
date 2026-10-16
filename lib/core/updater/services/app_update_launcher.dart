@@ -56,9 +56,13 @@ class AppUpdateLauncher {
   }
 
   /// 应用更新。[onProgress] 仅在走应用内下载时回调（0~1，换源后从 0 重新计）。
+  ///
+  /// [isCancelled] 在应用内下载期间被轮询，返回 true 时立即中止（不重试、
+  /// 不换源）并抛出「下载已取消」；跳下载页路径不受影响。
   Future<AppUpdateLaunchResult> apply(
     AppDownloadTarget target, {
     void Function(double progress)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final uri = Uri.tryParse(target.url);
     if (uri == null) {
@@ -71,7 +75,11 @@ class AppUpdateLauncher {
           ? AppUpdateLaunchResult.openedDownloadPage
           : AppUpdateLaunchResult.failed;
     }
-    return _downloadAndInstall(target, onProgress: onProgress);
+    return _downloadAndInstall(
+      target,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
   }
 
   /// 用外部浏览器 / 应用商店打开地址。
@@ -87,6 +95,7 @@ class AppUpdateLauncher {
   Future<AppUpdateLaunchResult> _downloadAndInstall(
     AppDownloadTarget target, {
     void Function(double progress)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final candidates = DownloadMirrors.expand(
       target.url,
@@ -103,6 +112,7 @@ class AppUpdateLauncher {
         expectedSha256: target.sha256,
         expectedSize: target.sizeBytes,
         onProgress: onProgress,
+        isCancelled: isCancelled,
       );
     } on FileDownloadException catch (error) {
       final msg = _userFriendlyMessage(error.message);

@@ -3,11 +3,9 @@
 # 存在的理由：`flutter build apk --release` 有几个「必须记得加」的参数和
 # 「必须记得做」的收尾动作，手打很容易漏：
 #
-#   1. --no-tree-shake-icons   本机 Smart App Control 会拦 font-subset.exe，
-#                              不加这个 flag 构建直接失败（除非关掉 SAC）。
-#   2. --split-per-abi         fat APK 约 62MB，分 ABI 后每个仅 21~25MB。
+#   1. --split-per-abi         fat APK 约 62MB，分 ABI 后每个仅 21~25MB。
 #                              自更新是用户流量，没必要让他们下 3 倍体积。
-#   3. sha256 + sizeBytes      写 update.json 必需，手工算容易抄错。
+#   2. sha256 + sizeBytes      写 update.json 必需，手工算容易抄错。
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1
@@ -98,9 +96,9 @@ if (-not $SkipTests) {
 
 # ---- 构建 --------------------------------------------------------------------
 
-# --no-tree-shake-icons 不是「优化取舍」而是**本机的必需项**：
-# font-subset.exe 被 Smart App Control 拦截，不加构建必失败。
-# 代价是 APK 保留全量 MaterialIcons 字形（约 +1.5MB）。
+# 图标树摇（font-subset.exe）现已可用：本机 Smart App Control 早前的拦截
+# 已解除，--no-tree-shake-icons 不再需要，保留默认树摇可省约 1.5MB 字形。
+# 若某台构建机又出现拦截（构建报 font-subset 失败），再加回该 flag 即可。
 #
 # both 模式要构建两次：先 split（会清掉旧的 app-release.apk），再 fat。
 # 顺序不能反 —— `flutter build apk` 每次都会清理 flutter-apk 目录里
@@ -109,7 +107,7 @@ $buildPasses = if ($Flavor -eq 'both') { @('split', 'fat') } else { @($Flavor) }
 
 foreach ($pass in $buildPasses) {
     Write-Step "flutter build apk --release（$pass）"
-    $buildArgs = @('build', 'apk', '--release', '--no-tree-shake-icons')
+    $buildArgs = @('build', 'apk', '--release')
     if ($pass -eq 'split') { $buildArgs += '--split-per-abi' }
 
     Write-Host "flutter $($buildArgs -join ' ')"
@@ -196,7 +194,7 @@ $version = (Select-String -LiteralPath (Join-Path $repoRoot 'pubspec.yaml') -Pat
 $appVersion = ($version -split '\+')[0]        # 5.5.19+0 -> 5.5.19
 $buildNumber = ($version -split '\+')[1]       # 5.5.19+0 -> 0
 
-$usedFlags = '--no-tree-shake-icons'
+$usedFlags = ''
 if ($Flavor -eq 'split' -or $Flavor -eq 'both') {
     $usedFlags = $usedFlags + ' --split-per-abi'
 }

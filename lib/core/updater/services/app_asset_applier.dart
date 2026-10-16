@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../config/download_mirrors.dart';
 import '../../services/file_downloader.dart';
+import '../../services/multi_source_downloader.dart';
 import '../../services/zip_extractor.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_manifest.dart';
@@ -33,9 +35,6 @@ class AppAssetApplier {
   /// 单独开放注入有两个用处：测试可以指定沙箱目录；且能确保它与 [rootDir]
   /// 位于同一磁盘分区（重命名跨分区会失败，那样就只能退化成「先删后拷」，失去原子性）。
   final String? workDir;
-
-  /// 下载大包时给足超时（资源包可能几十 MB）。
-  static const Duration _downloadTimeout = Duration(minutes: 10);
 
   /// 当前资源目录的绝对路径。
   Future<String> resolveRoot() async {
@@ -98,35 +97,28 @@ class AppAssetApplier {
       throw AppUpdateException('无法确定资源目录：$error');
     }
 
-    final zipPath = p.join(workRoot, 'asset-$stamp.zip');
     final stageDir = p.join(workRoot, 'asset-stage-$stamp');
+    String? zipPath;
 
     try {
-      // ① 下载
-      await FileDownloader.download(
-        url: uri,
-        destPath: zipPath,
-        timeout: _downloadTimeout,
-        onProgress: (received, total) {
-          if (total == null || total <= 0) return;
-          onProgress?.call(received / total);
-        },
+      // ① 多源下载：清单镜像 → 内置加速镜像 → 原始地址，单源内自动 Range
+      // 续传与指数退避；下载完成即在下载器内做 sha256 / 大小校验，
+      // 任一源不符就删残包换下一个，全部失败才抛异常。
+      final candidates = DownloadMirrors.expand(
+        assets.url,
+        explicitMirrors: assets.mirrors,
+      );
+      zipPath = await MultiSourceDownloader.downloadVerified(
+        candidates: candidates,
+        destDir: Directory(workRoot),
+        // 文件名前缀 `asset-` 与启动时的残留清理约定保持一致。
+        filePrefix: 'asset',
+        expectedSha256: assets.sha256,
+        expectedSize: assets.sizeBytes,
+        onProgress: onProgress,
       );
 
-      // ② 先校验再解压：这一步不过就完全不碰现有资源。
-      if (!await FileDownloader.verifySha256(zipPath, assets.sha256)) {
-        throw const AppUpdateException('资源包校验失败，已丢弃（可能被篡改或 CDN 缓存不同步）');
-      }
-      if (assets.sizeBytes > 0) {
-        final actual = await File(zipPath).length();
-        if (actual != assets.sizeBytes) {
-          throw AppUpdateException(
-            '资源包大小不符（期望 ${assets.sizeBytes} 字节，实际 $actual 字节）',
-          );
-        }
-      }
-
-      // ③ 解压到临时目录（脏数据只落在临时区）
+      // ② 解压到临时目录（脏数据只落在临时区）
       if (await Directory(stageDir).exists()) {
         await Directory(stageDir).delete(recursive: true);
       }
@@ -147,7 +139,7 @@ class AppAssetApplier {
       AppLogger.warn('AppAssetApplier', '资源热更新失败', error, stack);
       throw AppUpdateException('资源热更新失败：$error');
     } finally {
-      await _deleteQuietly(zipPath);
+      if (zipPath != null) await _deleteQuietly(zipPath);
       await _deleteDirQuietly(stageDir);
     }
   }

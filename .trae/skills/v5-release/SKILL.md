@@ -50,7 +50,7 @@ if(-not($b[0]-eq239 -and $b[1]-eq187 -and $b[2]-eq191)){
 
 1. 发版前检查：`tool/github_token.txt` 非空、工作区干净、无同名残留本地 tag（`git tag -l vX.Y.Z`）。
 2. 一条命令：`tool\release.ps1 -Version 5.5.26`。脚本顺序：改 pubspec 版本号 → 构建 split+fat 四个 APK → commit → 调 publish_release.ps1。
-   - 构建参数已固化在脚本里，不要手敲替代：`--no-tree-shake-icons`（本机 Smart App Control 会拦 font-subset.exe）、`--split-per-abi`（包体 62MB → 21~25MB）。
+   - 构建参数已固化在脚本里，不要手敲替代：`--split-per-abi`（包体 62MB → 21~25MB）。图标树摇自 v5.5.26 起已恢复默认启用（Smart App Control 早前的 font-subset.exe 拦截已解除，省约 1.5MB）；若某台机构建报 font-subset 失败，再加回 `--no-tree-shake-icons`。
 3. 耗时长（构建约 4 分钟 + 上传），**后台运行并轮询 output.log**，不要前台阻塞。
 4. 构建已完成、仅发布步骤失败时，**不要重新构建**，直接续跑幂等的 `tool\publish_release.ps1 -Version 5.5.26`：已存在且校验通过的资产会跳过，失败资产会删后重传。
 5. publish_release.ps1 内部的所有 git push 已改调 push_via_api.ps1，若发现又出现直接 `git push`，先修掉再发版。

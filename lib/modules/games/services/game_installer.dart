@@ -13,6 +13,8 @@ class GameInstaller {
   ///
   /// [onProgress] 的 `total` 在服务端未返回 `Content-Length` 时为 null。
   /// [isCancelled] 返回 true 时中止下载并抛出 [GameException]。
+  /// [allowResume] 默认开启：中断重试时对已存在的残包带 `Range` 续传，
+  /// 服务端不支持时自动降级整包重下。
   /// 实现在 [FileDownloader]（App 更新包也用同一套）；这里把
   /// [FileDownloadException] 转成 [GameException]，维持游戏模块原有的错误契约。
   static Future<void> downloadZip({
@@ -21,6 +23,7 @@ class GameInstaller {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
     Duration timeout = const Duration(seconds: 30),
+    bool allowResume = true,
   }) async {
     try {
       await FileDownloader.download(
@@ -29,6 +32,7 @@ class GameInstaller {
         onProgress: onProgress,
         isCancelled: isCancelled,
         timeout: timeout,
+        allowResume: allowResume,
       );
     } on FileDownloadException catch (error) {
       throw GameException(error.message);

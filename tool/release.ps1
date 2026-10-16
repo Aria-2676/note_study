@@ -71,12 +71,12 @@ if (Confirm-Step "构建 APK") {
     try {
         # 构建 split 包
         Log "  构建 split 包（arm64-v8a, armeabi-v7a, x86_64）..."
-        flutter build apk --release --no-tree-shake-icons --split-per-abi
+        flutter build apk --release --split-per-abi
         if ($LASTEXITCODE -ne 0) { throw "split 构建失败" }
 
         # 构建 fat 包
         Log "  构建 fat 包..."
-        flutter build apk --release --no-tree-shake-icons
+        flutter build apk --release
         if ($LASTEXITCODE -ne 0) { throw "fat 构建失败" }
 
         # 验证 4 个 APK 都存在

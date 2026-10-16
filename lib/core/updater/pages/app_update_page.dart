@@ -59,9 +59,19 @@ class AppUpdatePage extends StatelessWidget {
                   value: provider.notificationsEnabled,
                   onChanged: provider.setNotificationsEnabled,
                 ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.wifi_outlined),
+                  title: const Text('仅 WiFi 自动下载'),
+                  subtitle: const Text('移动网络下推迟资源更新包下载；手动点「立即更新」不受限'),
+                  value: provider.wifiOnlyAutoDownload,
+                  onChanged: provider.setWifiOnlyAutoDownload,
+                ),
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          _buildStatsCard(context, provider, theme),
           if (decision.hasRelease) ...[
             const SizedBox(height: 16),
             _buildReleaseCard(context, provider, decision, theme),
@@ -106,6 +116,70 @@ class AppUpdatePage extends StatelessWidget {
       return '发现新版本 ${decision.release!.version}';
     }
     return provider.currentVersion.isEmpty ? '—' : '已是最新版本';
+  }
+
+  Widget _buildStatsCard(
+    BuildContext context,
+    AppUpdateProvider provider,
+    ThemeData theme,
+  ) {
+    final stats = provider.stats;
+    final totalApp =
+        stats.appSuccess + stats.appFailure + stats.appCancelled;
+    final totalAsset = stats.assetSuccess + stats.assetFailure;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights_outlined,
+                    size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('更新统计', style: theme.textTheme.titleSmall),
+                const Spacer(),
+                if (totalApp + totalAsset > 0)
+                  TextButton(
+                    onPressed: provider.resetStats,
+                    child: const Text('清零'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (totalApp + totalAsset == 0)
+              Text('本机暂无更新下载记录',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline))
+            else ...[
+              _statsLine(theme, '整包更新',
+                  '成功 ${stats.appSuccess} · 失败 ${stats.appFailure} · 取消 ${stats.appCancelled}'),
+              const SizedBox(height: 4),
+              _statsLine(theme, '资源更新',
+                  '成功 ${stats.assetSuccess} · 失败 ${stats.assetFailure}'),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statsLine(ThemeData theme, String label, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(label, style: theme.textTheme.bodySmall),
+        ),
+        Expanded(
+          child: Text(value, style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          )),
+        ),
+      ],
+    );
   }
 
   Widget _buildReleaseCard(
@@ -159,9 +233,9 @@ class AppUpdatePage extends StatelessWidget {
                 Expanded(
                   child: FilledButton(
                     onPressed: provider.isApplying
-                        ? null
+                        ? provider.cancelApply
                         : () => _apply(context, provider),
-                    child: Text(provider.isApplying ? '下载中…' : '立即更新'),
+                    child: Text(provider.isApplying ? '取消下载' : '立即更新'),
                   ),
                 ),
                 if (!forced) ...[

@@ -4,6 +4,8 @@ import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
+import '../../../core/services/file_downloader.dart';
+import '../../../core/services/multi_source_downloader.dart';
 import '../../../core/utils/app_logger.dart';
 import '../models/game_manifest_model.dart';
 import '../models/installed_game_model.dart';
@@ -59,19 +61,19 @@ class GameModuleService {
   }) async {
     final tempDir = await _installRepository.tempDirectory();
     final stamp = DateTime.now().microsecondsSinceEpoch;
-    final zipPath = p.join(tempDir.path, '${game.id}-$stamp.zip');
     final extractDir = p.join(tempDir.path, '${game.id}-$stamp');
+    String? zipPath;
 
     try {
-      await _downloadVerifiedZip(
+      zipPath = await _downloadVerifiedZip(
         game,
-        zipPath,
+        tempDir,
         onProgress: onProgress,
         isCancelled: isCancelled,
         timeout: downloadTimeout,
       );
       await Isolate.run(
-        () => GameInstaller.extractZip(zipPath: zipPath, targetDir: extractDir),
+        () => GameInstaller.extractZip(zipPath: zipPath!, targetDir: extractDir),
       );
       if (!await File(p.join(extractDir, game.entry)).exists()) {
         throw GameException('游戏包缺少入口文件：${game.entry}');
@@ -99,7 +101,7 @@ class GameModuleService {
       if (error is GameException) rethrow;
       throw GameException('安装失败：$error');
     } finally {
-      await _deleteQuietly(zipPath);
+      if (zipPath != null) await _deleteQuietly(zipPath);
       await _deleteQuietly(extractDir);
     }
   }
@@ -200,52 +202,46 @@ class GameModuleService {
   /// 清理临时目录残留。
   Future<void> cleanTemp() => _installRepository.cleanTemp();
 
-  /// 依次尝试多个 CDN 源下载游戏包，下载后立即校验 sha256。
+  /// 多源下载并校验游戏包，返回落地后的 zip 绝对路径。
   ///
-  /// 各镜像节点对 `@main` 的缓存彼此独立，某节点可能仍返回旧包（清单已更新、
-  /// 包未更新），此时校验会失败；本方法会清理残包并回退到下一个候选源，
-  /// 直至某个源返回内容与清单一致。全部失败时抛出 [GameException]。
+  /// 与 App 整包更新共用 [MultiSourceDownloader]：候选源逐个尝试，单源内
+  /// 网络抖动自动 Range 断点续传 + 指数退避（3 次），sha256/大小不符或
+  /// HTTP 错误立即删残包换源；全部源失败或用户取消才抛 [GameException]。
+  ///
+  /// 各 jsDelivr 节点对 `@main` 的缓存彼此独立，某节点可能返回旧包
+  /// （清单已更新、包未更新），校验失败会被多源逻辑自然跳过。
   ///
   /// [timeout] 是**每个源**的超时；不要把总预算除以源数量后传进来，
   /// 否则单个慢源会被过早掐断。
-  Future<void> _downloadVerifiedZip(
+  Future<String> _downloadVerifiedZip(
     GameInfo game,
-    String zipPath, {
+    Directory tempDir, {
     void Function(int received, int? total)? onProgress,
     bool Function()? isCancelled,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    Object? lastError;
-    for (final uri in GameCdnConfig.packageUris(game.package.path)) {
-      try {
-        await GameInstaller.downloadZip(
-          url: uri,
-          destPath: zipPath,
-          onProgress: onProgress,
-          isCancelled: isCancelled,
-          timeout: timeout,
-        );
-        await _verifyChecksum(zipPath, game.package.sha256);
-        return;
-      } catch (error, stack) {
-        lastError = error;
-        AppLogger.warn(
-          'GameModuleService',
-          '下载或校验失败，尝试下一个源: $uri',
-          error,
-          stack,
-        );
-        await _deleteQuietly(zipPath);
-      }
-    }
-    throw GameException('游戏包下载或校验失败（$lastError）');
-  }
+    final candidates = GameCdnConfig.packageUris(
+      game.package.path,
+    ).map((uri) => uri.toString()).toList(growable: false);
+    // game.id 是清单里的相对路径式标识，理论上可能含 '/'，做文件名前先
+    // 收敛成安全字符，避免拼出带子目录的临时文件名。
+    final safeId = game.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
 
-  Future<void> _verifyChecksum(String zipPath, String expected) async {
-    if (expected.isEmpty) return;
-    final actual = await Isolate.run(() => GameInstaller.sha256OfFile(zipPath));
-    if (actual.toLowerCase() != expected.toLowerCase()) {
-      throw const GameException('游戏包校验失败，文件可能已损坏');
+    try {
+      return await MultiSourceDownloader.downloadVerified(
+        candidates: candidates,
+        destDir: tempDir,
+        filePrefix: 'game-$safeId',
+        expectedSha256: game.package.sha256,
+        expectedSize: game.package.sizeBytes,
+        onProgressBytes: onProgress,
+        isCancelled: isCancelled,
+        connectTimeout: timeout,
+        responseTimeout: timeout,
+        idleTimeout: timeout,
+      );
+    } on FileDownloadException catch (error) {
+      throw GameException(error.message);
     }
   }
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../services/network_info.dart';
 import '../../utils/abi_utils.dart';
 import '../../utils/app_logger.dart';
 import '../models/app_update_decision.dart';
@@ -15,6 +16,7 @@ import '../services/app_update_launcher.dart';
 import '../services/app_update_service.dart';
 import '../services/app_update_settings.dart';
 import '../services/download_progress_notification.dart';
+import '../services/update_stats_store.dart';
 
 /// 版本检查与更新流程的状态中枢。
 ///
@@ -26,6 +28,8 @@ class AppUpdateProvider extends ChangeNotifier {
     AppUpdateSettings? settings,
     AppUpdateLauncher? launcher,
     AppAssetApplier? assetApplier,
+    NetworkInfo? networkInfo,
+    UpdateStatsStore? statsStore,
     Future<String> Function()? currentVersionLoader,
     Future<String> Function()? platformLoader,
     Future<String?> Function()? abiLoader,
@@ -33,6 +37,8 @@ class AppUpdateProvider extends ChangeNotifier {
        _settings = settings ?? const AppUpdateSettings(),
        _launcher = launcher ?? const AppUpdateLauncher(),
        _assetApplier = assetApplier ?? const AppAssetApplier(),
+       _networkInfo = networkInfo ?? const NetworkInfo(),
+       _statsStore = statsStore ?? const UpdateStatsStore(),
        _versionLoader = currentVersionLoader ?? loadVersionFromPackageInfo,
        _platformLoader = platformLoader ?? loadPlatform,
        _abiLoader = abiLoader ?? loadAbi;
@@ -41,6 +47,8 @@ class AppUpdateProvider extends ChangeNotifier {
   final AppUpdateSettings _settings;
   final AppUpdateLauncher _launcher;
   final AppAssetApplier _assetApplier;
+  final NetworkInfo _networkInfo;
+  final UpdateStatsStore _statsStore;
   final Future<String> Function() _versionLoader;
   final Future<String> Function() _platformLoader;
   final Future<String?> Function() _abiLoader;
@@ -54,9 +62,12 @@ class AppUpdateProvider extends ChangeNotifier {
   bool _isApplying = false;
   bool _isApplyingAssets = false;
   bool _notificationsEnabled = true;
+  bool _wifiOnlyAutoDownload = true;
   bool _promptPending = false;
+  bool _cancelRequested = false;
   double _applyProgress = 0;
   String? _message;
+  UpdateStats _stats = UpdateStats.empty;
 
   /// 当前判定结论。
   AppUpdateDecision get decision => _decision;
@@ -72,6 +83,12 @@ class AppUpdateProvider extends ChangeNotifier {
 
   /// 是否允许大版本弹窗提醒。
   bool get notificationsEnabled => _notificationsEnabled;
+
+  /// 是否仅 WiFi 下自动下载资源更新包。
+  bool get wifiOnlyAutoDownload => _wifiOnlyAutoDownload;
+
+  /// 累计更新结果统计（供设置页展示）。
+  UpdateStats get stats => _stats;
 
   /// 下载进度 0~1（仅应用内下载时有意义）。
   double get applyProgress => _applyProgress;
@@ -104,6 +121,8 @@ class AppUpdateProvider extends ChangeNotifier {
     try {
       await _refreshEnvironment();
       _notificationsEnabled = await _settings.notificationsEnabled();
+      _wifiOnlyAutoDownload = await _settings.wifiOnlyAutoDownload();
+      _stats = await _statsStore.read();
     } catch (error, stack) {
       AppLogger.warn('AppUpdateProvider', '读取版本信息失败', error, stack);
     }
@@ -199,13 +218,27 @@ class AppUpdateProvider extends ChangeNotifier {
     final assets = _decision.assets;
     if (assets == null) return;
 
+    // 流量闸门：默认仅在 WiFi/以太网下才静默下载资源包。这是**无人值守**
+    // 下载，要替用户省流量；整包更新由用户手动发起，不受此限制（见 applyUpdate）。
+    // 本次跳过不写 assetBuild，下次检查（回前台/下个周期）到 WiFi 自然补上。
+    if (_wifiOnlyAutoDownload &&
+        !await _networkInfo.allowsUnmeteredDownload()) {
+      debugPrint(
+        '[AppUpdateProvider] 当前为移动网络且开启「仅 WiFi 自动下载」，'
+        '跳过本次静默资源更新',
+      );
+      return;
+    }
+
     _isApplyingAssets = true;
     try {
       await _assetApplier.apply(assets);
       await _settings.setAssetBuild(assets.build);
+      _stats = await _statsStore.record(UpdateOutcome.assetSuccess);
       // 构建号变了，重新判定一次：资源已是最新则不再重复出现在结论里。
       await _recompute();
     } catch (error, stack) {
+      _stats = await _statsStore.record(UpdateOutcome.assetFailure);
       AppLogger.warn('AppUpdateProvider', '资源热更新应用失败（下次检查会重试）', error, stack);
     } finally {
       _isApplyingAssets = false;
@@ -241,7 +274,32 @@ class AppUpdateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 开关「仅 WiFi 下自动下载资源更新包」。
+  Future<void> setWifiOnlyAutoDownload(bool enabled) async {
+    if (_wifiOnlyAutoDownload == enabled) return;
+    _wifiOnlyAutoDownload = enabled;
+    notifyListeners();
+    await _settings.setWifiOnlyAutoDownload(enabled);
+  }
+
+  /// 清空本机更新结果统计。
+  Future<void> resetStats() async {
+    _stats = await _statsStore.reset();
+    notifyListeners();
+  }
+
+  /// 用户在下载中主动取消：置标志位，由下载器轮询到后中止。
+  ///
+  /// 不能用同步「强杀」：Dart 没有安全中断正在进行的 IO 的手段，标志位让
+  /// 下载流在下一个数据块自行退出，残包留给多源下载器清理。
+  void cancelApply() {
+    if (_isApplying) _cancelRequested = true;
+  }
+
   /// 执行更新：下载并调起安装器，或打开下载页。
+  ///
+  /// 这是**用户手动发起**的下载，因此不做 WiFi 闸门（蜂窝网络也照常下），
+  /// 仅受 [cancelApply] 控制可中途取消。
   Future<AppUpdateLaunchResult> applyUpdate() async {
     if (_isApplying) return AppUpdateLaunchResult.failed;
     final target = downloadTarget;
@@ -252,6 +310,7 @@ class AppUpdateProvider extends ChangeNotifier {
     }
 
     _isApplying = true;
+    _cancelRequested = false;
     _applyProgress = 0;
     _message = null;
     notifyListeners();
@@ -269,25 +328,41 @@ class AppUpdateProvider extends ChangeNotifier {
           notifyListeners();
           unawaited(DownloadProgressNotification.showProgress(progress, version));
         },
+        isCancelled: () => _cancelRequested,
       );
       if (result == AppUpdateLaunchResult.failed) {
         _message = '打开下载页失败，请稍后重试';
+        _stats = await _statsStore.record(UpdateOutcome.appFailure);
         await DownloadProgressNotification.cancel();
       } else if (result == AppUpdateLaunchResult.installStarted) {
+        // 下载完成并成功交给系统安装器，计为一次成功。
+        _stats = await _statsStore.record(UpdateOutcome.appSuccess);
         await DownloadProgressNotification.showCompleted(version);
       }
+      // openedDownloadPage（非 Android）没有实际下载，不计数。
       return result;
     } on AppUpdateException catch (error) {
-      _message = error.message;
       await DownloadProgressNotification.cancel();
+      if (_cancelRequested) {
+        _stats = await _statsStore.record(UpdateOutcome.appCancelled);
+        return AppUpdateLaunchResult.failed;
+      }
+      _message = error.message;
+      _stats = await _statsStore.record(UpdateOutcome.appFailure);
       return AppUpdateLaunchResult.failed;
     } catch (error, stack) {
       AppLogger.warn('AppUpdateProvider', '应用更新失败', error, stack);
-      _message = '更新失败，请稍后重试';
       await DownloadProgressNotification.cancel();
+      if (_cancelRequested) {
+        _stats = await _statsStore.record(UpdateOutcome.appCancelled);
+      } else {
+        _message = '更新失败，请稍后重试';
+        _stats = await _statsStore.record(UpdateOutcome.appFailure);
+      }
       return AppUpdateLaunchResult.failed;
     } finally {
       _isApplying = false;
+      _cancelRequested = false;
       notifyListeners();
     }
   }

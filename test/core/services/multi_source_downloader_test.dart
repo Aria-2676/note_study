@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:v5_app/core/services/file_downloader.dart';
 import 'package:v5_app/core/services/multi_source_downloader.dart';
 
@@ -316,6 +317,67 @@ void main() {
       expect(await File(result).readAsBytes(), payload);
       expect(connections, greaterThan(1));
       expect(rangeHeaders, contains('bytes=$half-'));
+    });
+
+    test('下载中取消：立即中止、不重试不换源，残包被清理', () async {
+      // 足够大且分块缓慢，确保取消标志能在下载途中被轮询到（小响应可能
+      // 一个数据事件就收完，来不及取消）。
+      final payload = List<int>.generate(200 * 1024, (i) => i % 256);
+      var cancelled = false;
+
+      // 源 1：慢吞吞地一块一块吐，给取消留出时间窗。
+      final (slowServer, slowUrl) = await startServer((request) async {
+        request.response.headers.contentLength = payload.length;
+        const chunk = 1024;
+        for (var offset = 0; offset < payload.length; offset += chunk) {
+          final end =
+              (offset + chunk < payload.length) ? offset + chunk : payload.length;
+          request.response.add(payload.sublist(offset, end));
+          await request.response.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+        await request.response.close();
+      });
+      addTearDown(() => slowServer.close(force: true));
+
+      // 源 2：哨兵，一旦被请求说明取消没拦住换源逻辑。
+      var secondHit = 0;
+      final (secondServer, secondUrl) = await startServer((request) async {
+        secondHit++;
+        request.response.add(payload);
+        await request.response.close();
+      });
+      addTearDown(() => secondServer.close(force: true));
+
+      await expectLater(
+        MultiSourceDownloader.downloadVerified(
+          candidates: [slowUrl.toString(), secondUrl.toString()],
+          destDir: sandbox,
+          filePrefix: 'update',
+          expectedSha256: sha256Hex(payload),
+          idleTimeout: const Duration(seconds: 10),
+          onProgressBytes: (received, total) {
+            // 收到第一个数据块就取消。
+            cancelled = true;
+          },
+          isCancelled: () => cancelled,
+        ),
+        throwsA(
+          isA<FileDownloadException>().having(
+            (e) => e.message,
+            'message',
+            contains('取消'),
+          ),
+        ),
+      );
+
+      expect(secondHit, 0, reason: '取消后不得切换到备用源');
+      // 取消的残包应被清掉，sandbox 里不留 update-* 文件。
+      final leftovers = sandbox
+          .listSync()
+          .where((f) => p.basename(f.path).startsWith('update-'))
+          .toList();
+      expect(leftovers, isEmpty);
     });
   });
 }

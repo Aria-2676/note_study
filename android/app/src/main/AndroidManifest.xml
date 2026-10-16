@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 仅用于小游戏模块按需下载游戏包（游戏下载后完全离线运行） -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- connectivity_plus 判断当前是否 WiFi（「仅 WiFi 自动下载」开关）需要 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>

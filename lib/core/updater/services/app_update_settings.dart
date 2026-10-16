@@ -9,6 +9,7 @@ class AppUpdateSettings {
 
   static const String _kIgnoredVersion = 'app_update_ignored_version';
   static const String _kNotificationsEnabled = 'app_update_notifications_enabled';
+  static const String _kWifiOnlyAutoDownload = 'app_update_wifi_only_auto';
   static const String _kLastCheckAt = 'app_update_last_check_at';
   static const String _kAssetBuild = 'app_update_asset_build';
   static const String _kBgVersion = 'app_update_env_version';
@@ -55,6 +56,20 @@ class AppUpdateSettings {
   Future<void> setNotificationsEnabled(bool enabled) async {
     final prefs = await _prefs();
     await prefs.setBool(_kNotificationsEnabled, enabled);
+  }
+
+  /// 是否「仅 WiFi 下才自动下载资源更新包」。默认开启。
+  ///
+  /// 只管**无人值守的静默资源热更**：整包更新永远由用户点击「立即更新」
+  /// 发起，不受此开关限制；用户主动点的下载哪怕在蜂窝网络也照常进行。
+  Future<bool> wifiOnlyAutoDownload() async {
+    final prefs = await _prefs();
+    return prefs.getBool(_kWifiOnlyAutoDownload) ?? true;
+  }
+
+  Future<void> setWifiOnlyAutoDownload(bool enabled) async {
+    final prefs = await _prefs();
+    await prefs.setBool(_kWifiOnlyAutoDownload, enabled);
   }
 
   /// 上次检查更新的时间；从未检查过时为 null。

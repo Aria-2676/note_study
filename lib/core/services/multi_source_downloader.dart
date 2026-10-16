@@ -39,6 +39,8 @@ class MultiSourceDownloader {
     String expectedSha256 = '',
     int expectedSize = 0,
     void Function(double progress)? onProgress,
+    void Function(int received, int? total)? onProgressBytes,
+    bool Function()? isCancelled,
     Duration connectTimeout = const Duration(seconds: 15),
     Duration responseTimeout = const Duration(seconds: 30),
     Duration idleTimeout = const Duration(seconds: 60),
@@ -52,6 +54,9 @@ class MultiSourceDownloader {
     String? verifiedPath;
 
     for (var i = 0; i < candidates.length; i++) {
+      if (isCancelled?.call() ?? false) {
+        throw const FileDownloadException('下载已取消');
+      }
       final source = candidates[i];
       final extension = _extensionOf(source);
       final attemptPath = p.join(
@@ -67,6 +72,8 @@ class MultiSourceDownloader {
         expectedSha256: expectedSha256,
         expectedSize: expectedSize,
         onProgress: onProgress,
+        onProgressBytes: onProgressBytes,
+        isCancelled: isCancelled,
       );
       if (result.path != null) {
         verifiedPath = result.path;
@@ -110,10 +117,16 @@ class MultiSourceDownloader {
     required String expectedSha256,
     required int expectedSize,
     void Function(double progress)? onProgress,
+    void Function(int received, int? total)? onProgressBytes,
+    bool Function()? isCancelled,
   }) async {
     const maxAttempts = 3;
     String? lastError;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (isCancelled?.call() ?? false) {
+        await _deleteQuietly(attemptPath);
+        return (path: null, error: '下载已取消');
+      }
       try {
         await FileDownloader.download(
           url: Uri.parse(source),
@@ -121,9 +134,11 @@ class MultiSourceDownloader {
           timeout: idleTimeout,
           connectTimeout: connectTimeout,
           responseTimeout: responseTimeout,
+          isCancelled: isCancelled,
           // 同一源重试时复用同一个临时文件续传，别让 24MB 每次从零开始。
           allowResume: true,
           onProgress: (received, total) {
+            onProgressBytes?.call(received, total);
             if (total == null || total <= 0) return;
             onProgress?.call(received / total);
           },
@@ -152,6 +167,11 @@ class MultiSourceDownloader {
           stack,
         );
         lastError = '$error';
+        // 取消是用户主动行为：立即结束，不重试、不换源。
+        if (isCancelled?.call() ?? false || lastError.contains('下载已取消')) {
+          await _deleteQuietly(attemptPath);
+          return (path: null, error: '下载已取消');
+        }
         if (!_isRetryableNetworkError(error) || attempt == maxAttempts) {
           // 源确定失败（校验不过 / HTTP 4xx）或已用尽次数：清残包换下一个。
           await _deleteQuietly(attemptPath);
