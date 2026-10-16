@@ -67,12 +67,15 @@ if(-not($b[0]-eq239 -and $b[1]-eq187 -and $b[2]-eq191)){
 
 - aapt 核对 fat 包 versionName 等于发布版本（脚本步骤 0 自动做）。
 - 远端 tag 指向预期 commit；本地 main sha 与远端 main sha 一致；工作区干净。
-- purge jsDelivr 后 CDN 收敛有约 3 分钟延迟（仍返回旧版本属正常），可等待后带查询串破缓存复查；客户端还有 Contents API 兜底，CDN 未立即收敛不算发布失败。
+- purge jsDelivr 后受覆盖的节点（testingcf/cdn）约 3 分钟收敛；**gcore 不受 purge 覆盖、可能陈旧最长 12 小时**（见下节）。CDN 未立即收敛不算发布失败。
 
 ## 镜像与下载链路事实
 
 - 企业网实测 18 个 GitHub 加速镜像，仅 `https://ghfast.top`、`https://gh-proxy.com` 可用。清单 mirrors 顺序固定为 ghfast → gh-proxy → GitHub 直连，不要擅自加入未探活的镜像。
 - update.json 的 mirrors 热下发字段必须与 lib/core/config/download_mirrors.dart 内置顺序一致。
+- **gcore 清单缓存无法 purge**：purge.jsdelivr.net 只覆盖 `CF`/`FY` 两个 provider（响应里可见）。而 `lib/core/config/cdn_bases.dart` 把 `gcore.jsdelivr.net` 设为清单**首要**源，testingcf/cdn/raw 只是回退。gcore 对 `@main` 的 `Cache-Control: s-maxage=43200`（12 小时）且不被 purge 清理，因此发布后 **gcore 可能陈旧最长 12 小时**。
+- 配套隐患：`AppUpdateService.fetchManifest` 按候选顺序取**首个成功**响应就返回——gcore 返回「陈旧但 HTTP 200」时会短路后面的 testingcf/raw/Contents API 近实时源，导致客户端短时间内报「已是最新」。发布后若怀疑客户端没看到新版，先分别探各端点：`curl -s -I <端点>/gh/Aria-2676/note_study@main/update.json` 看 `Age` 与内容；`testingcf`/`raw`/`api.github.com` 通常是新的，`gcore` 可能仍旧。这不是发布失败，勿据此重新发版。
+- 建议修法（待排期）：把 `CdnBases.manifest` 首要源从 gcore 换成 testingcf（受 purge 覆盖）；或在 `fetchManifest` 里当 CDN 结论「无更新」时再查一次 Contents API，取版本号更高者。
 
 ## 边界
 
