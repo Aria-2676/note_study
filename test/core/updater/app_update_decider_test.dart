@@ -20,10 +20,10 @@ AppUpdateManifest manifestWithRelease({
   String assetUrl = 'https://example.com/assets.zip',
 }) {
   return AppUpdateManifest.fromJson({
-    if (minSupported != null) 'minSupported': minSupported,
+    'minSupported': ?minSupported,
     'latest': {
       'version': version,
-      if (level != null) 'level': level,
+      'level': ?level,
       'downloads': {
         for (final platform in platforms)
           platform: {'url': 'https://example.com/app-$platform'},

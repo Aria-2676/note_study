@@ -19,9 +19,6 @@ import 'package:v5_app/modules/games/services/game_installer.dart';
 ///
 /// 注意 `createHttpClient` 内不能直接 `HttpClient()`，否则无限递归。
 class _RealHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) =>
-      super.createHttpClient(context);
 }
 
 /// 在「真实网络」的 Zone 里跑 [body]。

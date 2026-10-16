@@ -31,9 +31,6 @@ List<int> buildZip(Map<String, List<int>> entries) {
 /// 注意 `createHttpClient` 里**不能**直接写 `HttpClient()`——那会再次进入
 /// 覆盖逻辑造成无限递归（Stack Overflow）；必须用 `super.createHttpClient`。
 class _RealHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) =>
-      super.createHttpClient(context);
 }
 
 /// 在「真实网络」的 Zone 里跑 [body]，绕开测试绑定注入的 400 假客户端。
