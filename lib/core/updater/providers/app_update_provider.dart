@@ -13,6 +13,7 @@ import '../services/app_update_exception.dart';
 import '../services/app_update_launcher.dart';
 import '../services/app_update_service.dart';
 import '../services/app_update_settings.dart';
+import '../services/download_progress_notification.dart';
 
 /// 版本检查与更新流程的状态中枢。
 ///
@@ -254,6 +255,9 @@ class AppUpdateProvider extends ChangeNotifier {
     _message = null;
     notifyListeners();
 
+    final version = _decision.release?.version ?? '新版本';
+    await DownloadProgressNotification.showProgress(0, version);
+
     try {
       final result = await _launcher.apply(
         target,
@@ -262,18 +266,24 @@ class AppUpdateProvider extends ChangeNotifier {
           if ((progress * 100).floor() == (_applyProgress * 100).floor()) return;
           _applyProgress = progress;
           notifyListeners();
+          unawaited(DownloadProgressNotification.showProgress(progress, version));
         },
       );
       if (result == AppUpdateLaunchResult.failed) {
         _message = '打开下载页失败，请稍后重试';
+        await DownloadProgressNotification.cancel();
+      } else if (result == AppUpdateLaunchResult.installStarted) {
+        await DownloadProgressNotification.showCompleted(version);
       }
       return result;
     } on AppUpdateException catch (error) {
       _message = error.message;
+      await DownloadProgressNotification.cancel();
       return AppUpdateLaunchResult.failed;
     } catch (error, stack) {
       AppLogger.warn('AppUpdateProvider', '应用更新失败', error, stack);
       _message = '更新失败，请稍后重试';
+      await DownloadProgressNotification.cancel();
       return AppUpdateLaunchResult.failed;
     } finally {
       _isApplying = false;

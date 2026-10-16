@@ -33,7 +33,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version,
 
     [string]$OwnerRepo = 'Aria-2676/note_study',
@@ -56,91 +55,149 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# 版本号清洗：自动剥离常见前后缀，兼容 pubspec.yaml 里的 "5.5.23+0" 和 "v5.5.23"
+$Version = $Version.Trim() -replace '^[vV]', '' -replace '\+.*$', ''
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "版本号格式错误：'$Version'。请使用纯数字三段式，如 5.5.23（自动清洗后仍不符合）。"
+}
+
+# GitHub Token 检查
+if (-not $env:GITHUB_TOKEN) {
+    throw "缺少 GITHUB_TOKEN 环境变量。请先执行：`n`n  `$env:GITHUB_TOKEN = 'ghp_你的token'`n`n然后重新运行本工具。"
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $AssetDir) {
     $AssetDir = Join-Path $repoRoot 'build\app\outputs\flutter-apk'
 }
-$updateJsonPath = Join-Path $repoRoot 'update.json'
 
-# 文件名 → update.json 的 downloads 键 / ABI 标签。
-# fat 包对应泛化 android 键（老客户端回落用），必须存在。
-$assetMap = [ordered]@{
-    'app-release.apk'             = 'android'
-    'app-arm64-v8a-release.apk'   = 'android-arm64-v8a'
-    'app-armeabi-v7a-release.apk' = 'android-armeabi-v7a'
-    'app-x86_64-release.apk'      = 'android-x86_64'
-}
-
-function Log($m) {
-    Write-Host ("{0} {1}" -f (Get-Date -Format 'HH:mm:ss'), $m)
-}
-
-# ---- token -------------------------------------------------------------------
-
-$token = $env:GITHUB_TOKEN
-if (-not $token) {
-    throw '未提供 GITHUB_TOKEN 环境变量。先：$env:GITHUB_TOKEN = ''ghp_xxx''（需要 repo 权限）。'
-}
-$authHeaders = @('-H', "Authorization: token $token", '-H', 'Accept: application/vnd.github+json')
-$owner, $repo = $OwnerRepo -split '/', 2
-$tag = "v$Version"
-
-# ---- 0. 资产校验 + 现算摘要 ----------------------------------------------------
-
-Log "步骤 0：校验 $AssetDir 下的 4 个 APK"
-if (-not (Test-Path -LiteralPath $AssetDir)) {
-    throw "APK 目录不存在：$AssetDir（先跑 tool\build_apk.ps1 -Flavor both）"
-}
-
-$assets = @()
-foreach ($name in $assetMap.Keys) {
-    $path = Join-Path $AssetDir $name
-    if (-not (Test-Path -LiteralPath $path)) {
-        throw "缺少资产 $name —— 请用 -Flavor both 构建（fat + 3 split 缺一不可）"
-    }
-    $fi = Get-Item -LiteralPath $path
-    $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower()
-    if ($sha.Length -ne 64) { throw "内部错误：$name 算出的 sha256 不是 64 位：$sha" }
-    $assets += [pscustomobject]@{
-        Name = $name
-        Key  = $assetMap[$name]
-        Path = $path
-        Size = [int64]$fi.Length
-        Sha  = $sha
-    }
-    Log ("  {0,-30} {1,12} 字节  {2}" -f $name, $fi.Length, $sha)
-}
-
-# 用 aapt 确认 versionName 真的是 $Version，杜绝「拿旧包发新版」。
-# build-tools 位置两址查找：LOCALAPPDATA 与 android/local.properties 的 sdk.dir
-# （本机 SDK 在自定义盘 D:\Dev\SDK\AndroidSdk）。
-$buildToolsRoots = @(
-    (Join-Path $env:LOCALAPPDATA 'Android\Sdk\build-tools')
+$apkFiles = @(
+    'app-release.apk',
+    'app-arm64-v8a-release.apk',
+    'app-armeabi-v7a-release.apk',
+    'app-x86_64-release.apk'
 )
-$localProps = Join-Path $repoRoot 'android\local.properties'
-if (Test-Path -LiteralPath $localProps) {
-    $sdkDir = ((Get-Content -LiteralPath $localProps |
-        Where-Object { $_ -match '^\s*sdk\.dir\s*=' } | Select-Object -First 1) -split '=', 2)[1]
-    if ($sdkDir) {
-        $sdkDir = $sdkDir.Trim() -replace '\\\\', '\'
-        if (Test-Path -LiteralPath $sdkDir) {
-            $buildToolsRoots += (Join-Path $sdkDir 'build-tools')
+
+function Log($msg) {
+    $ts = Get-Date -Format 'HH:mm:ss'
+    Write-Host "[$ts] $msg"
+}
+
+function Invoke-Retry {
+    param(
+        [scriptblock]$Action,
+        [string]$Desc,
+        [int]$MaxAttempts = 0
+    )
+    $attempt = 0
+    while ($true) {
+        $attempt++
+        try {
+            & $Action
+            return
+        } catch {
+            $msg = $_.Exception.Message
+            if ($msg -match '__NOTFOUND__') { throw }
+            if ($msg -match '__TRANSIENT__') {
+                if ($MaxAttempts -gt 0 -and $attempt -ge $MaxAttempts) {
+                    throw "已达最大重试次数（$MaxAttempts）：$Desc"
+                }
+                Log "  [重试 $attempt] $Desc"
+                Start-Sleep -Seconds ([Math]::Min(5 * $attempt, 60))
+                continue
+            }
+            throw
         }
     }
 }
-$aapt = $null
-foreach ($root in $buildToolsRoots) {
-    if (-not (Test-Path -LiteralPath $root)) { continue }
-    $found = Get-ChildItem -Path $root -Filter 'aapt2.exe' -Recurse -ErrorAction SilentlyContinue |
-        Sort-Object { [version]($_.Directory.Name) } -Descending | Select-Object -First 1
-    if ($found) { $aapt = $found; break }
+
+function Api-Get($url) {
+    $headers = @{
+        'Authorization' = "token $env:GITHUB_TOKEN"
+        'Accept'        = 'application/vnd.github.v3+json'
+        'User-Agent'    = 'v5-publish-tool'
+    }
+    $tmp = Join-Path $env:TEMP "v5_api_$(Get-Random).json"
+    try {
+        curl.exe -s -o $tmp -w '%{http_code}' -H "Authorization: token $env:GITHUB_TOKEN" -H 'Accept: application/vnd.github.v3+json' -H 'User-Agent: v5-publish-tool' $url | Out-Null
+        $code = $LASTEXITCODE
+        if ($code -ne 0) { throw "__TRANSIENT__ curl exit $code" }
+        $httpCode = Get-Content $tmp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
+        if (-not $httpCode) { $httpCode = '000' }
+        $body = Get-Content $tmp -Raw -ErrorAction SilentlyContinue
+        if ($httpCode -eq '404') { throw "__NOTFOUND__ $url" }
+        if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+        return $body | ConvertFrom-Json
+    } finally {
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
-if ($aapt) {
-    $dump = & $aapt.FullName dump badging (Join-Path $AssetDir 'app-release.apk') 2>$null
-    # badging 行形如 package: name='...' versionCode='23' versionName='5.5.23'，
-    # versionCode 在 versionName 前面，别假设它们相邻。
+
+function Api-Json($method, $url, $bodyObj) {
+    $tmpBody = Join-Path $env:TEMP "v5_api_body_$(Get-Random).json"
+    $tmpResp = Join-Path $env:TEMP "v5_api_resp_$(Get-Random).json"
+    try {
+        $json = $bodyObj | ConvertTo-Json -Depth 10 -Compress
+        [System.IO.File]::WriteAllText($tmpBody, $json, [System.Text.UTF8Encoding]::new($false))
+        curl.exe -s -o $tmpResp -w '%{http_code}' -X $method `
+            -H "Authorization: token $env:GITHUB_TOKEN" `
+            -H 'Accept: application/vnd.github.v3+json' `
+            -H 'User-Agent: v5-publish-tool' `
+            -H 'Content-Type: application/json' `
+            --data-binary "@$tmpBody" `
+            $url | Out-Null
+        $code = $LASTEXITCODE
+        if ($code -ne 0) { throw "__TRANSIENT__ curl exit $code" }
+        $httpCode = Get-Content $tmpResp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
+        if (-not $httpCode) { $httpCode = '000' }
+        $body = Get-Content $tmpResp -Raw -ErrorAction SilentlyContinue
+        if ($httpCode -eq '404') { throw "__NOTFOUND__ $url" }
+        if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+        return $body | ConvertFrom-Json
+    } finally {
+        Remove-Item $tmpBody, $tmpResp -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-GitRetry {
+    param([string[]]$Args, [string]$Desc)
+    Invoke-Retry -Desc $Desc -MaxAttempts $MaxAttempts -Action {
+        & git @Args
+        if ($LASTEXITCODE -ne 0) { throw "__TRANSIENT__ git exit $LASTEXITCODE" }
+    }
+}
+
+Log "=== V5 发布工具 v$Version ==="
+
+# 步骤 0：校验 APK
+Log '步骤 0：校验 APK 文件'
+$apkInfo = @{}
+foreach ($name in $apkFiles) {
+    $path = Join-Path $AssetDir $name
+    if (-not (Test-Path $path)) { throw "APK 缺失：$path" }
+    $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLower()
+    $size = (Get-Item $path).Length
+    $apkInfo[$name] = @{ path = $path; sha256 = $hash; size = $size }
+    Log "  $name : $([Math]::Round($size/1MB,2)) MB, sha256=$($hash.Substring(0,16))..."
+}
+
+# 用 aapt 确认 versionName 真的是 $Version，杜绝「拿旧包发新版」。
+Log '  核对 fat 包 versionName...'
+$aapt2 = $null
+foreach ($bt in @(
+    "$env:LOCALAPPDATA\Android\Sdk\build-tools",
+    'D:\Dev\SDK\AndroidSdk\build-tools'
+)) {
+    if (Test-Path $bt) {
+        $aapt2 = Get-ChildItem $bt -Directory | Sort-Object Name -Descending | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'aapt2.exe' }
+        if ($aapt2 -and (Test-Path $aapt2)) { break }
+    }
+}
+if ($aapt2 -and (Test-Path $aapt2)) {
+    $dump = & $aapt2 dump badging $apkInfo['app-release.apk'].path 2>$null
     $m = $dump | Select-String -Pattern "versionName='([^']+)'" | Select-Object -First 1
-    $vn = if ($m) { $m.Matches[0].Groups[1].Value } else { $null }
+    $vn = $m.Matches.Groups[1].Value
     if ($vn -and $vn -ne $Version) {
         throw "fat 包 versionName='$vn' 与 -Version '$Version' 不符 —— 先在 pubspec.yaml 改版本号并重新构建。"
     }
@@ -149,363 +206,159 @@ if ($aapt) {
     Log '  [警告] 未找到 aapt2，跳过 versionName 核对。'
 }
 
-# ---- 通用：带重试的网络执行 -----------------------------------------------------
-
-# 判定是否「可以重试」的瞬时错误：curl 没退出零（连不上/超时/5xx 已体现在退出码），
-# 或 HTTP 5xx / 408 / 429。4xx 其余视为业务错误，调用方自己处理。
-function Test-Transient($exitCode, $httpCode) {
-    if ($exitCode -ne 0) { return $true }
-    if ($httpCode -match '^(5\d\d|408|429)$') { return $true }
-    return $false
-}
-
-function Invoke-Retry {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][scriptblock]$Block
-    )
-    $attempt = 0
-    while ($true) {
-        $attempt++
-        try {
-            return & $Block
-        } catch {
-            $transient = $_.Exception.Message -eq '__TRANSIENT__'
-            if (-not $transient) { throw }
-            if ($MaxAttempts -gt 0 -and $attempt -ge $MaxAttempts) {
-                throw "$Name 重试 $attempt 次仍失败：$($_.Exception.InnerException)"
-            }
-            $wait = [Math]::Min(60, 5 * $attempt)
-            Log "  [$Name] 瞬时失败（第 $attempt 次），${wait}s 后重试：$($_.Exception.InnerException)"
-            Start-Sleep -Seconds $wait
-        }
-    }
-}
-
-function Throw-Transient($detail) {
-    throw (New-Object System.Management.Automation.RuntimeException('__TRANSIENT__', $detail))
-}
-
-# 调原生命令（curl/git）的统一入口。
-#
-# 两个坑：
-# 1) 脚本顶部 $ErrorActionPreference='Stop' 时，原生命令写往 stderr 的
-#    每一行（git push 的进度、curl 报错）都会被 PowerShell 提升成**终止性错误**，
-#    直接逃出重试循环——表现为「第一次失败脚本就死，根本不重试」。
-# 2) 参数不能用 ValueFromRemainingArguments：curl 的 -w 会被 PowerShell 当成
-#    -WarningAction/-WarningVariable 的歧义前缀。所以参数必须作为**一个数组**传入。
-# 调用方：Invoke-Native 'curl.exe' @('-sS', '--max-time', '60', $url)
-function Invoke-Native {
-    param(
-        [Parameter(Mandatory = $true, Position = 0)][string]$FilePath,
-        [Parameter(Mandatory = $true, Position = 1)][AllowEmptyCollection()][string[]]$Arguments
-    )
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $lines = & $FilePath @Arguments 2>&1 | ForEach-Object { $_.ToString() }
-        $code = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $prev
-    }
-    return [pscustomobject]@{ ExitCode = $code; Text = ($lines -join "`n") }
-}
-
-# GET JSON：返回对象；404 抛业务异常（由调用方识别 __NOTFOUND__）。
-function Api-Get($url) {
-    $r = Invoke-Native 'curl.exe' (@('-sS', '--max-time', '60') + $authHeaders + @($url, '-w', "`n%{http_code}"))
-    $raw = $r.Text
-    $idx = $raw.LastIndexOf("`n")
-    $body = $raw.Substring(0, $idx).Trim()
-    $code = $raw.Substring($idx + 1).Trim()
-    if ($code -eq '404') {
-        throw (New-Object System.Management.Automation.RuntimeException('__NOTFOUND__'))
-    }
-    if (Test-Transient $r.ExitCode $code) { Throw-Transient "http=$code curlExit=$($r.ExitCode)" }
-    if ($code -notmatch '^2\d\d$') { throw "GET $url 失败 http=$code body=$body" }
-    return ($body | ConvertFrom-Json)
-}
-
-# 任意方法 + JSON body（body 为 $null 时不传）。返回响应对象。
-function Api-Json($method, $url, $obj) {
-    $tmp = [System.IO.Path]::GetTempFileName()
-    try {
-        if ($null -ne $obj) {
-            [System.IO.File]::WriteAllText(
-                $tmp,
-                ($obj | ConvertTo-Json -Compress -Depth 6),
-                (New-Object System.Text.UTF8Encoding($false))
-            )
-        }
-        $curlArgs = @('-sS', '--max-time', '60', '-X', $method, '-w', "`n%{http_code}") + $authHeaders
-        if ($null -ne $obj) { $curlArgs += @('--data-binary', "@$tmp") }
-        $curlArgs += $url
-        $r = Invoke-Native 'curl.exe' $curlArgs
-        $raw = $r.Text
-        $idx = $raw.LastIndexOf("`n")
-        $body = $raw.Substring(0, $idx).Trim()
-        $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $r.ExitCode $code) { Throw-Transient "http=$code body=$body" }
-        return [pscustomobject]@{ Code = $code; Body = $body; Obj = ($body | ConvertFrom-Json -ErrorAction SilentlyContinue) }
-    } finally {
-        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# ---- 1/2. tag + push（重试到成功）----------------------------------------------
-
-function Invoke-GitRetry($argList, $name) {
-    Invoke-Retry -Name $name -Block {
-        $r = Invoke-Native 'git' $argList
-        if ($r.ExitCode -ne 0) { Throw-Transient ($r.Text.Trim()) }
-        if ($r.Text.Trim()) { Log "  git $($argList[0]): $(($r.Text.Trim().Split("`n")[0]))" }
-    }
-}
-
-Set-Location $repoRoot
-
-$tagExists = $false
-& git rev-parse --quiet --verify "refs/tags/$tag" *> $null
-if ($LASTEXITCODE -eq 0) {
-    $tagExists = $true
-    Log "步骤 1：tag $tag 本地已存在"
-} else {
-    Log "步骤 1：在 HEAD 创建附注 tag $tag"
+# 步骤 1：tag
+$tag = "v$Version"
+Log "步骤 1：tag $tag"
+& git rev-parse -q --verify "refs/tags/$tag" | Out-Null
+if ($LASTEXITCODE -ne 0) {
     & git tag -a $tag -m "V5.$Version release"
     if ($LASTEXITCODE -ne 0) { throw "git tag 失败" }
+    Log "  已创建 tag $tag"
+} else {
+    Log "  tag $tag 已存在"
 }
 
-Log "步骤 2：推送 $Branch 与 $tag（网络抖动会一直重试）"
-Invoke-GitRetry -ArgList @('push', 'origin', $Branch) -Name 'push-branch'
-Invoke-GitRetry -ArgList @('push', 'origin', $tag) -Name 'push-tag'
+# 步骤 2：push
+Log '步骤 2：推送分支与 tag'
+Invoke-GitRetry -Args @('push', 'origin', $Branch) -Desc '推送分支'
+Invoke-GitRetry -Args @('push', 'origin', $tag) -Desc '推送 tag'
 
-# ---- 3. Release（幂等）---------------------------------------------------------
-
-Log "步骤 3：创建/获取 Release $tag"
-$release = Invoke-Retry -Name 'get-release' -Block {
-    try {
-        return Api-Get "https://api.github.com/repos/$owner/$repo/releases/tags/$tag"
-    } catch {
-        if ($_.Exception.Message -eq '__NOTFOUND__') { return $null }
-        if ($_.Exception.Message -eq '__TRANSIENT__') { Throw-Transient $_.Exception.InnerException }
-        throw
-    }
-}
-
-if (-not $release) {
-    $resp = Invoke-Retry -Name 'create-release' -Block {
-        $r = Api-Json 'POST' "https://api.github.com/repos/$owner/$repo/releases" ([ordered]@{
+# 步骤 3：Release
+Log '步骤 3：创建/获取 Release'
+$release = $null
+try {
+    $release = Api-Get "https://api.github.com/repos/$OwnerRepo/releases/tags/$tag"
+    Log "  Release 已存在（id=$($release.id)）"
+} catch {
+    if ($_.Exception.Message -match '__NOTFOUND__') {
+        Log '  Release 不存在，创建中...'
+        $release = Api-Json 'POST' "https://api.github.com/repos/$OwnerRepo/releases" @{
             tag_name         = $tag
             target_commitish = $Branch
             name             = "V5.$Version"
             body             = "V5.$Version 自动发布（tool/publish_release.ps1）"
             draft            = $false
             prerelease       = $false
-        })
-        # 400/422：并发或历史残留导致 tag 已有 release（API 对重复 tag 回 422）。
-        if ($r.Code -match '^(400|422)$') { return $null }
-        if ($r.Code -notmatch '^2\d\d$') { Throw-Transient "create http=$($r.Code) $($r.Body)" }
-        return $r.Obj
-    }
-    if (-not $resp) {
-        Log '  创建返回 400/422，回读已有 Release'
-        $release = Invoke-Retry -Name 'get-release-after-422' -Block {
-            try {
-                return Api-Get "https://api.github.com/repos/$owner/$repo/releases/tags/$tag"
-            } catch {
-                if ($_.Exception.Message -eq '__NOTFOUND__') { Throw-Transient 'release 尚不可见' }
-                if ($_.Exception.Message -eq '__TRANSIENT__') { Throw-Transient $_.Exception.InnerException }
-                throw
-            }
         }
-    } else {
-        $release = $resp
-    }
+        Log "  已创建 Release（id=$($release.id)）"
+    } else { throw }
 }
 $releaseId = $release.id
-Log "  release id=$releaseId"
 
-# ---- 4. 资产上传/核对（幂等）----------------------------------------------------
-
-Log "步骤 4：核对/上传 4 个 APK"
-
-foreach ($a in $assets) {
-    $expectedDigest = "sha256:$($a.Sha)"
-
-    # 整个「列举 → 清理 → 上传 → 自校验」放进同一个重试环：
-    # 上传 422（同名残留）/副本延迟等问题靠下一轮的 list 自愈，
-    # 不写多套互相猜状态的分支。
-    Invoke-Retry -Name "asset-$($a.Name)" -Block {
-        $rel = Api-Get "https://api.github.com/repos/$owner/$repo/releases/$releaseId"
-        $existing = @($rel.assets | Where-Object { $_.name -eq $a.Name })
-
-        $ok = $false
-        foreach ($e in $existing) {
-            if ([int64]$e.size -eq $a.Size -and ($e.digest -eq $expectedDigest)) {
-                Log "  $($a.Name) 已存在且校验通过（size/digest），跳过"
-                $ok = $true
-            } else {
-                Log "  $($a.Name) 已存在但不符（size=$($e.size)/$($a.Size) digest=$($e.digest)），删除重传"
-                $del = Api-Json 'DELETE' "https://api.github.com/repos/$owner/$repo/releases/assets/$($e.id)" $null
-                if ($del.Code -notmatch '^(204|200)$') {
-                    Throw-Transient "delete http=$($del.Code)"
-                }
-            }
+# 步骤 4：上传/核对资产
+Log '步骤 4：上传/核对 APK 资产'
+foreach ($name in $apkFiles) {
+    $info = $apkInfo[$name]
+    $uploadUrl = "https://uploads.github.com/repos/$OwnerRepo/releases/$releaseId/assets?name=$name"
+    $needUpload = $true
+    $existing = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+    if ($existing) {
+        $remoteSize = $existing.size
+        $remoteDigest = $existing.digest -replace '^sha256:', ''
+        if ($remoteSize -eq $info.size -and $remoteDigest -eq $info.sha256) {
+            Log "  $name 已存在且校验通过，跳过"
+            $needUpload = $false
+        } else {
+            Log "  $name 已存在但不符（size: $remoteSize vs $($info.size), digest: $remoteDigest vs $($info.sha256)），删除后重传"
+            try {
+                Api-Json 'DELETE' "https://api.github.com/repos/$OwnerRepo/releases/assets/$($existing.id)" @{}
+            } catch { Log "  [警告] 删除旧资产失败：$_" }
         }
-        if ($ok) { return }
-
-        $upUrl = "https://uploads.github.com/repos/$owner/$repo/releases/$releaseId/assets?name=$([uri]::EscapeDataString($a.Name))"
-        $upArgs = @(
-            '-sS', '--max-time', '600', '-X', 'POST',
-            '-H', 'Content-Type: application/vnd.android.package-archive',
-            '--data-binary', "@$($a.Path)",
-            $upUrl, '-w', "`n%{http_code}"
-        ) + $authHeaders
-        $r = Invoke-Native 'curl.exe' $upArgs
-        $raw = $r.Text
-        $idx = $raw.LastIndexOf("`n")
-        $body = $raw.Substring(0, $idx).Trim()
-        $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $r.ExitCode $code) { Throw-Transient "upload http=$code curlExit=$($r.ExitCode)" }
-        if ($code -eq '422') {
-            # 同名资产残留（常见于删除后副本延迟）：下一轮重新 list → 清理。
-            Throw-Transient "upload 422（同名残留，下一轮清理）"
+    }
+    if ($needUpload) {
+        Log "  上传 $name ..."
+        Invoke-Retry -Desc "上传 $name" -MaxAttempts $MaxAttempts -Action {
+            $tmp = Join-Path $env:TEMP "v5_upload_$(Get-Random).json"
+            try {
+                curl.exe -s -o $tmp -w '%{http_code}' -X POST `
+                    -H "Authorization: token $env:GITHUB_TOKEN" `
+                    -H 'Accept: application/vnd.github.v3+json' `
+                    -H 'User-Agent: v5-publish-tool' `
+                    -H 'Content-Type: application/vnd.android.package-archive' `
+                    --data-binary "@$($info.path)" `
+                    $uploadUrl | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "__TRANSIENT__ curl exit $LASTEXITCODE" }
+                $httpCode = Get-Content $tmp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
+                if (-not $httpCode) { $httpCode = '000' }
+                $body = Get-Content $tmp -Raw -ErrorAction SilentlyContinue
+                if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+            } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
         }
-        if ($code -notmatch '^2\d\d$') {
-            throw "upload $($a.Name) http=$code body=$body"
-        }
-        $u = $body | ConvertFrom-Json
-        if ([int64]$u.size -ne $a.Size -or $u.digest -ne $expectedDigest) {
-            # 响应回读偶发延迟：下一轮 list 会拿到权威状态并自愈。
-            Throw-Transient "upload 回读不符 size=$($u.size)/$($a.Size) digest=$($u.digest)"
-        }
-        Log "  $($a.Name) 上传成功 http=$code size=$($u.size)"
+        Log "  $name 上传完成"
     }
 }
 
-# 最终回读：四个名字 + size + digest 全部到位才算完。
-Invoke-Retry -Name 'readback' -Block {
-    $rel = Api-Get "https://api.github.com/repos/$owner/$repo/releases/$releaseId"
-    foreach ($a in $assets) {
-        $e = @($rel.assets | Where-Object { $_.name -eq $a.Name })
-        if ($e.Count -ne 1) { Throw-Transient "$($a.Name) 数量=$($e.Count)" }
-        if ([int64]$e[0].size -ne $a.Size -or $e[0].digest -ne "sha256:$($a.Sha)") {
-            Throw-Transient "$($a.Name) 回读不符"
-        }
+# 最终回读核对
+Log '  最终回读核对...'
+$release = Api-Get "https://api.github.com/repos/$OwnerRepo/releases/$releaseId"
+$allOk = $true
+foreach ($name in $apkFiles) {
+    $info = $apkInfo[$name]
+    $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+    if (-not $asset) { Log "  [错误] $name 缺失"; $allOk = $false; continue }
+    $remoteSize = $asset.size
+    $remoteDigest = $asset.digest -replace '^sha256:', ''
+    if ($remoteSize -ne $info.size -or $remoteDigest -ne $info.sha256) {
+        Log "  [错误] $name 校验失败：size $remoteSize vs $($info.size), digest $remoteDigest vs $($info.sha256)"
+        $allOk = $false
     }
 }
-Log '  全部资产回读校验通过'
+if (-not $allOk) { throw '资产校验未通过，请检查日志后重试。' }
+Log '  全部资产校验通过'
 
-# ---- 5/6. update.json ----------------------------------------------------------
+# 步骤 5：更新 update.json
+Log '步骤 5：更新 update.json'
+$updateJsonPath = Join-Path $repoRoot 'update.json'
+$manifest = @{}
+if (Test-Path $updateJsonPath) {
+    $manifest = Get-Content $updateJsonPath -Raw | ConvertFrom-Json
+}
+$manifest.version = $Version
+$manifest.updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$manifest.url = "https://github.com/$OwnerRepo/releases/download/$tag/app-release.apk"
+$manifest.sha256 = $apkInfo['app-release.apk'].sha256
+$manifest.sizeBytes = $apkInfo['app-release.apk'].size
+$manifest.mirrors = $MirrorPrefixes
+if ($Notes) { $manifest.notes = $Notes }
+if (-not $manifest.schemaVersion) { $manifest.schemaVersion = 1 }
 
-if ($SkipManifestCommit) {
-    Log '步骤 5/6：按 -SkipManifestCommit 跳过清单更新'
-} else {
-    Log "步骤 5：更新 update.json → $Version"
-    if (-not (Test-Path -LiteralPath $updateJsonPath)) {
-        throw "update.json 不存在：$updateJsonPath"
-    }
-    $manifest = Get-Content -LiteralPath $updateJsonPath -Raw | ConvertFrom-Json
+# 中文转 \uXXXX 再还原，避免 UTF-8 BOM 问题
+$jsonText = $manifest | ConvertTo-Json -Depth 10
+$jsonText = [System.Text.RegularExpressions.Regex]::Replace($jsonText, '\\u([0-9a-fA-F]{4})', { param($m) [char][int]"0x$($m.Groups[1].Value)" })
+[System.IO.File]::WriteAllText($updateJsonPath, $jsonText, [System.Text.UTF8Encoding]::new($false))
+Log "  update.json 已重写"
 
-    $downloads = [ordered]@{}
-    foreach ($a in $assets) {
-        $downloadUrl = "https://github.com/$owner/$repo/releases/download/$tag/$($a.Name)"
-        $mirrorUrls = @($MirrorPrefixes | ForEach-Object { "$_/$downloadUrl" })
-        $downloads[$a.Key] = [ordered]@{
-            url       = $downloadUrl
-            mirrors   = $mirrorUrls
-            sha256    = $a.Sha
-            sizeBytes = $a.Size
-        }
-    }
-
-    $existingNotes = @()
-    if ($manifest.latest -and $manifest.latest.notes) {
-        $existingNotes = @($manifest.latest.notes | Where-Object { $_ -ne $null })
-    }
-    $finalNotes = if ($Notes -and $Notes.Count -gt 0) {
-        @($Notes)
-    } else {
-        $existingNotes
-    }
-
-    $latest = [ordered]@{
-        version   = $Version
-        notes     = $finalNotes
-        downloads = $downloads
-    }
-
-    $manifest.latest = [pscustomobject]$latest
-    if (-not $manifest.schemaVersion) { $manifest.schemaVersion = 1 }
-    $manifest.updatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-
-    # PowerShell 5.1 的 ConvertTo-Json 会把中文转成 \uXXXX，这里还原成可读中文。
-    $json = ConvertTo-Json -InputObject $manifest -Depth 12
-    $evaluator = [System.Text.RegularExpressions.MatchEvaluator]{
-        param($m)
-        [char][int]('0x' + $m.Groups[1].Value)
-    }
-    $json = [regex]::Replace($json, '\\u([0-9a-fA-F]{4})', $evaluator)
-    # 统一末尾换行，UTF-8 无 BOM。
-    [System.IO.File]::WriteAllText($updateJsonPath, ($json.TrimEnd() + "`n"), (New-Object System.Text.UTF8Encoding($false)))
-    Log "  已写入 $updateJsonPath"
-
+# 步骤 6：提交并推送 update.json
+if (-not $SkipManifestCommit) {
     Log '步骤 6：提交并推送 update.json'
     & git add -- update.json
-    if ($LASTEXITCODE -ne 0) { throw 'git add update.json 失败' }
-    $staged = & git diff --cached --name-only
-    if (($staged -join "`n").Trim() -ne 'update.json') {
-        throw "暂存区异常（应只有 update.json）：$($staged -join ', ')"
-    }
-    & git diff --cached --quiet -- update.json
-    if ($LASTEXITCODE -eq 0) {
-        Log '  update.json 无实际变化，跳过提交'
-    } else {
-        $msgFile = [System.IO.Path]::GetTempFileName()
-        try {
-            [System.IO.File]::WriteAllText(
-                $msgFile,
-                "V${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n",
-                (New-Object System.Text.UTF8Encoding($false))
-            )
-            & git commit -F $msgFile
-            if ($LASTEXITCODE -ne 0) { throw 'git commit update.json 失败' }
-        } finally {
-            Remove-Item -LiteralPath $msgFile -Force -ErrorAction SilentlyContinue
-        }
-        Invoke-GitRetry @('push', 'origin', $Branch) 'push-manifest'
-    }
+    if ($LASTEXITCODE -ne 0) { throw "git add 失败" }
+    $commitMsg = "V5.${Version}: 更新发布清单（version/url/sha256/sizeBytes/mirrors）`n"
+    $msgFile = Join-Path $env:TEMP "v5_commit_$(Get-Random).txt"
+    [System.IO.File]::WriteAllText($msgFile, $commitMsg, [System.Text.UTF8Encoding]::new($false))
+    & git commit -F $msgFile
+    Remove-Item $msgFile -Force -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { throw "git commit 失败" }
+    Invoke-GitRetry -Args @('push', 'origin', $Branch) -Desc '推送 update.json'
+} else {
+    Log '  跳过 update.json 提交（-SkipManifestCommit）'
 }
 
-# ---- 7. CDN 刷新 ---------------------------------------------------------------
-
+# 步骤 7：CDN 刷新
 if (-not $SkipPurge) {
-    Log '步骤 7：purge.jsdelivr.net 刷新 update.json'
-    Invoke-Retry -Name 'purge-jsdelivr' -Block {
-        $purgeUrl = "https://purge.jsdelivr.net/gh/$owner/$repo@$Branch/update.json"
-        $r = Invoke-Native 'curl.exe' @('-sS', '--max-time', '60', $purgeUrl, '-w', "`n%{http_code}")
-        $raw = $r.Text
-        $idx = $raw.LastIndexOf("`n")
-        $code = $raw.Substring($idx + 1).Trim()
-        if (Test-Transient $r.ExitCode $code) {
-            Throw-Transient "purge http=$code"
+    Log '步骤 7：刷新 jsDelivr 缓存'
+    $purgeUrl = "https://purge.jsdelivr.net/gh/$OwnerRepo@$Branch/update.json"
+    try {
+        Invoke-Retry -Desc 'purge jsDelivr' -MaxAttempts 3 -Action {
+            $resp = Invoke-WebRequest -Uri $purgeUrl -UseBasicParsing -TimeoutSec 30
+            if ($resp.StatusCode -ne 200) { throw "__TRANSIENT__ HTTP $($resp.StatusCode)" }
         }
-        if ($code -notmatch '^2\d\d$') {
-            # CDN 刷新失败不致命：Contents API 兜底 + 缓存最长 12h 会自然收敛。
-            Log "  [警告] purge 返回 http=$code，客户端仍可靠 Contents API 及时发现"
-        } else {
-            Log '  purge 已受理'
-        }
-    }
+        Log "  已通知 purge.jsdelivr.net"
+    } catch { Log "  [警告] CDN 刷新失败：$_" }
+} else {
+    Log '  跳过 CDN 刷新（-SkipPurge）'
 }
 
-Log '完成。人工抽查建议：'
-Log "  清单：https://gcore.jsdelivr.net/gh/$owner/$repo@$Branch/update.json"
-Log "       https://api.github.com/repos/$owner/$repo/contents/update.json"
-foreach ($a in $assets) {
-    $u = "https://github.com/$owner/$repo/releases/download/$tag/$($a.Name)"
-    Log "  $($a.Name)：$u"
-    foreach ($pre in $MirrorPrefixes) {
-        Log "             $pre/$u"
-    }
-}
+Log '=== 发布完成 ==='
+Log "Release: https://github.com/$OwnerRepo/releases/tag/$tag"
+Log "update.json: https://gcore.jsdelivr.net/gh/$OwnerRepo@$Branch/update.json"
