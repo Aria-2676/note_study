@@ -60,3 +60,5 @@ key.properties
 **/taskmaster-signing-*.zip
 # Widget Preview related
 .widget_preview/
+
+tool/github_token.txt

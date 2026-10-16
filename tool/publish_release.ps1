@@ -62,9 +62,16 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
     throw "版本号格式错误：'$Version'。请使用纯数字三段式，如 5.5.23（自动清洗后仍不符合）。"
 }
 
-# GitHub Token 检查
+# GitHub Token：优先从环境变量读取，其次从 tool/github_token.txt（已加入 .gitignore）
 if (-not $env:GITHUB_TOKEN) {
-    throw "缺少 GITHUB_TOKEN 环境变量。请先执行：`n`n  `$env:GITHUB_TOKEN = 'ghp_你的token'`n`n然后重新运行本工具。"
+    $tokenFile = Join-Path $PSScriptRoot 'github_token.txt'
+    if (Test-Path $tokenFile) {
+        $env:GITHUB_TOKEN = (Get-Content $tokenFile -Raw).Trim()
+        Log '已从 tool/github_token.txt 读取 GITHUB_TOKEN'
+    }
+}
+if (-not $env:GITHUB_TOKEN) {
+    throw "缺少 GITHUB_TOKEN。请任选其一：`n  1. 设置环境变量：`$env:GITHUB_TOKEN = 'ghp_xxx'`n  2. 将 token 写入 tool/github_token.txt（不会被提交）"
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
