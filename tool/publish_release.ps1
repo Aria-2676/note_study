@@ -71,9 +71,11 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 if (-not $env:GITHUB_TOKEN) {
     $tokenFile = Join-Path $PSScriptRoot 'github_token.txt'
     if (Test-Path $tokenFile) {
-        $tokenContent = Get-Content $tokenFile -Raw -ErrorAction SilentlyContinue
+        # 用 -Encoding UTF8 读取（PS5.1 会自动剥离 BOM）；再去掉可能的残留 U+FEFF 与首尾空白，
+        # 否则 token 会带上脏字符，GitHub 直接回 401 Bad credentials。
+        $tokenContent = Get-Content $tokenFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($tokenContent) {
-            $env:GITHUB_TOKEN = $tokenContent.Trim()
+            $env:GITHUB_TOKEN = $tokenContent.TrimStart([char]0xFEFF).Trim()
             Log '已从 tool/github_token.txt 读取 GITHUB_TOKEN'
         }
     }
@@ -130,14 +132,16 @@ function Api-Get($url) {
     }
     $tmp = Join-Path $env:TEMP "v5_api_$(Get-Random).json"
     try {
-        curl.exe -s -o $tmp -w '%{http_code}' -H "Authorization: token $env:GITHUB_TOKEN" -H 'Accept: application/vnd.github.v3+json' -H 'User-Agent: v5-publish-tool' $url | Out-Null
+        # -w 的 http 码走 stdout，-o 把响应体写进文件；必须直接捕获 stdout，
+        # 否则管道给 Out-Null 会把 http 码丢掉，404 会被误当成“成功”。
+        $httpCode = (curl.exe -s -o $tmp -w '%{http_code}' -H "Authorization: token $env:GITHUB_TOKEN" -H 'Accept: application/vnd.github.v3+json' -H 'User-Agent: v5-publish-tool' $url 2>$null | Out-String).Trim()
         $code = $LASTEXITCODE
         if ($code -ne 0) { throw "__TRANSIENT__ curl exit $code" }
-        $httpCode = Get-Content $tmp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
         if (-not $httpCode) { $httpCode = '000' }
-        $body = Get-Content $tmp -Raw -ErrorAction SilentlyContinue
+        # 必须按 UTF-8 读响应体：PS5.1 默认按 ANSI(GBK) 读会把中文拆坏，甚至吃掉 JSON 的引号
+        $body = Get-Content $tmp -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($httpCode -eq '404') { throw "__NOTFOUND__ $url" }
-        if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+        if ([int]$httpCode -ge 400) { throw "HTTP $httpCode : $body" }
         return $body | ConvertFrom-Json
     } finally {
         Remove-Item $tmp -Force -ErrorAction SilentlyContinue
@@ -150,20 +154,19 @@ function Api-Json($method, $url, $bodyObj) {
     try {
         $json = $bodyObj | ConvertTo-Json -Depth 10 -Compress
         [System.IO.File]::WriteAllText($tmpBody, $json, [System.Text.UTF8Encoding]::new($false))
-        curl.exe -s -o $tmpResp -w '%{http_code}' -X $method `
+        $httpCode = (curl.exe -s -o $tmpResp -w '%{http_code}' -X $method `
             -H "Authorization: token $env:GITHUB_TOKEN" `
             -H 'Accept: application/vnd.github.v3+json' `
             -H 'User-Agent: v5-publish-tool' `
             -H 'Content-Type: application/json' `
             --data-binary "@$tmpBody" `
-            $url | Out-Null
+            $url 2>$null | Out-String).Trim()
         $code = $LASTEXITCODE
         if ($code -ne 0) { throw "__TRANSIENT__ curl exit $code" }
-        $httpCode = Get-Content $tmpResp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
         if (-not $httpCode) { $httpCode = '000' }
-        $body = Get-Content $tmpResp -Raw -ErrorAction SilentlyContinue
+        $body = Get-Content $tmpResp -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($httpCode -eq '404') { throw "__NOTFOUND__ $url" }
-        if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+        if ([int]$httpCode -ge 400) { throw "HTTP $httpCode : $body" }
         return $body | ConvertFrom-Json
     } finally {
         Remove-Item $tmpBody, $tmpResp -Force -ErrorAction SilentlyContinue
@@ -289,18 +292,17 @@ foreach ($name in $apkFiles) {
         Invoke-Retry -Desc "上传 $name" -MaxAttempts $MaxAttempts -Action {
             $tmp = Join-Path $env:TEMP "v5_upload_$(Get-Random).json"
             try {
-                curl.exe -s -o $tmp -w '%{http_code}' -X POST `
+                $httpCode = (curl.exe -s -o $tmp -w '%{http_code}' -X POST `
                     -H "Authorization: token $env:GITHUB_TOKEN" `
                     -H 'Accept: application/vnd.github.v3+json' `
                     -H 'User-Agent: v5-publish-tool' `
                     -H 'Content-Type: application/vnd.android.package-archive' `
                     --data-binary "@$($info.path)" `
-                    $uploadUrl | Out-Null
+                    $uploadUrl 2>$null | Out-String).Trim()
                 if ($LASTEXITCODE -ne 0) { throw "__TRANSIENT__ curl exit $LASTEXITCODE" }
-                $httpCode = Get-Content $tmp -Raw | Select-String -Pattern '^\d{3}$' | ForEach-Object { $_.Matches.Value }
                 if (-not $httpCode) { $httpCode = '000' }
-                $body = Get-Content $tmp -Raw -ErrorAction SilentlyContinue
-                if ($httpCode -ge '400') { throw "HTTP $httpCode : $body" }
+                $body = Get-Content $tmp -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                if ([int]$httpCode -ge 400) { throw "HTTP $httpCode : $body" }
             } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
         }
         Log "  $name 上传完成"
@@ -327,22 +329,69 @@ Log '  全部资产校验通过'
 
 # 步骤 5：更新 update.json
 Log '步骤 5：更新 update.json'
+# 结构必须与 lib/core/updater/models/app_update_manifest.dart 对齐：
+#   顶层 schemaVersion/updatedAt/minSupported/assets；latest.{version,notes,level,publishedAt,downloads}
+#   downloads.<平台>.{url,mirrors,sha256,sizeBytes}
+# 必须保留泛化 'android' 键（老客户端只查它），同时写 ABI 细分键供新客户端优先匹配。
 $updateJsonPath = Join-Path $repoRoot 'update.json'
-$manifest = @{}
+$prev = $null
 if (Test-Path $updateJsonPath) {
-    $manifest = Get-Content $updateJsonPath -Raw | ConvertFrom-Json
+    $prev = Get-Content $updateJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
 }
-$manifest.version = $Version
-$manifest.updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-$manifest.url = "https://github.com/$OwnerRepo/releases/download/$tag/app-release.apk"
-$manifest.sha256 = $apkInfo['app-release.apk'].sha256
-$manifest.sizeBytes = $apkInfo['app-release.apk'].size
-$manifest.mirrors = $MirrorPrefixes
-if ($Notes) { $manifest.notes = $Notes }
-if (-not $manifest.schemaVersion) { $manifest.schemaVersion = 1 }
+function Get-Field($obj, $name) {
+    if ($null -ne $obj -and $null -ne $obj.PSObject) {
+        $prop = $obj.PSObject.Properties[$name]
+        if ($prop) { return $prop.Value }
+    }
+    return $null
+}
+
+$prevLatest = Get-Field $prev 'latest'
+$notes = $Notes
+if (-not $notes) { $notes = Get-Field $prevLatest 'notes' }
+$level = Get-Field $prevLatest 'level'
+$publishedAt = Get-Field $prevLatest 'publishedAt'
+
+# APK 文件名 -> 清单 downloads 键（含泛化 android 兜底）
+$abiKeys = [ordered]@{
+    'app-arm64-v8a-release.apk'   = 'android-arm64-v8a'
+    'app-armeabi-v7a-release.apk' = 'android-armeabi-v7a'
+    'app-x86_64-release.apk'      = 'android-x86_64'
+    'app-release.apk'             = 'android'
+}
+$downloads = [ordered]@{}
+foreach ($key in $abiKeys.Keys) {
+    $info = $apkInfo[$key]
+    $url = "https://github.com/$OwnerRepo/releases/download/$tag/$key"
+    $mirrorUrls = @()
+    foreach ($prefix in $MirrorPrefixes) { $mirrorUrls += "$prefix/$url" }
+    $downloads[$abiKeys[$key]] = [ordered]@{
+        url       = $url
+        mirrors   = $mirrorUrls
+        sha256    = $info.sha256
+        sizeBytes = $info.size
+    }
+}
+
+$latestObj = [ordered]@{ version = $Version }
+if ($notes -and $notes.Count -gt 0) { $latestObj['notes'] = @($notes) }
+if ($level) { $latestObj['level'] = $level }
+if ($publishedAt) { $latestObj['publishedAt'] = $publishedAt }
+$latestObj['downloads'] = $downloads
+
+$out = [ordered]@{}
+$comment = Get-Field $prev '_comment'
+if ($comment) { $out['_comment'] = $comment }
+$out['schemaVersion'] = 1
+$out['updatedAt'] = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$minSupported = Get-Field $prev 'minSupported'
+if ($minSupported) { $out['minSupported'] = $minSupported }
+$assets = Get-Field $prev 'assets'
+if ($assets) { $out['assets'] = $assets }
+$out['latest'] = $latestObj
 
 # 中文转 \uXXXX 再还原，避免 UTF-8 BOM 问题
-$jsonText = $manifest | ConvertTo-Json -Depth 10
+$jsonText = $out | ConvertTo-Json -Depth 10
 $jsonText = [System.Text.RegularExpressions.Regex]::Replace($jsonText, '\\u([0-9a-fA-F]{4})', { param($m) [char][int]"0x$($m.Groups[1].Value)" })
 [System.IO.File]::WriteAllText($updateJsonPath, $jsonText, [System.Text.UTF8Encoding]::new($false))
 Log "  update.json 已重写"
