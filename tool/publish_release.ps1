@@ -56,6 +56,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Log($msg) {
+    $ts = Get-Date -Format 'HH:mm:ss'
+    Write-Host "[$ts] $msg"
+}
+
 # 版本号清洗：自动剥离常见前后缀，兼容 pubspec.yaml 里的 "5.5.23+0" 和 "v5.5.23"
 $Version = $Version.Trim() -replace '^[vV]', '' -replace '\+.*$', ''
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
@@ -66,8 +71,11 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 if (-not $env:GITHUB_TOKEN) {
     $tokenFile = Join-Path $PSScriptRoot 'github_token.txt'
     if (Test-Path $tokenFile) {
-        $env:GITHUB_TOKEN = (Get-Content $tokenFile -Raw).Trim()
-        Log '已从 tool/github_token.txt 读取 GITHUB_TOKEN'
+        $tokenContent = Get-Content $tokenFile -Raw -ErrorAction SilentlyContinue
+        if ($tokenContent) {
+            $env:GITHUB_TOKEN = $tokenContent.Trim()
+            Log '已从 tool/github_token.txt 读取 GITHUB_TOKEN'
+        }
     }
 }
 if (-not $env:GITHUB_TOKEN) {
@@ -85,11 +93,6 @@ $apkFiles = @(
     'app-armeabi-v7a-release.apk',
     'app-x86_64-release.apk'
 )
-
-function Log($msg) {
-    $ts = Get-Date -Format 'HH:mm:ss'
-    Write-Host "[$ts] $msg"
-}
 
 function Invoke-Retry {
     param(
