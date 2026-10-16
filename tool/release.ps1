@@ -105,7 +105,7 @@ if (Confirm-Step "提交 pubspec.yaml 和构建产物") {
     try {
         # 提交 pubspec.yaml
         git add pubspec.yaml
-        $msg = "V5.$Version" + '：版本号更新至 ' + $Version
+        $msg = "V5$Version" + '：版本号更新至 ' + $Version
         $msgFile = Join-Path $env:TEMP "v5_release_$(Get-Random).txt"
         [System.IO.File]::WriteAllText($msgFile, $msg, [System.Text.UTF8Encoding]::new($false))
         git commit -F $msgFile
