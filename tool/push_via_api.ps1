@@ -153,7 +153,21 @@ Log "远端 $Branch = $remoteSha"
 Log "本地 HEAD     = $headSha"
 
 if ($remoteSha -eq $headSha) {
-    Log '远端已包含该提交，无需推送。'
+    Log '远端已包含该提交，分支无需推送。'
+    # 分支虽然同步，仍可能需要补推 tag（发版时常见：分支早已推好，tag 是新建的）。
+    if (-not [string]::IsNullOrWhiteSpace($Tag)) {
+        $tagSha = ToJsonStr $headSha
+        try {
+            $createTagJson = '{"ref":"refs/tags/' + $Tag + '","sha":' + $tagSha + '}'
+            Invoke-GitHubApi -Method POST -Path 'git/refs' -Json $createTagJson | Out-Null
+            Log "已创建 tag $Tag（轻量，指向 $headSha）"
+        } catch {
+            $updateTagJson = '{"sha":' + $tagSha + ',"force":true}'
+            Invoke-GitHubApi -Method PATCH -Path "git/refs/tags/$Tag" -Json $updateTagJson | Out-Null
+            Log "已更新 tag $Tag -> $headSha"
+        }
+        & git -C $repoRoot update-ref "refs/tags/$Tag" $headSha
+    }
     exit 0
 }
 if ($remoteSha -ne $parentSha) {
