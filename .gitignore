@@ -62,3 +62,20 @@ key.properties
 .widget_preview/
 
 tool/github_token.txt
+
+# 本机数据文件：绝不入库
+#
+# 覆盖用户数据库、备份、导出包与 fixtures/ 样本库。
+# 尤其 .spike-tmp/ 下存着真机回捞的**真实用户备份**（含中文名备份），
+# 本仓库是公开的，漏一条就是隐私事故。
+/fixtures/
+*.db
+*.sqlite
+*.sqlite3
+backup-*.json
+export-*.json
+.spike-tmp/
+.spike-src/
+
+# 本地 AI 记忆目录（不进仓库）
+.workbuddy/
