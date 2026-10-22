@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>使用说明</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5f5e6a;
+    --line: #e6e1ee;
+    --accent: #6750a4;
+    --chip: #eeedfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141218;
+      --fg: #e6e1e9;
+      --muted: #a8a4b3;
+      --line: #2b2830;
+      --accent: #cfbdfe;
+      --chip: #26215c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 18px 32px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.65 -apple-system, "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 14px 6px;
+    margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); flex: none; margin-top: 8px;
+  }
+  .row p { margin: 0; font-size: 13px; }
+  .row strong { font-weight: 600; display: block; margin-bottom: 1px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: var(--chip); color: var(--accent);
+    font-size: 11.5px; margin-bottom: 14px;
+  }
+  .note { color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .live { display: block; color: var(--accent); font-size: 13px; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <h1>使用说明</h1>
+  <p class="sub">这是安装链路的验证插件，不是正式功能</p>
+
+  <div class="tag">契约 1 · v1.0.0</div>
+
+  <div class="card">
+    <div class="row">
+      <div class="dot"></div>
+      <p><strong>它验证了安装</strong>包从索引下载、校验 sha256、解压落盘</p>
+    </div>
+    <div class="row">
+      <div class="dot"></div>
+      <p><strong>它验证了入口</strong>装完之后，侧边栏多出这一项</p>
+    </div>
+    <div class="row">
+      <div class="dot"></div>
+      <p><strong>它验证了离线</strong>现在看到的这一页来自本地文件，断网也能打开</p>
+    </div>
+    <div class="row">
+      <div class="dot"></div>
+      <p><strong>它验证了卸载</strong>回插件市场点卸载，入口和目录一起消失</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="dot"></div>
+      <p>
+        <strong>它读到了宿主的数据</strong>
+        <span id="live" class="live">正在读取…</span>
+      </p>
+    </div>
+  </div>
+
+  <p class="note">
+    看得见这个页面，说明整条链路是通的。真正的插件（统计、番茄钟）只是换一个包而已。
+  </p>
+  <script>
+    function whenHostReady(callback, tries) {
+      tries = tries || 0;
+      if (window.host) return callback();
+      if (tries > 100) {
+        document.getElementById('live').textContent = '宿主通道没起来';
+        return;
+      }
+      setTimeout(function () { whenHostReady(callback, tries + 1); }, 30);
+    }
+
+    whenHostReady(function () {
+      var now = new Date();
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      var today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+      window.host.call('task.count', { date: today })
+        .then(function (result) {
+          document.getElementById('live').textContent =
+            '今天 ' + result.total + ' 个任务，已完成 ' + result.done + ' 个';
+        })
+        .catch(function (error) {
+          document.getElementById('live').textContent = '读取失败：' + error.message;
+        });
+    });
+  </script>
+</body>
+</html>

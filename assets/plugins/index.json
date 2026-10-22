@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "demo_help",
+      "name": "使用说明",
+      "version": "1.0.0",
+      "contract": 1,
+      "description": "验证安装链路的示例插件",
+      "icon": "help",
+      "package": {
+        "path": "assets/plugins/demo_help_v1.0.0.zip",
+        "sha256": "c8581b086550becdf487dc86bd8b05ecedd9d9862b1c0b5202dc28791669bc94",
+        "sizeBytes": 2136
+      }
+    }
+  ]
+}

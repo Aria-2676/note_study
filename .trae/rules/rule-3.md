@@ -18,7 +18,7 @@ lib/modules/<业务>/  业务模块，自成一个世界，内部结构：
 lib/providers/       核心 Provider 的当前实现位置（9 个文件 + mixins/）
                      新模块的 Provider 优先放自己的模块目录下
 lib/ui/              全局 UI 组件
-lib/main.dart        入口：服务初始化 + MultiProvider + 路由
+lib/main.dart        v5 入口：服务初始化 + MultiProvider + 路由
 
 依赖方向（铁律）
 modules/* → core/* 单向依赖；
@@ -32,10 +32,8 @@ core → modules 是**目标态**，当前有已知例外（勿"顺手修正"，
 这些例外是**已知技术债**，不要再新加；新增 core 代码仍须遵守单向依赖。
 
 命名
-目录与文件：小写 + 下划线（task_provider.dart、app_update_decider.dart）；
-类名：大驼峰（TaskProvider、AppUpdateDecider）；
-禁止中文、禁止无意义名（page.dart、utils1.dart、helper.dart）；
-文件名要能推断内容。
+目录与文件：小写 + 下划线（task_provider.dart）；类名：大驼峰（TaskProvider）；
+禁中文、禁无意义名（page.dart、utils1.dart、helper.dart）；文件名要能推断内容。
 
 隔离
 新增模块只加自己的目录，不修改其他模块代码；
@@ -51,3 +49,12 @@ core → modules 是**目标态**，当前有已知例外（勿"顺手修正"，
   在 core/updater/providers/ 外，其余**全部**实现在这里（含 7 个 import modules
   的文件，见上文已知例外）。它同时是「跨模块 Provider 的落脚点」，
   但**新代码不要往这里加** —— 新 Provider 随模块走。
+
+v6 并行目录（2026-10 起，与 v5 并存、逐步替换）
+```
+lib/core/extension/  扩展位：插槽 / 钩子 / 货币 / 入口（只依赖 core 内部）
+lib/core/data/       v6 数据层：v6_schema、v6_database、v6_plugin_tables
+lib/app/             v6 主包：models/ data/（唯一写 tasks 表）state/ shell/ pages/ widgets/
+lib/main_v6_preview.dart  预览入口（flutter run -t 它），不影响 main.dart
+```
+依赖：`app → core`；`core/{data,extension}` 不得依赖 `modules/`、`app/`；`app/` 不得依赖 `modules/`；v6 完成后 v5 的 `modules/`、`providers/` 逐块移除。与本卡配套读「插件边界」。

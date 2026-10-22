@@ -7,6 +7,11 @@
 > 设计取舍与历史原因在 [`docs/decisions.md`](docs/decisions.md)。
 > 三者**不再互相复述**：规则改动只改 `.trae/rules/`，本文件不需跟着改。
 
+> **📌 2026-10 平台化改造进行中** —— 动手前先读 [`docs/INDEX.md`](docs/INDEX.md)（文档地图）
+> 与 [`docs/main-package.md`](docs/main-package.md)（主包/插件边界）。
+> 本文描述的是**当前 v5 代码**的事实；主包重写后，§1 的库表版本、§4 的分发细节、
+> `.trae/rules` 的「依赖方向」都会随之变化，届时以新代码为准并同步本文。
+
 ---
 
 ## 1. 这是什么项目
@@ -19,7 +24,7 @@ Flutter 应用「任务管家」：任务管理 + 积分 + 番茄钟 + 商城 + 
 |---|---|
 | 仓库 | `D:\Dev\V5`（分支 `main`） |
 | 包名 / applicationId | `v5_app` / `com.noteapp.taskmaster` |
-| 平台 | android / ios / linux / macos / web / windows |
+| 平台 | 目录含 6 个平台，**实际只构建并验证 Android**（自签分发）；iOS 从未 `pod install` |
 | 数据库 | sqflite，`v5_tasks.db`，`AppConfig.dbVersion = 3` |
 | 规模 | lib ~210 个 Dart 文件、test ~50 个 |
 | 版本 | 见 `pubspec.yaml`，与最近提交号一致 |
@@ -47,6 +52,62 @@ flutter build apk --release
 
 判断：`flutter --version` 若报 `CreateFile failed 231` 即已中招。
 处置顺序：**重启电脑 → 排查安全软件/EDR 白名单 → 完全重启 IDE**。
+
+### ⚠️ flutter test 报 WebSocket 握手失败 —— 先查代理变量（已验证）
+
+报错：`Unable to connect to flutter_tester process: WebSocketException:
+Invalid WebSocket upgrade request`
+
+**多数不是安全软件，是环境里设了 HTTP 代理。** flutter_tester 用本地 WebSocket 与被测进程
+通信，请求被路由到代理上，握手必然失败。
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+    NO_PROXY="127.0.0.1,localhost" flutter test --no-pub --reporter compact
+```
+
+实测清掉后立即恢复（21 个用例全过）。**这条与上面的 CreatePipe 231 是两个不同的坑**：
+前者是代理劫持回环，后者是进程创建失败，别混为一谈。
+
+### ⚠️ Android 构建：JDK 必须是 21，不能是 25（2026-10-22 已处置）
+
+Android Studio 自带的 JBR 已升到 **Java 25**，而项目用的 Gradle 8.14 只支持到 Java 24 →
+**任何 android 构建在编译代码之前就失败**，报 `Java/Gradle incompatibility`。
+
+处置（已完成，可复现）：
+
+```bash
+curl -L -o D:/Dev/SDK/jdk/microsoft-jdk-21.zip \
+  https://aka.ms/download-jdk/microsoft-jdk-21-windows-x64.zip
+powershell -Command "Expand-Archive D:/Dev/SDK/jdk/microsoft-jdk-21.zip -DestinationPath D:/Dev/SDK/jdk"
+flutter config --jdk-dir="D:/Dev/SDK/jdk/jdk-21.0.12.1+1"
+```
+
+- 便携版：解压即用、删目录即还原，**不动系统 JAVA_HOME**
+- **不要**为了匹配 Java 25 去升 Gradle/AGP —— 那是 ROADMAP 里 v5.5.30 的独立任务，
+  不该被一次环境故障逼着做
+- `winget install` 在这台机器上会失败（`InternetOpenUrl() failed 0x80072efd`，
+  winget 的下载器不走系统代理），必须用 curl
+
+### ⚠️ sqlite3 的 build hook 要联网下载原生库，直连 GitHub 必失败
+
+构建报 `By default, this package downloads a pre-compiled SQLite library. This failed`，
+URL 指向 `github.com/simolus3/sqlite3.dart/releases/...`。来源是 dev 依赖
+`sqflite_common_ffi` 带进来的 `sqlite3` 包，在 Flutter 的 native assets 阶段执行；
+hook 用 Dart HttpClient，**不走系统代理**，所以 GitHub 直连不通就整个构建失败。
+
+处置：用镜像把四个 ABI 的库放进 hook 缓存目录。目录名 = 期望 sha256 的前 8 位，
+文件名固定 `libsqlite3.so`，hook 校验哈希对上就直接复用、不再联网。
+
+```bash
+BASE=https://ghfast.top/https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-3.5.2
+DEST=.dart_tool/hooks_runner/shared/sqlite3/build
+# 哈希清单：pub-cache/hosted/pub.dev/sqlite3-<ver>/lib/src/hook/asset_hashes.dart
+mkdir -p $DEST/download-0c2d3bfc
+curl -L -o $DEST/download-0c2d3bfc/libsqlite3.so $BASE/libsqlite3.arm64.android.so
+```
+
+四个 ABI（arm / arm64 / ia32 / x64）都要补。**升级 sqlite3 版本后这份缓存要重做**。
 
 **替代验证（环境坏时用，两条互补）：**
 

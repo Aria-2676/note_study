@@ -1,0 +1,130 @@
+import 'package:flutter/material.dart';
+
+import '../models/task.dart';
+
+/// 任务卡片。第四行位置留给「附加行」插槽（`slot.taskCardExtra`，由插件供数据、主包绘制）。
+class TaskCard extends StatelessWidget {
+  const TaskCard({
+    super.key,
+    required this.task,
+    required this.onToggle,
+    this.extraLine,
+  });
+
+  final Task task;
+  final VoidCallback onToggle;
+
+  /// 插槽 `slot.taskCardExtra` 的展示位。没有插件时恒为 null，卡片不会多出一行。
+  final String? extraLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = Theme.of(context).textTheme.bodySmall?.color;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          InkWell(
+            onTap: onToggle,
+            customBorder: const CircleBorder(),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                task.isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 20,
+                color: task.isDone ? scheme.primary : muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: task.priorityColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.35,
+                          decoration:
+                              task.isDone ? TextDecoration.lineThrough : null,
+                          color: task.isDone ? muted : scheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: <Widget>[
+                    for (final tag in task.tags.take(2)) ...<Widget>[
+                      _TagChip(label: tag.name, color: tag.displayColor),
+                      const SizedBox(width: 6),
+                    ],
+                    if (task.estimatedMinutes != null) ...<Widget>[
+                      Icon(Icons.schedule, size: 12, color: muted),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${task.estimatedMinutes} 分钟',
+                        style: TextStyle(fontSize: 11, color: muted),
+                      ),
+                    ],
+                  ],
+                ),
+                if (extraLine != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(extraLine!, style: TextStyle(fontSize: 11, color: muted)),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, color: color),
+      ),
+    );
+  }
+}

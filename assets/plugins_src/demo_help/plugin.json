@@ -1,0 +1,10 @@
+{
+  "id": "demo_help",
+  "name": "使用说明",
+  "version": "1.0.0",
+  "contract": 1,
+  "entry": "index.html",
+  "description": "验证安装链路的示例插件",
+  "icon": "help",
+  "permissions": ["task:read"]
+}
