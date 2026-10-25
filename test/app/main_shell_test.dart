@@ -508,17 +508,32 @@ void main() {
     expect(find.text('已装插件的入口追加在这里'), findsOneWidget);
   });
 
-  testWidgets('底栏中间按钮能新建任务', (tester) async {
+  testWidgets('底栏中间按钮进新建页，填标题就能存', (tester) async {
     await pumpApp(tester);
 
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    await tester.enterText(find.byType(TextField), '买牛奶');
+    expect(find.text('新建任务'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '买牛奶');
     await tester.tap(find.text('添加'));
     await settle(tester);
 
     expect(find.text('买牛奶'), findsOneWidget);
+    expect(find.textContaining('已添加'), findsOneWidget);
+  });
+
+  testWidgets('日期选择器是中文的（预览壳配了本地化）', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('读 30 页《设计心理学》'));
+    await settle(tester);
+    await tester.tap(find.byIcon(Icons.event_outlined));
+    await tester.pumpAndSettle();
+
+    // 没配 GlobalMaterialLocalizations 时这里是 OK / CANCEL
+    expect(find.text('确定'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
   });
 
   testWidgets('点任务正文打开编辑页', (tester) async {
@@ -548,9 +563,9 @@ void main() {
     expect(store.tags.map((t) => t.name), contains('工作'));
 
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '带标签的新任务');
-    // 弹窗里的标签是 Material 的 FilterChip（首页那排是自绘的 _FilterChip），不会撞
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).first, '带标签的新任务');
+    // 新建页里的标签是 Material 的 FilterChip（首页那排是自绘的 _FilterChip），不会撞
     await tester.tap(find.widgetWithText(FilterChip, '工作'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('添加'));

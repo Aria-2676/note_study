@@ -313,13 +313,23 @@ class _MainShellState extends State<MainShell> {
     _store.load(d);
   }
 
+  /// 新建任务：直接进全屏页（和编辑页同一套字段）。
+  ///
+  /// 以前是一个只有标题的弹窗，用户建完想加日期/优先级/标签还得再进去改一次 ——
+  /// 那等于所有任务都要操作两遍。现在一次填完，只想填标题也能填完就保存。
   Future<void> _addTask() async {
-    final result = await showDialog<_AddTaskResult>(
-      context: context,
-      builder: (_) => _AddTaskDialog(tags: _store.tags),
+    final navigator = Navigator.of(context);
+    final outcome = await navigator.push<TaskEditOutcome>(
+      MaterialPageRoute<TaskEditOutcome>(
+        builder: (_) => TaskEditorPage(store: _store, initialDay: _selected),
+      ),
     );
-    if (result == null || result.title.trim().isEmpty) return;
-    await _store.add(result.title, tagIds: result.tagIds);
+    if (!mounted || outcome == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('已添加'), duration: Duration(seconds: 2)),
+      );
   }
 
   /// 左滑到底时先问一句。返回 false 时 `Dismissible` 会把卡片弹回原位。
@@ -693,92 +703,6 @@ class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
           style: TextButton.styleFrom(foregroundColor: scheme.error),
           child: const Text('删除'),
         ),
-      ],
-    );
-  }
-}
-
-/// 新建任务的结果：标题 + 选中的标签。
-class _AddTaskResult {
-  const _AddTaskResult(this.title, this.tagIds);
-
-  final String title;
-  final List<int> tagIds;
-}
-
-class _AddTaskDialog extends StatefulWidget {
-  const _AddTaskDialog({required this.tags});
-
-  /// 可选的标签。为空时不显示这一块，保持"只输入标题"的最短路径。
-  final List<Tag> tags;
-
-  @override
-  State<_AddTaskDialog> createState() => _AddTaskDialogState();
-}
-
-class _AddTaskDialogState extends State<_AddTaskDialog> {
-  final TextEditingController _controller = TextEditingController();
-  final Set<int> _selected = <int>{};
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.of(context).pop(
-        _AddTaskResult(_controller.text, _selected.toList()),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('新建任务', style: TextStyle(fontSize: 16)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '要做什么？', isDense: true),
-            onSubmitted: (_) => _submit(),
-          ),
-          // 没有标签时整块不出现：多数情况下"记一件事"不需要额外操作
-          if (widget.tags.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: <Widget>[
-                for (final tag in widget.tags)
-                  FilterChip(
-                    label: Text(tag.name),
-                    labelStyle: TextStyle(
-                      fontSize: 11,
-                      color: _selected.contains(tag.id) ? tag.displayColor : null,
-                    ),
-                    selected: _selected.contains(tag.id),
-                    showCheckmark: false,
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    selectedColor: tag.displayColor.withValues(alpha: 0.18),
-                    onSelected: (value) => setState(() {
-                      if (value) {
-                        _selected.add(tag.id);
-                      } else {
-                        _selected.remove(tag.id);
-                      }
-                    }),
-                  ),
-              ],
-            ),
-          ],
-        ],
-      ),
-      actions: <Widget>[
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        TextButton(onPressed: _submit, child: const Text('添加')),
       ],
     );
   }

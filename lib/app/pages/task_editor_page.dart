@@ -6,7 +6,10 @@ import '../state/task_store.dart';
 /// 编辑页关闭时的结果。壳层靠它决定提示什么。
 enum TaskEditOutcome { saved, deleted }
 
-/// 任务编辑（全屏）。
+/// 任务编辑 / 新建（全屏，同一个页面）。
+///
+/// **创建和编辑用同一套字段**。分成两个界面的话，新建时能填的永远比编辑时少，
+/// 用户建完还得再进去改一遍 —— 那等于所有任务都要操作两次。
 ///
 /// 为什么是全屏而不是底部弹层：字段会越加越多（描述、日期、优先级、时长、标签，
 /// 以后还可能有循环/提醒），弹层里再叠键盘会挤得没法用。
@@ -17,15 +20,24 @@ class TaskEditorPage extends StatefulWidget {
   const TaskEditorPage({
     super.key,
     required this.store,
-    required this.task,
-    required this.onDelete,
+    this.task,
+    this.initialDay,
+    this.onDelete,
   });
 
   final TaskStore store;
-  final Task task;
 
-  /// 由壳层执行删除（含确认框与回收站开关），返回是否真的删掉了
-  final Future<bool> Function() onDelete;
+  /// 为空表示**新建**
+  final Task? task;
+
+  /// 新建时的默认日期（首页当前选中的那天）
+  final DateTime? initialDay;
+
+  /// 由壳层执行删除（含确认框与回收站开关），返回是否真的删掉了。
+  /// 新建模式下为 null —— 本来就没有东西可删。
+  final Future<bool> Function()? onDelete;
+
+  bool get isCreating => task == null;
 
   @override
   State<TaskEditorPage> createState() => _TaskEditorPageState();
@@ -33,14 +45,17 @@ class TaskEditorPage extends StatefulWidget {
 
 class _TaskEditorPageState extends State<TaskEditorPage> {
   late final TextEditingController _title =
-      TextEditingController(text: widget.task.title);
+      TextEditingController(text: widget.task?.title ?? '');
   late final TextEditingController _description =
-      TextEditingController(text: widget.task.description ?? '');
+      TextEditingController(text: widget.task?.description ?? '');
 
-  late DateTime _day = widget.task.dueDate;
-  late String _priority = widget.task.priority;
-  late int? _minutes = widget.task.estimatedMinutes;
-  late final Set<int> _tagIds = widget.task.tags.map((t) => t.id).toSet();
+  late DateTime _day = widget.task?.dueDate ??
+      widget.initialDay ??
+      DateTime.now();
+  late String _priority = widget.task?.priority ?? 'white';
+  late int? _minutes = widget.task?.estimatedMinutes;
+  late final Set<int> _tagIds =
+      widget.task?.tags.map((t) => t.id).toSet() ?? <int>{};
 
   String? _titleError;
   bool _dirty = false;
@@ -72,15 +87,27 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     });
 
     try {
-      await widget.store.updateTask(
-        widget.task,
-        title: title,
-        description: _description.text,
-        dueDate: _day,
-        priority: _priority,
-        estimatedMinutes: _minutes,
-        tagIds: _tagIds.toList(),
-      );
+      final existing = widget.task;
+      if (existing == null) {
+        await widget.store.add(
+          title,
+          description: _description.text,
+          day: _day,
+          priority: _priority,
+          estimatedMinutes: _minutes,
+          tagIds: _tagIds.toList(),
+        );
+      } else {
+        await widget.store.updateTask(
+          existing,
+          title: title,
+          description: _description.text,
+          dueDate: _day,
+          priority: _priority,
+          estimatedMinutes: _minutes,
+          tagIds: _tagIds.toList(),
+        );
+      }
       if (!mounted) return;
       _dirty = false;
       Navigator.of(context).pop(TaskEditOutcome.saved);
@@ -94,7 +121,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   }
 
   Future<void> _delete() async {
-    final deleted = await widget.onDelete();
+    final onDelete = widget.onDelete;
+    if (onDelete == null) return;
+    final deleted = await onDelete();
     if (!mounted || !deleted) return;
     _dirty = false;
     Navigator.of(context).pop(TaskEditOutcome.deleted);
@@ -147,11 +176,16 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('编辑任务', style: TextStyle(fontSize: 16)),
+          title: Text(
+            widget.isCreating ? '新建任务' : '编辑任务',
+            style: const TextStyle(fontSize: 16),
+          ),
           actions: <Widget>[
             TextButton(
               onPressed: _saving ? null : _save,
-              child: Text(_saving ? '保存中…' : '保存'),
+              child: Text(
+                _saving ? '保存中…' : (widget.isCreating ? '添加' : '保存'),
+              ),
             ),
           ],
         ),
@@ -160,7 +194,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           children: <Widget>[
             TextField(
               controller: _title,
-              autofocus: false,
+              autofocus: widget.isCreating,
               maxLines: null,
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
@@ -286,14 +320,16 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                     ),
                 ],
               ),
-            const SizedBox(height: 28),
-            Center(
-              child: TextButton.icon(
-                onPressed: _saving ? null : _delete,
-                icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
-                label: Text('删除任务', style: TextStyle(color: scheme.error)),
+            if (!widget.isCreating) ...<Widget>[
+              const SizedBox(height: 28),
+              Center(
+                child: TextButton.icon(
+                  onPressed: _saving ? null : _delete,
+                  icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
+                  label: Text('删除任务', style: TextStyle(color: scheme.error)),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

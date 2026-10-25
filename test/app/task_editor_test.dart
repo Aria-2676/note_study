@@ -63,8 +63,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> openEditor(
+  Future<void> openPage(
     WidgetTester tester, {
+    Task? target,
+    DateTime? initialDay,
     Future<bool> Function()? onDelete,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
@@ -82,8 +84,9 @@ void main() {
                     MaterialPageRoute<TaskEditOutcome>(
                       builder: (_) => TaskEditorPage(
                         store: store,
-                        task: task,
-                        onDelete: onDelete ?? () async => false,
+                        task: target,
+                        initialDay: initialDay,
+                        onDelete: onDelete,
                       ),
                     ),
                   );
@@ -98,6 +101,19 @@ void main() {
     await tester.tap(find.text('打开编辑'));
     await settle(tester);
   }
+
+  Future<void> openEditor(
+    WidgetTester tester, {
+    Future<bool> Function()? onDelete,
+  }) =>
+      openPage(
+        tester,
+        target: task,
+        onDelete: onDelete ?? () async => false,
+      );
+
+  Future<void> openCreate(WidgetTester tester, {DateTime? initialDay}) =>
+      openPage(tester, initialDay: initialDay ?? day);
 
   testWidgets('打开时显示任务当前的值', (tester) async {
     await openEditor(tester);
@@ -189,6 +205,59 @@ void main() {
 
     expect(outcome, isNull, reason: '放弃修改不是"保存"');
     expect((await repo.tasksOn(day)).single.title, '写周报');
+  });
+
+  testWidgets('新建模式：标题是「新建任务」，且没有删除入口', (tester) async {
+    await openCreate(tester);
+
+    expect(find.text('新建任务'), findsOneWidget);
+    expect(find.text('编辑任务'), findsNothing);
+    expect(find.text('删除任务'), findsNothing, reason: '还没建出来的东西删不了');
+    expect(find.text('添加'), findsOneWidget);
+  });
+
+  testWidgets('新建模式：填标题保存后库里多一条', (tester) async {
+    await openCreate(tester);
+
+    await tester.enterText(find.byType(TextField).first, '买牛奶');
+    await tester.tap(find.text('添加'));
+    await settle(tester);
+
+    expect(outcome, TaskEditOutcome.saved);
+    final titles = (await repo.tasksOn(day)).map((t) => t.title).toList();
+    expect(titles, contains('买牛奶'));
+    expect(titles.length, 2, reason: '原来那条要还在');
+  });
+
+  testWidgets('新建模式：一次就能把优先级/时长/标签都填好', (tester) async {
+    await openCreate(tester);
+
+    await tester.enterText(find.byType(TextField).first, '整理房间');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('红'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('60 分钟'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilterChip, '学习'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加'));
+    await settle(tester);
+
+    final created = (await repo.tasksOn(day)).firstWhere((t) => t.title == '整理房间');
+    expect(created.priority, 'red');
+    expect(created.estimatedMinutes, 60);
+    expect(created.tags.map((t) => t.name), <String>['学习']);
+  });
+
+  testWidgets('新建模式：标题为空时拦住，不写库', (tester) async {
+    await openCreate(tester);
+
+    await tester.tap(find.text('添加'));
+    await settle(tester);
+
+    expect(find.text('标题不能为空'), findsOneWidget);
+    expect(outcome, isNull);
+    expect((await repo.tasksOn(day)).length, 1);
   });
 
   testWidgets('点删除：交给外层执行，成功后关闭页面并返回 deleted', (tester) async {

@@ -131,15 +131,18 @@ class TaskStore extends ChangeNotifier {
 
   Future<void> add(
     String title, {
+    String? description,
     int? estimatedMinutes,
     String priority = 'white',
     List<int> tagIds = const <int>[],
+    DateTime? day,
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
     await _repo.insert(
       title: trimmed,
-      day: _day,
+      day: day ?? _day,
+      description: (description?.trim().isEmpty ?? true) ? null : description!.trim(),
       priority: priority,
       estimatedMinutes: estimatedMinutes,
       tagIds: tagIds,
