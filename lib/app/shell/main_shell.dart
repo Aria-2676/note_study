@@ -26,6 +26,7 @@ class MainShell extends StatefulWidget {
     required this.store,
     this.marketStore,
     this.pluginLauncher,
+    this.recyclePageBuilder,
   });
 
   final TaskStore store;
@@ -35,6 +36,9 @@ class MainShell extends StatefulWidget {
 
   /// 打开已装插件时调用，由应用层提供数据源（`MainShell` 不碰数据库）
   final Future<PluginLaunchSpec> Function(InstalledPlugin plugin)? pluginLauncher;
+
+  /// 回收站页面的构造器。同样由应用层提供 —— `MainShell` 没有仓储层。
+  final WidgetBuilder? recyclePageBuilder;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -140,6 +144,60 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  /// 改保留时长。改短可能立刻清掉一些条目，得告诉用户清了几条 ——
+  /// 否则"我刚改了个设置，回收站里少了几条"会显得像 bug。
+  Future<void> _setRetentionDays(int days) async {
+    // 改短才可能立刻删东西；改长只是延后，不用问。
+    if (days < _store.retentionDays) {
+      final wouldPurge = await _store.countRecycleExpiringWith(days);
+      if (!mounted) return;
+
+      if (wouldPurge > 0) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('缩短保留时长', style: TextStyle(fontSize: 16)),
+            content: Text(
+              '回收站里有 $wouldPurge 条已经超过 $days 天，继续会立刻彻底删除，无法恢复。',
+              style: const TextStyle(fontSize: 13.5),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(ctx).colorScheme.error,
+                ),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+        if (confirmed != true) {
+          // 取消后 store 没变、也不会 notify，分段按钮的选中态会停在"新值"上，
+          // 所以手动 rebuild 一次把它拉回来
+          setState(() {});
+          return;
+        }
+      }
+    }
+
+    final purged = await _store.setRetentionDays(days);
+    if (!mounted || purged == 0) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('已按新的保留时长清理 $purged 条'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
   /// 所有入口的唯一分发表。
   ///
   /// **不在这里关抽屉** —— 那样从「我的」页点入口会把主路由 pop 掉。
@@ -161,6 +219,15 @@ class _MainShellState extends State<MainShell> {
     switch (destination) {
       case AppDestination.todayTasks:
         setState(() => _tab = 0);
+      case AppDestination.recycleBin:
+        final builder = widget.recyclePageBuilder;
+        if (builder == null) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('回收站未接入'), duration: Duration(seconds: 1)),
+          );
+          return;
+        }
+        navigator.push(MaterialPageRoute<void>(builder: builder));
       case AppDestination.pluginMarket:
         final market = widget.marketStore;
         if (market == null) {
@@ -247,7 +314,10 @@ class _MainShellState extends State<MainShell> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          disabledConfirm ? '已移入回收站 · 删除确认已关闭' : '「${task.title}」已移入回收站',
+          [
+            if (_store.recycleBinEnabled) '「${task.title}」已移入回收站' else '「${task.title}」已删除',
+            if (disabledConfirm) '删除确认已关闭',
+          ].join(' · '),
         ),
         duration: const Duration(seconds: 2),
       ),
@@ -344,6 +414,10 @@ class _MainShellState extends State<MainShell> {
           onCalendarStyleChanged: (s) => setState(() => _calendarStyle = s),
           confirmBeforeDelete: _store.confirmBeforeDelete,
           onConfirmBeforeDeleteChanged: _store.setConfirmBeforeDelete,
+          recycleBinEnabled: _store.recycleBinEnabled,
+          onRecycleBinChanged: _store.setRecycleBinEnabled,
+          retentionDays: _store.retentionDays,
+          onRetentionDaysChanged: _setRetentionDays,
           onOpenDestination: _openDestination,
         ),
       ],

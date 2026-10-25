@@ -16,8 +16,11 @@ class V6Database {
 
   static const String fileName = 'v6_tasks.db';
 
-  /// v6 的 schema 版本。**从 1 开始**，不继承 v5 的 3。
-  static const int version = 1;
+  /// v6 的 schema 版本。
+  ///
+  /// - 1：初始结构
+  /// - 2：`recycled_tasks.tag_ids`（回收站保留标签快照，恢复时用来重建 `task_tags`）
+  static const int version = 2;
 
   /// 打开数据库（不存在则创建）。
   ///
@@ -48,9 +51,17 @@ class V6Database {
         }
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // v6 目前只有 version 1。真走到这里说明有人改了 version 却没写迁移，
-        // 直接失败比"静默降级"安全。
-        throw StateError('v6 尚无迁移链：$oldVersion -> $newVersion，请先实现迁移');
+        // 迁移链从 1 开始。**每一步都要能单独跑通**：老设备可能停在任意版本，
+        // 所以按"低于目标就补一步"写，而不是 if (old == 1) 的二分。
+        if (newVersion > version) {
+          throw StateError('v6 迁移链只到 $version，请求升到 $newVersion');
+        }
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE ${V6Table.recycledTasks} '
+            'ADD COLUMN ${RecycledTaskCol.tagIds} TEXT',
+          );
+        }
       },
     ).then((db) async {
       await registry.materialize(db);

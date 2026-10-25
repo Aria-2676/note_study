@@ -21,6 +21,8 @@ class TaskStore extends ChangeNotifier {
   bool _ready = false;
   bool _settingsLoaded = false;
   bool _confirmBeforeDelete = true;
+  bool _recycleBinEnabled = false;
+  int _retentionDays = SettingsKeys.defaultRetentionDays;
   String? _tagFilter;
 
   DateTime get day => _day;
@@ -47,6 +49,40 @@ class TaskStore extends ChangeNotifier {
     await _settings.setBool(SettingsKeys.confirmBeforeDelete, value);
   }
 
+  /// 删除后是否先进回收站。**默认关** —— 默认直接删掉，不留垃圾。
+  bool get recycleBinEnabled => _recycleBinEnabled;
+
+  Future<void> setRecycleBinEnabled(bool value) async {
+    if (_recycleBinEnabled == value) return;
+    _recycleBinEnabled = value;
+    notifyListeners();
+    await _settings.setBool(SettingsKeys.recycleBinEnabled, value);
+  }
+
+  /// 回收站保留天数。到期由启动时的清理任务物理删除。
+  int get retentionDays => _retentionDays;
+
+  /// 改保留时长。**改短会立刻触发一次清理**，返回被清掉的条数。
+  ///
+  /// 为什么不让"倒计时"自己生效：清理是机会式的（启动时扫一遍），
+  /// 没有后台定时器。如果只改设置不清理，用户会看到"即将清理"却一直挂着，
+  /// 直到下次冷启动 —— 界面在骗人。
+  Future<int> setRetentionDays(int days) async {
+    if (_retentionDays == days) return 0;
+    _retentionDays = days;
+    notifyListeners();
+    await _settings.setInt(SettingsKeys.recycleRetentionDays, days);
+    return purgeRecycle();
+  }
+
+  /// 按当前保留时长清理过期条目，返回清掉的条数。
+  Future<int> purgeRecycle() =>
+      _repo.purgeRecycleOlderThan(Duration(days: _retentionDays));
+
+  /// 如果改成 [days] 天，会立刻清掉几条。改短前先问一句用。
+  Future<int> countRecycleExpiringWith(int days) =>
+      _repo.countRecycleOlderThan(Duration(days: days));
+
   /// 按标签筛选后的列表。`null` 表示"全部"。
   List<Task> get visible => _tagFilter == null
       ? _tasks
@@ -70,6 +106,14 @@ class TaskStore extends ChangeNotifier {
       _confirmBeforeDelete = await _settings.getBool(
         SettingsKeys.confirmBeforeDelete,
         fallback: true,
+      );
+      _recycleBinEnabled = await _settings.getBool(
+        SettingsKeys.recycleBinEnabled,
+        fallback: false,
+      );
+      _retentionDays = await _settings.getInt(
+        SettingsKeys.recycleRetentionDays,
+        fallback: SettingsKeys.defaultRetentionDays,
       );
     }
 
@@ -110,7 +154,7 @@ class TaskStore extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _repo.moveToRecycle(task.id);
+      await _repo.delete(task.id, toRecycle: _recycleBinEnabled);
     } catch (_) {
       // 删库失败就把那一条放回原位，界面不能骗人
       final restored = List<Task>.of(_tasks)

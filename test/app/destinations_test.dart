@@ -38,10 +38,11 @@ void main() {
       }
     });
 
-    test('已接入的入口只有这两个', () {
+    test('已接入的入口只有这三个', () {
       final ready = AppDestination.values.where((d) => d.ready).toSet();
       expect(ready, <AppDestination>{
         AppDestination.todayTasks,
+        AppDestination.recycleBin,
         AppDestination.pluginMarket,
       });
     });

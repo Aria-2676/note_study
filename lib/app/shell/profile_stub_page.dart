@@ -13,6 +13,10 @@ class ProfileStubPage extends StatelessWidget {
     required this.onCalendarStyleChanged,
     required this.confirmBeforeDelete,
     required this.onConfirmBeforeDeleteChanged,
+    required this.recycleBinEnabled,
+    required this.onRecycleBinChanged,
+    required this.retentionDays,
+    required this.onRetentionDaysChanged,
     required this.onOpenDestination,
   });
 
@@ -22,6 +26,14 @@ class ProfileStubPage extends StatelessWidget {
   /// 删除前是否弹确认框（对应"以后不再提醒"那个勾选）
   final bool confirmBeforeDelete;
   final ValueChanged<bool> onConfirmBeforeDeleteChanged;
+
+  /// 删除后先进回收站（默认关）
+  final bool recycleBinEnabled;
+  final ValueChanged<bool> onRecycleBinChanged;
+
+  /// 回收站保留天数
+  final int retentionDays;
+  final ValueChanged<int> onRetentionDaysChanged;
 
   final ValueChanged<AppDestination> onOpenDestination;
 
@@ -77,12 +89,51 @@ class ProfileStubPage extends StatelessWidget {
           dense: true,
           title: const Text('删除前确认', style: TextStyle(fontSize: 14)),
           subtitle: Text(
-            confirmBeforeDelete ? '左滑删除前会问一次' : '左滑直接移入回收站',
+            confirmBeforeDelete
+                ? '左滑删除前会问一次'
+                : (recycleBinEnabled ? '左滑直接移入回收站' : '左滑直接删除，不问、不可恢复'),
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
           value: confirmBeforeDelete,
           onChanged: onConfirmBeforeDeleteChanged,
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('删除后先进回收站', style: TextStyle(fontSize: 14)),
+          subtitle: Text(
+            recycleBinEnabled
+                ? '$retentionDays 天后自动彻底删除，期间可恢复'
+                : '关闭时左滑删除即彻底删掉，无法恢复',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          value: recycleBinEnabled,
+          onChanged: onRecycleBinChanged,
+        ),
+        if (recycleBinEnabled) ...<Widget>[
+          const SizedBox(height: 2),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('保留时长', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+              ),
+              SegmentedButton<int>(
+                segments: const <int>[1, 3, 7, 30]
+                    .map((d) => ButtonSegment<int>(value: d, label: Text('$d 天')))
+                    .toList(),
+                selected: <int>{
+                  // 存量值不在档位里时，显示最接近的一档，避免 SegmentedButton 断言
+                  <int>[1, 3, 7, 30].reduce(
+                    (a, b) => (a - retentionDays).abs() <= (b - retentionDays).abs() ? a : b,
+                  ),
+                },
+                showSelectedIcon: false,
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                onSelectionChanged: (selection) => onRetentionDaysChanged(selection.first),
+              ),
+            ],
+          ),
+        ],
         Divider(color: scheme.outlineVariant.withValues(alpha: 0.5)),
         const SizedBox(height: 4),
         Text('入口', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),

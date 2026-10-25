@@ -81,6 +81,13 @@ class RecycledTaskCol {
   static const String createdAt = 'created_at';
   static const String priority = 'priority';
   static const String deletedAt = 'deleted_at';
+
+  /// 该任务被删时拥有的标签 id，逗号分隔（`1,3,7`）。
+  ///
+  /// 存快照而不是靠 `task_tags` 保留：那张表有 `ON DELETE CASCADE`，
+  /// 删任务时会被级联清掉。恢复时按这里重建，但只重建仍然存在的标签
+  /// （标签可能在这期间被删了，外键会拒绝整条恢复）。
+  static const String tagIds = 'tag_ids';
 }
 
 class TagCol {
@@ -176,7 +183,8 @@ const List<String> v6CreateTables = <String>[
     ${RecycledTaskCol.estimatedMinutes} INTEGER,
     ${RecycledTaskCol.createdAt} TEXT NOT NULL,
     ${RecycledTaskCol.priority} TEXT NOT NULL DEFAULT 'white',
-    ${RecycledTaskCol.deletedAt} TEXT NOT NULL
+    ${RecycledTaskCol.deletedAt} TEXT NOT NULL,
+    ${RecycledTaskCol.tagIds} TEXT
   )
   ''',
   '''

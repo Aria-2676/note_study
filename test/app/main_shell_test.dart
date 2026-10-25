@@ -152,7 +152,7 @@ void main() {
     await settle(tester);
 
     expect(find.text('读 30 页《设计心理学》'), findsNothing);
-    expect(find.textContaining('已移入回收站'), findsOneWidget);
+    expect(find.textContaining('已删除'), findsOneWidget);
   });
 
   testWidgets('删除确认框：点「取消」任务原样保留', (tester) async {
@@ -187,8 +187,148 @@ void main() {
     expect(rows.any((t) => t.title == title), isFalse,
         reason: '库里也必须没了，否则切回日期它会复活');
 
+    // 回收站默认关 → 直接物理删除，不留垃圾
     final recycled = await db.query('recycled_tasks');
-    expect(recycled.any((r) => r['title'] == title), isTrue, reason: '应该进了回收站');
+    expect(recycled, isEmpty, reason: '默认应当是彻底删除，回收站里不该有东西');
+  });
+
+  testWidgets('打开回收站开关后，左滑进回收站而不是直接删', (tester) async {
+    await pumpApp(tester);
+    await store.setConfirmBeforeDelete(false);
+    await store.setRecycleBinEnabled(true);
+    await settle(tester);
+
+    const title = '读 30 页《设计心理学》';
+    await tester.drag(find.text(title), const Offset(-400, 0));
+    await settle(tester);
+
+    expect(find.text(title), findsNothing);
+    expect(find.textContaining('已移入回收站'), findsOneWidget, reason: '提示要说明去了哪儿');
+
+    final recycled = await db.query('recycled_tasks');
+    expect(recycled.any((r) => r['title'] == title), isTrue);
+
+    // 切走再切回来：任务不该复活（它在回收站，不在当天列表里）
+    await store.load(DateTime.now().add(const Duration(days: 3)));
+    await settle(tester);
+    await store.load(DateTime.now());
+    await settle(tester);
+    expect(find.text(title), findsNothing);
+  });
+
+  testWidgets('改短保留时长会先问一句；取消则设置和条目都不变', (tester) async {
+    await pumpApp(tester);
+    await store.setRecycleBinEnabled(true);
+    final id = await repo.insert(title: '三天前删的', day: DateTime.now());
+    await repo.moveToRecycle(id);
+    await db.update(
+      'recycled_tasks',
+      <String, Object?>{
+        'deleted_at': DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 3))
+            .toIso8601String(),
+      },
+      where: 'title = ?',
+      whereArgs: <Object?>['三天前删的'],
+    );
+    await settle(tester);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1 天'));
+    await settle(tester);
+
+    expect(find.text('缩短保留时长'), findsOneWidget);
+    expect(find.textContaining('1 条已经超过 1 天'), findsOneWidget,
+        reason: '确认框要说清楚会删几条');
+
+    await tester.tap(find.text('取消'));
+    await settle(tester);
+
+    expect(store.retentionDays, 7, reason: '取消后设置不能变');
+    expect(await repo.recycledCount(), 1, reason: '取消后一条都不能少');
+  });
+
+  testWidgets('改短保留时长确认后：清掉条目并给出提示', (tester) async {
+    await pumpApp(tester);
+    await store.setRecycleBinEnabled(true);
+    final id = await repo.insert(title: '三天前删的', day: DateTime.now());
+    await repo.moveToRecycle(id);
+    await db.update(
+      'recycled_tasks',
+      <String, Object?>{
+        'deleted_at': DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 3))
+            .toIso8601String(),
+      },
+      where: 'title = ?',
+      whereArgs: <Object?>['三天前删的'],
+    );
+    await settle(tester);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1 天'));
+    await settle(tester);
+    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await settle(tester);
+
+    expect(store.retentionDays, 1);
+    expect(await repo.recycledCount(), 0);
+    expect(find.textContaining('已按新的保留时长清理 1 条'), findsOneWidget);
+  });
+
+  testWidgets('改短但没有过期条目：不弹框，直接生效', (tester) async {
+    await pumpApp(tester);
+    await store.setRecycleBinEnabled(true);
+    await settle(tester);
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3 天'));
+    await settle(tester);
+
+    expect(find.text('缩短保留时长'), findsNothing, reason: '没有东西要删就别打扰');
+    expect(store.retentionDays, 3);
+  });
+
+  test('把保留时长改短，过期条目会被立刻清掉', () async {
+    final id = await repo.insert(title: '三天前删的', day: DateTime.now());
+    await repo.moveToRecycle(id);
+    await db.update(
+      'recycled_tasks',
+      <String, Object?>{
+        'deleted_at': DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 3))
+            .toIso8601String(),
+      },
+      where: 'title = ?',
+      whereArgs: <Object?>['三天前删的'],
+    );
+    expect(await repo.recycledCount(), 1);
+
+    // 默认 7 天 → 改成 1 天，这条已经过期
+    final purged = await store.setRetentionDays(1);
+
+    expect(purged, 1, reason: '要返回清掉的条数，界面靠它给提示');
+    expect(await repo.recycledCount(), 0);
+    expect(store.retentionDays, 1);
+  });
+
+  test('回收站开关与保留时长会写进 settings 表', () async {
+    expect(store.recycleBinEnabled, isFalse, reason: '默认必须关');
+    expect(store.retentionDays, 7);
+
+    await store.setRecycleBinEnabled(true);
+    await store.setRetentionDays(3);
+
+    final fresh = TaskStore(repo, SettingsRepository(db));
+    await fresh.load();
+    expect(fresh.recycleBinEnabled, isTrue);
+    expect(fresh.retentionDays, 3);
   });
 
   testWidgets('删掉之后再切日期往返，任务不会复活', (tester) async {
@@ -247,13 +387,12 @@ void main() {
     await tester.tap(find.text('删除'));
     await settle(tester);
 
-    expect(find.textContaining('已移入回收站'), findsWidgets);
+    expect(find.textContaining('已删除'), findsWidgets);
 
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('已移入回收站'), findsNothing,
-        reason: '短提示不能赖着不走');
+    expect(find.textContaining('已删除'), findsNothing, reason: '短提示不能赖着不走');
   });
 
   testWidgets('勾了不再提醒时，设置要等任务真的删掉之后才改', (tester) async {
@@ -309,9 +448,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('删除前确认'), findsOneWidget);
-    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isFalse);
 
-    await tester.tap(find.byType(SwitchListTile));
+    final confirmSwitch = find.widgetWithText(SwitchListTile, '删除前确认');
+    expect(tester.widget<SwitchListTile>(confirmSwitch).value, isFalse);
+
+    await tester.tap(confirmSwitch);
     await settle(tester);
 
     expect(store.confirmBeforeDelete, isTrue);

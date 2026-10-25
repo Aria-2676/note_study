@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/data/v6_schema.dart';
+import '../models/recycled_task.dart';
 import '../models/task.dart';
 
 /// v6 的任务仓储。**唯一**直接写 `tasks` / `task_tags` 表的地方。
@@ -122,6 +123,24 @@ class TaskRepository {
     );
   }
 
+  /// 删除任务。
+  ///
+  /// [toRecycle] 为 true 时整行拷进 `recycled_tasks`（可恢复），
+  /// 为 false 时**直接物理删除**（`task_tags` 靠外键级联清掉）。
+  /// 默认值故意不设成"进回收站"——由调用方按用户开关显式传入，
+  /// 免得哪天忘了传就悄悄留下垃圾。
+  Future<void> delete(int id, {required bool toRecycle}) async {
+    if (!toRecycle) {
+      await _db.delete(
+        V6Table.tasks,
+        where: '${TaskCol.id} = ?',
+        whereArgs: <Object?>[id],
+      );
+      return;
+    }
+    await moveToRecycle(id);
+  }
+
   /// 进回收站：整行拷到 `recycled_tasks`，再删原行（`task_tags` 靠外键级联清理）。
   Future<void> moveToRecycle(int id) async {
     await _db.transaction((txn) async {
@@ -133,13 +152,138 @@ class TaskRepository {
       );
       if (rows.isEmpty) return;
 
+      // 先把标签 id 记下来：删任务时 `task_tags` 会被外键级联清掉，
+      // 不在这里存快照，恢复出来的任务就永远是"裸"的。
+      final tagRows = await txn.query(
+        V6Table.taskTags,
+        columns: <String>[TaskTagCol.tagId],
+        where: '${TaskTagCol.taskId} = ?',
+        whereArgs: <Object?>[id],
+      );
+      final tagIds = tagRows
+          .map((r) => r[TaskTagCol.tagId])
+          .whereType<int>()
+          .toList()
+        ..sort();
+
       final row = Map<String, Object?>.of(rows.first)
         ..remove(TaskCol.id)
         ..[RecycledTaskCol.taskId] = id
-        ..[RecycledTaskCol.deletedAt] = TaskDate.timeKey(DateTime.now());
+        ..[RecycledTaskCol.deletedAt] = TaskDate.timeKey(DateTime.now())
+        ..[RecycledTaskCol.tagIds] = tagIds.isEmpty ? null : tagIds.join(',');
       await txn.insert(V6Table.recycledTasks, row);
       await txn.delete(V6Table.tasks, where: '${TaskCol.id} = ?', whereArgs: <Object?>[id]);
     });
+  }
+
+  /// 回收站列表，最近删除的在前
+  Future<List<RecycledTask>> recycledTasks({int limit = 200}) async {
+    final rows = await _db.query(
+      V6Table.recycledTasks,
+      orderBy: '${RecycledTaskCol.deletedAt} DESC',
+      limit: limit,
+    );
+    return rows.map(RecycledTask.fromRow).toList();
+  }
+
+  Future<int> recycledCount() async {
+    final rows =
+        await _db.rawQuery('SELECT COUNT(*) AS n FROM ${V6Table.recycledTasks}');
+    return rows.first['n']! as int;
+  }
+
+  /// 从回收站恢复：拷回 `tasks`（**拿新 id**，原 id 已被自增序列让给别人），
+  /// 成功后再删回收站那行。
+  ///
+  /// 标签会一起恢复：删除时把 tag id 存进了 `recycled_tasks.tag_ids`。
+  /// 唯一会丢的情况是那个标签在这期间被删掉了 —— 外键不允许指向不存在的标签，
+  /// 所以只能跳过它，而不是让整条恢复失败。
+  Future<void> restoreFromRecycle(int recycledId) async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        V6Table.recycledTasks,
+        where: '${RecycledTaskCol.id} = ?',
+        whereArgs: <Object?>[recycledId],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+
+      final snapshot = rows.first;
+      final restored = Map<String, Object?>.of(snapshot)
+        ..remove(RecycledTaskCol.id)
+        ..remove(RecycledTaskCol.taskId)
+        ..remove(RecycledTaskCol.deletedAt)
+        ..remove(RecycledTaskCol.tagIds);
+
+      final newTaskId = await txn.insert(V6Table.tasks, restored);
+
+      // 重建标签关联。**只重建仍然存在的标签**：标签可能在这期间被删了，
+      // 直接插会让外键拒绝整条事务，用户看到的是"恢复失败"。
+      final raw = snapshot[RecycledTaskCol.tagIds] as String?;
+      if (raw != null && raw.isNotEmpty) {
+        for (final tagId in raw.split(',').map(int.tryParse).whereType<int>()) {
+          final exists = await txn.query(
+            V6Table.tags,
+            columns: <String>[TagCol.id],
+            where: '${TagCol.id} = ?',
+            whereArgs: <Object?>[tagId],
+            limit: 1,
+          );
+          if (exists.isEmpty) continue;
+          await txn.insert(
+            V6Table.taskTags,
+            <String, Object?>{TaskTagCol.taskId: newTaskId, TaskTagCol.tagId: tagId},
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      }
+
+      await txn.delete(
+        V6Table.recycledTasks,
+        where: '${RecycledTaskCol.id} = ?',
+        whereArgs: <Object?>[recycledId],
+      );
+    });
+  }
+
+  /// 永久删除回收站里的单条
+  Future<void> purgeRecycled(int recycledId) async {
+    await _db.delete(
+      V6Table.recycledTasks,
+      where: '${RecycledTaskCol.id} = ?',
+      whereArgs: <Object?>[recycledId],
+    );
+  }
+
+  /// 清空回收站
+  Future<void> purgeAllRecycled() async {
+    await _db.delete(V6Table.recycledTasks);
+  }
+
+  /// 统计超过 [age] 的回收站条目数。
+  /// 用于"把保留时长改短"之前的确认 —— 得先知道会删掉几条，
+  /// 否则确认框只能说一句空话。
+  Future<int> countRecycleOlderThan(Duration age) async {
+    final cutoff = TaskDate.timeKey(DateTime.now().subtract(age));
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ${V6Table.recycledTasks} '
+      'WHERE ${RecycledTaskCol.deletedAt} < ?',
+      <Object?>[cutoff],
+    );
+    return rows.first['n']! as int;
+  }
+
+  /// 清理超过 [age] 的回收站记录，返回删掉的行数。
+  ///
+  /// 没有后台服务：在每次打开 app 时扫一遍即可 —— 这是本地离线应用，
+  /// 用户不开 app 的时间段里"过期数据还留着"没有任何影响。
+  Future<int> purgeRecycleOlderThan(Duration age) async {
+    final cutoff = TaskDate.timeKey(DateTime.now().subtract(age));
+    return _db.delete(
+      V6Table.recycledTasks,
+      where: '${RecycledTaskCol.deletedAt} < ?',
+      whereArgs: <Object?>[cutoff],
+    );
   }
 
   Future<int> countTasks() async {

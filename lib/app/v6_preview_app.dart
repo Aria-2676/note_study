@@ -13,6 +13,7 @@ import '../core/plugin/plugin_store.dart';
 import '../core/plugin/plugin_manifest.dart';
 import 'data/plugin_bridge.dart';
 import 'pages/plugin_page.dart';
+import 'pages/recycle_bin_page.dart';
 import 'data/demo_seed.dart';
 import 'data/settings_repository.dart';
 import 'data/task_repository.dart';
@@ -72,9 +73,17 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       // 启动自愈：上次卸载/安装中断留下的残渣在这里清掉
       await installer.reconcile();
 
+      // 回收站到期清理：没有后台服务，每次启动扫一遍就够了
+      final settings = SettingsRepository(db);
+      final retentionDays = await settings.getInt(
+        SettingsKeys.recycleRetentionDays,
+        fallback: SettingsKeys.defaultRetentionDays,
+      );
+      await repo.purgeRecycleOlderThan(Duration(days: retentionDays));
+
       if (!mounted) return;
       setState(() {
-        _store = TaskStore(repo, SettingsRepository(db));
+        _store = TaskStore(repo, settings);
         _market = PluginMarketStore(
           installer: installer,
           indexLoader: _loadIndex,
@@ -86,6 +95,21 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       if (!mounted) return;
       setState(() => _error = e);
     }
+  }
+
+  /// 回收站页面。`MainShell` 没有仓储层，由应用层在这里组装。
+  ///
+  /// `marketStore` 为 null 时（测试注入 store）返回 null —— 入口会提示"未接入"。
+  WidgetBuilder? _recyclePageBuilder(TaskStore store) {
+    final market = _market;
+    if (market == null) return null;
+    final repo = TaskRepository(market.installer.db);
+    return (_) => RecycleBinPage(
+          repository: repo,
+          retentionDays: store.retentionDays,
+          // 恢复之后首页要能立刻看到
+          onChanged: store.load,
+        );
   }
 
   /// 把一个已装插件变成可打开的页面：入口路径、权限都取自包内 `plugin.json`。
@@ -172,6 +196,7 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       store: store,
       marketStore: _market,
       pluginLauncher: _launchPlugin,
+      recyclePageBuilder: _recyclePageBuilder(store),
     );
   }
 }

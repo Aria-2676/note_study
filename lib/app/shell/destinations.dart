@@ -39,7 +39,7 @@ enum AppDestination {
       };
 
   bool get ready => switch (this) {
-        todayTasks || pluginMarket => true,
+        todayTasks || pluginMarket || recycleBin => true,
         _ => false,
       };
 
