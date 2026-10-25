@@ -77,23 +77,33 @@ class TaskCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: <Widget>[
-                    for (final tag in task.tags.take(2)) ...<Widget>[
-                      _TagChip(label: tag.name, color: tag.displayColor),
-                      const SizedBox(width: 6),
+                if (task.tags.isNotEmpty || task.estimatedMinutes != null) ...<Widget>[
+                  const SizedBox(height: 6),
+                  // **不截断标签**：以前是 `take(2)`，第三个标签直接消失且没有任何提示，
+                  // 用户会以为"标签没保存上"。改成 Wrap 自然换行 —— 多几个标签就把卡片撑高，
+                  // 看得见比好看重要。
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: <Widget>[
+                      for (final tag in task.tags)
+                        _TagChip(label: tag.name, color: tag.displayColor),
+                      if (task.estimatedMinutes != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(Icons.schedule, size: 12, color: muted),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${task.estimatedMinutes} 分钟',
+                              style: TextStyle(fontSize: 11, color: muted),
+                            ),
+                          ],
+                        ),
                     ],
-                    if (task.estimatedMinutes != null) ...<Widget>[
-                      Icon(Icons.schedule, size: 12, color: muted),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${task.estimatedMinutes} 分钟',
-                        style: TextStyle(fontSize: 11, color: muted),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
                 if (extraLine != null) ...<Widget>[
                   const SizedBox(height: 4),
                   Text(extraLine!, style: TextStyle(fontSize: 11, color: muted)),
