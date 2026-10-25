@@ -303,6 +303,45 @@ class TaskRepository {
     );
   }
 
+  Future<void> renameTag(int id, String name) async {
+    await _db.update(
+      V6Table.tags,
+      <String, Object?>{TagCol.name: name},
+      where: '${TagCol.id} = ?',
+      whereArgs: <Object?>[id],
+    );
+  }
+
+  Future<void> setTagColor(int id, String color) async {
+    await _db.update(
+      V6Table.tags,
+      <String, Object?>{TagCol.color: color},
+      where: '${TagCol.id} = ?',
+      whereArgs: <Object?>[id],
+    );
+  }
+
+  /// 删标签。`task_tags` 靠外键 CASCADE 自动清掉，**任务本身不受影响**。
+  Future<void> deleteTag(int id) async {
+    await _db.delete(V6Table.tags, where: '${TagCol.id} = ?', whereArgs: <Object?>[id]);
+  }
+
+  /// 每个标签被多少个任务使用（标签管理页显示"3 个任务"用）。
+  ///
+  /// 只统计 `tasks` 里的：回收站里的任务不算"正在用"，
+  /// 否则删标签时那句"N 个任务在用"会把人吓住。
+  Future<Map<int, int>> tagUsage() async {
+    final rows = await _db.rawQuery('''
+      SELECT tt.${TaskTagCol.tagId} AS id, COUNT(*) AS n
+      FROM ${V6Table.taskTags} tt
+      JOIN ${V6Table.tasks} t ON t.${TaskCol.id} = tt.${TaskTagCol.taskId}
+      GROUP BY tt.${TaskTagCol.tagId}
+    ''');
+    return <int, int>{
+      for (final r in rows) r['id']! as int: r['n']! as int,
+    };
+  }
+
   /// 批量取标签，避免每个任务都查一次（N+1）。
   Future<List<Task>> _hydrate(List<Map<String, Object?>> rows) async {
     if (rows.isEmpty) return const <Task>[];

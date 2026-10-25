@@ -129,7 +129,12 @@ class TaskStore extends ChangeNotifier {
     await load();
   }
 
-  Future<void> add(String title, {int? estimatedMinutes, String priority = 'white'}) async {
+  Future<void> add(
+    String title, {
+    int? estimatedMinutes,
+    String priority = 'white',
+    List<int> tagIds = const <int>[],
+  }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
     await _repo.insert(
@@ -137,8 +142,50 @@ class TaskStore extends ChangeNotifier {
       day: _day,
       priority: priority,
       estimatedMinutes: estimatedMinutes,
+      tagIds: tagIds,
     );
     await load();
+  }
+
+  // ---- 标签 ----
+
+  /// 每个标签被多少任务使用（标签管理页用）
+  Future<Map<int, int>> tagUsage() => _repo.tagUsage();
+
+  Future<void> addTag(String name, String color) async {
+    final trimmed = _checkTagName(name);
+    await _repo.insertTag(Tag(id: 0, name: trimmed, color: color));
+    await load();
+  }
+
+  Future<void> renameTag(Tag tag, String name) async {
+    final trimmed = _checkTagName(name, ignoreId: tag.id);
+    await _repo.renameTag(tag.id, trimmed);
+    // 筛选条件存的是**名字**，改名后要跟着改，否则筛选会指向一个不存在的标签
+    if (_tagFilter == tag.name) _tagFilter = trimmed;
+    await load();
+  }
+
+  Future<void> setTagColor(Tag tag, String color) async {
+    await _repo.setTagColor(tag.id, color);
+    await load();
+  }
+
+  Future<void> deleteTag(Tag tag) async {
+    await _repo.deleteTag(tag.id);
+    // 正在按这个标签筛选时，标签没了就得回到"全部"，
+    // 否则列表会一直是空的，用户还以为是任务丢了
+    if (_tagFilter == tag.name) _tagFilter = null;
+    await load();
+  }
+
+  String _checkTagName(String raw, {int? ignoreId}) {
+    final name = raw.trim();
+    if (name.isEmpty) throw const TagException('标签名不能为空');
+    if (_tags.any((t) => t.name == name && t.id != ignoreId)) {
+      throw TagException('已经有叫「$name」的标签了');
+    }
+    return name;
   }
 
   /// 先摘内存、再删库。
@@ -165,4 +212,16 @@ class TaskStore extends ChangeNotifier {
     }
     await load();
   }
+}
+
+/// 标签操作的业务错误（名字为空、重名）。**用异常而不是返回值**，
+/// 因为调用方（弹窗）需要把消息原样显示在输入框下面，
+/// 用 bool 会把"为什么不行"丢掉。
+class TagException implements Exception {
+  const TagException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

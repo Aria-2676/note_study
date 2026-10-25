@@ -9,6 +9,7 @@ import '../pages/v6_home_page.dart';
 import '../../core/plugin/plugin_store.dart';
 import '../pages/plugin_market_page.dart';
 import '../pages/plugin_page.dart';
+import '../pages/tag_manager_page.dart';
 import 'destinations.dart';
 import '../state/pending_delete_guard.dart';
 import '../state/plugin_market_store.dart';
@@ -219,6 +220,10 @@ class _MainShellState extends State<MainShell> {
     switch (destination) {
       case AppDestination.todayTasks:
         setState(() => _tab = 0);
+      case AppDestination.tagManager:
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => TagManagerPage(store: _store)),
+        );
       case AppDestination.recycleBin:
         final builder = widget.recyclePageBuilder;
         if (builder == null) {
@@ -260,12 +265,12 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<void> _addTask() async {
-    final title = await showDialog<String>(
+    final result = await showDialog<_AddTaskResult>(
       context: context,
-      builder: (ctx) => const _AddTaskDialog(),
+      builder: (_) => _AddTaskDialog(tags: _store.tags),
     );
-    if (title == null || title.trim().isEmpty) return;
-    await _store.add(title);
+    if (result == null || result.title.trim().isEmpty) return;
+    await _store.add(result.title, tagIds: result.tagIds);
   }
 
   /// 左滑到底时先问一句。返回 false 时 `Dismissible` 会把卡片弹回原位。
@@ -631,8 +636,19 @@ class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
   }
 }
 
+/// 新建任务的结果：标题 + 选中的标签。
+class _AddTaskResult {
+  const _AddTaskResult(this.title, this.tagIds);
+
+  final String title;
+  final List<int> tagIds;
+}
+
 class _AddTaskDialog extends StatefulWidget {
-  const _AddTaskDialog();
+  const _AddTaskDialog({required this.tags});
+
+  /// 可选的标签。为空时不显示这一块，保持"只输入标题"的最短路径。
+  final List<Tag> tags;
 
   @override
   State<_AddTaskDialog> createState() => _AddTaskDialogState();
@@ -640,6 +656,7 @@ class _AddTaskDialog extends StatefulWidget {
 
 class _AddTaskDialogState extends State<_AddTaskDialog> {
   final TextEditingController _controller = TextEditingController();
+  final Set<int> _selected = <int>{};
 
   @override
   void dispose() {
@@ -647,22 +664,59 @@ class _AddTaskDialogState extends State<_AddTaskDialog> {
     super.dispose();
   }
 
+  void _submit() => Navigator.of(context).pop(
+        _AddTaskResult(_controller.text, _selected.toList()),
+      );
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('新建任务', style: TextStyle(fontSize: 16)),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: const InputDecoration(hintText: '要做什么？'),
-        onSubmitted: (v) => Navigator.of(context).pop(v),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: '要做什么？', isDense: true),
+            onSubmitted: (_) => _submit(),
+          ),
+          // 没有标签时整块不出现：多数情况下"记一件事"不需要额外操作
+          if (widget.tags.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final tag in widget.tags)
+                  FilterChip(
+                    label: Text(tag.name),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      color: _selected.contains(tag.id) ? tag.displayColor : null,
+                    ),
+                    selected: _selected.contains(tag.id),
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    selectedColor: tag.displayColor.withValues(alpha: 0.18),
+                    onSelected: (value) => setState(() {
+                      if (value) {
+                        _selected.add(tag.id);
+                      } else {
+                        _selected.remove(tag.id);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
       actions: <Widget>[
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('添加'),
-        ),
+        TextButton(onPressed: _submit, child: const Text('添加')),
       ],
     );
   }

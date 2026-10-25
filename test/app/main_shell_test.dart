@@ -521,6 +521,23 @@ void main() {
     expect(find.text('买牛奶'), findsOneWidget);
   });
 
+  testWidgets('新建任务时能给任务选标签', (tester) async {
+    await pumpApp(tester);
+    expect(store.tags.map((t) => t.name), contains('工作'));
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '带标签的新任务');
+    // 弹窗里的标签是 Material 的 FilterChip（首页那排是自绘的 _FilterChip），不会撞
+    await tester.tap(find.widgetWithText(FilterChip, '工作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加'));
+    await settle(tester);
+
+    final added = store.tasks.firstWhere((t) => t.title == '带标签的新任务');
+    expect(added.tags.map((t) => t.name), <String>['工作']);
+  });
+
   testWidgets('切到「固定一周」后，日历条不再是横向列表', (tester) async {
     await pumpApp(tester);
 
