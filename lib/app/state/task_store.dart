@@ -147,6 +147,32 @@ class TaskStore extends ChangeNotifier {
     await load();
   }
 
+  /// 保存编辑。标题为空直接拒绝（界面上也拦了一层，这里是最后一道）。
+  Future<void> updateTask(
+    Task task, {
+    required String title,
+    String? description,
+    required DateTime dueDate,
+    required String priority,
+    int? estimatedMinutes,
+    required List<int> tagIds,
+  }) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) {
+      throw const TagException('标题不能为空');
+    }
+    await _repo.update(
+      task.id,
+      title: trimmed,
+      description: (description?.trim().isEmpty ?? true) ? null : description!.trim(),
+      day: dueDate,
+      priority: priority,
+      estimatedMinutes: estimatedMinutes,
+      tagIds: tagIds,
+    );
+    await load();
+  }
+
   // ---- 标签 ----
 
   /// 每个标签被多少任务使用（标签管理页用）

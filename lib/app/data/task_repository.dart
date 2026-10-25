@@ -111,6 +111,48 @@ class TaskRepository {
     });
   }
 
+  /// 全量更新一个任务，并**替换**它的标签关联。
+  ///
+  /// 标签用"先删后插"而不是做差集：任务上的标签通常只有几个，
+  /// 差集要读一次、比一次、再算增删，代码更多而收益为零。
+  Future<void> update(
+    int id, {
+    required String title,
+    String? description,
+    required DateTime day,
+    required String priority,
+    int? estimatedMinutes,
+    List<int> tagIds = const <int>[],
+  }) async {
+    await _db.transaction((txn) async {
+      await txn.update(
+        V6Table.tasks,
+        <String, Object?>{
+          TaskCol.title: title,
+          TaskCol.description: description,
+          TaskCol.cplTime: TaskDate.dayKey(day),
+          TaskCol.priority: priority,
+          TaskCol.estimatedMinutes: estimatedMinutes,
+        },
+        where: '${TaskCol.id} = ?',
+        whereArgs: <Object?>[id],
+      );
+
+      await txn.delete(
+        V6Table.taskTags,
+        where: '${TaskTagCol.taskId} = ?',
+        whereArgs: <Object?>[id],
+      );
+      for (final tagId in tagIds) {
+        await txn.insert(
+          V6Table.taskTags,
+          <String, Object?>{TaskTagCol.taskId: id, TaskTagCol.tagId: tagId},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
+
   Future<void> setDone(int id, bool done) async {
     await _db.update(
       V6Table.tasks,

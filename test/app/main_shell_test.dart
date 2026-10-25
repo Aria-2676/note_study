@@ -521,6 +521,28 @@ void main() {
     expect(find.text('买牛奶'), findsOneWidget);
   });
 
+  testWidgets('点任务正文打开编辑页', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('读 30 页《设计心理学》'));
+    await settle(tester);
+
+    expect(find.text('编辑任务'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '读 30 页《设计心理学》'), findsOneWidget);
+  });
+
+  testWidgets('回收站关着时，删除弹窗说的是「彻底删除」', (tester) async {
+    await pumpApp(tester);
+
+    await tester.drag(find.text('读 30 页《设计心理学》'), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('将被彻底删除'), findsOneWidget,
+        reason: '默认直接删，不能还写"移入回收站"');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('新建任务时能给任务选标签', (tester) async {
     await pumpApp(tester);
     expect(store.tags.map((t) => t.name), contains('工作'));

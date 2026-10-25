@@ -19,6 +19,7 @@ class V6HomePage extends StatelessWidget {
     required this.onToggle,
     required this.onBeforeDelete,
     required this.onDeleted,
+    this.onEdit,
     this.tagFilter,
     this.onSelectTag,
     this.calendarStyle = CalendarStripStyle.scroll,
@@ -38,6 +39,9 @@ class V6HomePage extends StatelessWidget {
 
   /// 用户已经确认，Dismissible 也已播完消失动画 —— 此时才真正写库。
   final ValueChanged<Task> onDeleted;
+
+  /// 点卡片正文进编辑。为 null 时正文不可点。
+  final ValueChanged<Task>? onEdit;
 
   /// null 表示"全部"
   final String? tagFilter;
@@ -102,6 +106,7 @@ class V6HomePage extends StatelessWidget {
                       child: TaskCard(
                         task: task,
                         onToggle: () => onToggle(task),
+                        onOpen: onEdit == null ? null : () => onEdit!(task),
                         extraLine: extraLineFor?.call(task),
                       ),
                     );

@@ -8,11 +8,15 @@ class TaskCard extends StatelessWidget {
     super.key,
     required this.task,
     required this.onToggle,
+    this.onOpen,
     this.extraLine,
   });
 
   final Task task;
   final VoidCallback onToggle;
+
+  /// 点正文进编辑。为 null 时正文不可点（测试里不关心编辑时就不传）。
+  final VoidCallback? onOpen;
 
   /// 插槽 `slot.taskCardExtra` 的展示位。没有插件时恒为 null，卡片不会多出一行。
   final String? extraLine;
@@ -47,68 +51,74 @@ class TaskCard extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: task.priorityColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        task.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.35,
-                          decoration:
-                              task.isDone ? TextDecoration.lineThrough : null,
-                          color: task.isDone ? muted : scheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (task.tags.isNotEmpty || task.estimatedMinutes != null) ...<Widget>[
-                  const SizedBox(height: 6),
-                  // **不截断标签**：以前是 `take(2)`，第三个标签直接消失且没有任何提示，
-                  // 用户会以为"标签没保存上"。改成 Wrap 自然换行 —— 多几个标签就把卡片撑高，
-                  // 看得见比好看重要。
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+            child: GestureDetector(
+              // 只让"正文"可点：左边那个勾选圈是独立的点击区，
+              // 两者叠在一起会出现"想勾选却进了编辑页"
+              behavior: HitTestBehavior.opaque,
+              onTap: onOpen,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
                     children: <Widget>[
-                      for (final tag in task.tags)
-                        _TagChip(label: tag.name, color: tag.displayColor),
-                      if (task.estimatedMinutes != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.schedule, size: 12, color: muted),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${task.estimatedMinutes} 分钟',
-                              style: TextStyle(fontSize: 11, color: muted),
-                            ),
-                          ],
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          color: task.priorityColor,
+                          shape: BoxShape.circle,
                         ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.35,
+                            decoration:
+                                task.isDone ? TextDecoration.lineThrough : null,
+                            color: task.isDone ? muted : scheme.onSurface,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
+                  if (task.tags.isNotEmpty || task.estimatedMinutes != null) ...<Widget>[
+                    const SizedBox(height: 6),
+                    // **不截断标签**：以前是 `take(2)`，第三个标签直接消失且没有任何提示，
+                    // 用户会以为"标签没保存上"。改成 Wrap 自然换行 —— 多几个标签就把卡片撑高，
+                    // 看得见比好看重要。
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        for (final tag in task.tags)
+                          _TagChip(label: tag.name, color: tag.displayColor),
+                        if (task.estimatedMinutes != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(Icons.schedule, size: 12, color: muted),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${task.estimatedMinutes} 分钟',
+                                style: TextStyle(fontSize: 11, color: muted),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (extraLine != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(extraLine!, style: TextStyle(fontSize: 11, color: muted)),
+                  ],
                 ],
-                if (extraLine != null) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(extraLine!, style: TextStyle(fontSize: 11, color: muted)),
-                ],
-              ],
+              ),
             ),
           ),
         ],

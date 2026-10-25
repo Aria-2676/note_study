@@ -10,6 +10,7 @@ import '../../core/plugin/plugin_store.dart';
 import '../pages/plugin_market_page.dart';
 import '../pages/plugin_page.dart';
 import '../pages/tag_manager_page.dart';
+import '../pages/task_editor_page.dart';
 import 'destinations.dart';
 import '../state/pending_delete_guard.dart';
 import '../state/plugin_market_store.dart';
@@ -199,6 +200,54 @@ class _MainShellState extends State<MainShell> {
       );
   }
 
+  /// 打开全屏编辑页。删除动作仍由壳层执行（确认框、回收站开关都在这里），
+  /// 编辑页只负责"点一下删除，然后告诉我删没删掉"。
+  Future<void> _openEditor(Task task) async {
+    final navigator = Navigator.of(context);
+    final outcome = await navigator.push<TaskEditOutcome>(
+      MaterialPageRoute<TaskEditOutcome>(
+        builder: (_) => TaskEditorPage(
+          store: _store,
+          task: task,
+          onDelete: () => _deleteFromEditor(task),
+        ),
+      ),
+    );
+    if (!mounted || outcome == null) return;
+
+    final text = switch (outcome) {
+      TaskEditOutcome.saved => '已保存',
+      TaskEditOutcome.deleted => _store.recycleBinEnabled
+          ? '「${task.title}」已移入回收站'
+          : '「${task.title}」已删除',
+    };
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+  }
+
+  /// 编辑页里点删除。返回 true 表示真的删掉了（编辑页据此关掉自己）。
+  Future<bool> _deleteFromEditor(Task task) async {
+    var disableConfirm = false;
+    if (_store.confirmBeforeDelete) {
+      final answer = await showDialog<bool>(
+        context: context,
+        builder: (_) => _DeleteConfirmDialog(
+          taskTitle: task.title,
+          toRecycle: _store.recycleBinEnabled,
+        ),
+      );
+      if (answer == null) return false;
+      disableConfirm = answer;
+    }
+
+    await _store.remove(task);
+    if (disableConfirm) {
+      await _store.setConfirmBeforeDelete(false);
+    }
+    return true;
+  }
+
   /// 所有入口的唯一分发表。
   ///
   /// **不在这里关抽屉** —— 那样从「我的」页点入口会把主路由 pop 掉。
@@ -281,7 +330,10 @@ class _MainShellState extends State<MainShell> {
       // null = 取消；false = 删除但继续提醒；true = 删除且不再提醒
       final dontAskAgain = await showDialog<bool>(
         context: context,
-        builder: (_) => _DeleteConfirmDialog(taskTitle: task.title),
+        builder: (_) => _DeleteConfirmDialog(
+        taskTitle: task.title,
+        toRecycle: _store.recycleBinEnabled,
+      ),
       );
       if (dontAskAgain == null) return false;
       _pendingDisableConfirm = dontAskAgain;
@@ -413,6 +465,7 @@ class _MainShellState extends State<MainShell> {
           onToggle: _store.toggle,
           onBeforeDelete: _confirmDelete,
           onDeleted: _handleDismissed,
+          onEdit: _openEditor,
         ),
         ProfileStubPage(
           calendarStyle: _calendarStyle,
@@ -552,9 +605,13 @@ class _BottomBar extends StatelessWidget {
 ///
 /// 返回值：`null` = 取消；`false` = 删除但继续提醒；`true` = 删除且不再提醒。
 class _DeleteConfirmDialog extends StatefulWidget {
-  const _DeleteConfirmDialog({required this.taskTitle});
+  const _DeleteConfirmDialog({required this.taskTitle, required this.toRecycle});
 
   final String taskTitle;
+
+  /// 决定文案：开着回收站说"移入回收站"，关着就是"彻底删除"。
+  /// 以前无论哪种都写"移入回收站"，默认关回收站时会骗人。
+  final bool toRecycle;
 
   @override
   State<_DeleteConfirmDialog> createState() => _DeleteConfirmDialogState();
@@ -573,7 +630,12 @@ class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('「${widget.taskTitle}」将移入回收站。', style: const TextStyle(fontSize: 13.5)),
+          Text(
+            widget.toRecycle
+                ? '「${widget.taskTitle}」将移入回收站。'
+                : '「${widget.taskTitle}」将被彻底删除，无法恢复。',
+            style: const TextStyle(fontSize: 13.5),
+          ),
           const SizedBox(height: 12),
           InkWell(
             borderRadius: BorderRadius.circular(6),
