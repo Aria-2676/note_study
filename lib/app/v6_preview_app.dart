@@ -18,6 +18,7 @@ import '../core/plugin/plugin_store.dart';
 import '../core/plugin/plugin_manifest.dart';
 import '../core/plugin/plugin_storage.dart';
 import '../core/updater/providers/app_update_provider.dart';
+import '../core/updater/pages/app_update_page.dart';
 import '../core/updater/update_channel.dart';
 import '../core/updater/widgets/app_update_dialog.dart';
 import 'data/plugin_bridge.dart';
@@ -44,6 +45,7 @@ class V6PreviewApp extends StatefulWidget {
     this.store,
     this.autoSeed = true,
     this.checkUpdate = false,
+    this.injectedUpdate,
   });
 
   final TaskStore? store;
@@ -51,6 +53,13 @@ class V6PreviewApp extends StatefulWidget {
   /// 首次启动（任务表为空）时写入演示数据。**正式版必须传 false** ——
   /// 否则用户装完看到的是一堆"写完 v6 主包的第一屏"。
   final bool autoSeed;
+
+  /// 测试注入的更新器。
+  ///
+  /// 有它才能在测试里跑通"从「关于」点进版本页"这条路径 —— 那正是 Provider
+  /// 层级写错时唯一会红屏的地方（`checkUpdate: true` 会联网，测试不能开）。
+  /// 注入进来的实例**不归这个 State dispose**。
+  final AppUpdateProvider? injectedUpdate;
 
   /// 是否在启动后检查更新。
   ///
@@ -84,7 +93,12 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
     } else {
       _openDatabase();
     }
-    if (widget.checkUpdate) _startUpdater();
+    final injected = widget.injectedUpdate;
+    if (injected != null) {
+      _update = injected;
+    } else if (widget.checkUpdate) {
+      _startUpdater();
+    }
   }
 
   /// 版本检查**不阻断启动**：初始化失败或网络不通时安静跳过，
@@ -105,7 +119,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
 
   @override
   void dispose() {
-    _update?.dispose();
+    // 只销毁自己造的：注入进来的实例归调用方
+    if (widget.injectedUpdate == null) _update?.dispose();
     super.dispose();
   }
 
@@ -250,23 +265,33 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         useMaterial3: true,
       );
 
-  /// 有更新器时，把界面包进 Provider + 更新提示宿主。
+  /// Provider 必须包在 **MaterialApp 外面**。
   ///
-  /// [AppUpdatePromptHost] 只用 `context.read<AppUpdateProvider>()`，不需要整套
-  /// Provider 树；用 `.value` 递一个现成实例即可（也就不会替我 dispose，
-  /// 生命周期仍归这个 State）。
-  Widget _withUpdater(Widget child) {
+  /// 放在 `home` 里会漏掉一个致命场景：`Navigator.push` 出来的路由挂在 Navigator
+  /// 下，而 Navigator 在 MaterialApp 内 —— 那些页面看不到 home 子树里的 Provider。
+  /// 表现是从「关于」点进版本页直接 `ProviderNotFoundException` 红屏。
+  Widget _withUpdateProvider(Widget child) {
     final provider = _update;
     if (provider == null) return child;
     return ChangeNotifierProvider<AppUpdateProvider>.value(
       value: provider,
-      child: AppUpdatePromptHost(child: child),
+      child: child,
     );
+  }
+
+  /// 弹窗宿主必须放在 **MaterialApp 里面**，因为它要 `showDialog`（需要 Navigator）。
+  ///
+  /// 和上面那条不是矛盾：Provider 要给所有路由用，所以在外层；宿主只需要在
+  /// 首页盯着，所以在内层。
+  Widget _withUpdatePrompt(Widget child) {
+    if (_update == null) return child;
+    return AppUpdatePromptHost(child: child);
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return _withUpdateProvider(
+      MaterialApp(
       title: '任务管家',
       debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
@@ -280,7 +305,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       ],
       supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
       locale: const Locale('zh', 'CN'),
-      home: _withUpdater(_buildHome()),
+      home: _withUpdatePrompt(_buildHome()),
+      ),
     );
   }
 
@@ -305,6 +331,10 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       marketStore: _market,
       pluginLauncher: _launchPlugin,
       recyclePageBuilder: _recyclePageBuilder(store),
+      // 没有更新器时不给入口，避免点进去 context.read 找不到 Provider
+      aboutPageBuilder: _update == null
+          ? null
+          : (_) => const AppUpdatePage(title: '关于'),
       fieldStore: _fields,
       homeStore: _home,
     );

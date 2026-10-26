@@ -47,6 +47,9 @@ void main() {
         AppDestination.fieldManager,
         AppDestination.homeMode,
         AppDestination.pluginMarket,
+        // 关于 = 版本信息 + 手动检查更新。少了它，"跳过了某个版本"就再没有
+        // 反悔的入口 —— 自动提示被跳过之后，用户只能等新版本。
+        AppDestination.about,
       });
     });
   });

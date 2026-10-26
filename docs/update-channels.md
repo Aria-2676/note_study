@@ -82,14 +82,22 @@ V6 读到 5                →  以为自己也应用过，静默跳过 build 5 
 | 清单地址 | `UpdateChannel.v6.createService()` → `update_v6.json`，候选地址与 Contents API 兜底都跟着改名 |
 | 本地状态 | `UpdateChannel.v6.settings` → 键前缀 `v6` |
 | 入口 | `main.dart` 只传 `checkUpdate: true`；渠道选择收在 `V6PreviewApp` 里，预览入口默认不联网 |
-| 弹窗 | 复用 V5 的 `AppUpdatePromptHost` / `AppUpdateDialog`（暂未做 V6 视觉适配） |
+| 弹窗 | 复用 V5 的 `AppUpdatePromptHost` / `AppUpdateDialog`（Material 3，与 V6 观感一致） |
+| 手动入口 | 「我的 → 关于」→ `AppUpdatePage`（标题改为"关于"）。**这个入口不能省**：自动提示被跳过或被关掉之后，它是唯一的反悔路径 |
+| Provider 层级 | `AppUpdateProvider` 必须包在 **MaterialApp 外**，`AppUpdatePromptHost` 在 **MaterialApp 内**。放反了表现为点「关于」直接 `ProviderNotFoundException` 红屏 |
 | 强更 | `update_v6.json` 的 `minSupported` 目前 `6.0.0`（等于不强制）；将来要强更老 V6 时改它 |
 
 ## 7. 还没做
 
-- **V6 风格的重写弹窗**：现在用的是 V5 那套 Material 对话框，视觉上和 V6 不一致，
-  但功能完整。等主线功能稳定再改。
 - **V6 的后台检查**：V5 有 WorkManager 周期任务；V6 目前只在启动时检查一次。
   长时间不打开就收不到提示（回前台的重试由 `AppUpdatePromptHost` 负责，
   但进程被杀就没有了）。
 - **灰度**：没有分批放量的机制，清单改了就是全量。
+- **更新说明的展示**：`update_v6.json` 里写了 `notes`，但 V6 的页面只在有更新时
+  才显示说明卡片，正在用的版本看不到"我在用的是什么版本"。
+
+> 一条踩过的坑（2026-10-27 实测）：`AppUpdateProvider` 一开始被包在
+> `MaterialApp.home` 里，`Navigator.push` 出来的版本页读不到它，点「关于」
+> 直接红屏。Provider 的作用域是**祖先链**，而路由的祖先链里没有 home 子树。
+> `test/core/updater/update_page_scope_test.dart` 专门锁这条，且已验证
+> "去掉 Provider 会立刻变红"。

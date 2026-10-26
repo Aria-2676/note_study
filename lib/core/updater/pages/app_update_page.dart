@@ -10,7 +10,11 @@ import '../services/app_update_launcher.dart';
 /// 与自动弹窗互补：这里提供**手动检查**、查看更新说明，以及关掉大版本提醒的开关。
 /// 检查结果与失败原因直接就地展示，不用 SnackBar，避免时序问题。
 class AppUpdatePage extends StatelessWidget {
-  const AppUpdatePage({super.key});
+  const AppUpdatePage({super.key, this.title = '版本更新'});
+
+  /// 标题。V5 从「设置」进来叫"版本更新"；V6 从「关于」进来，
+  /// 页面里同时有版本号与更新入口，用"关于"更合界面语境。
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +23,7 @@ class AppUpdatePage extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('版本更新'), centerTitle: true),
+      appBar: AppBar(title: Text(title), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

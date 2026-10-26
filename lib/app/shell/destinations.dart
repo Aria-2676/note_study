@@ -50,7 +50,10 @@ enum AppDestination {
         recycleBin ||
         tagManager ||
         fieldManager ||
-        homeMode =>
+        homeMode ||
+        // 关于 = 版本信息 + 检查更新。V6 没有设置页里的"检查更新"入口，
+        // 不给它一个手动入口的话，用户点过「跳过此版本」就再也没有反悔的办法。
+        about =>
           true,
         _ => false,
       };

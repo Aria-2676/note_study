@@ -34,6 +34,7 @@ class MainShell extends StatefulWidget {
     this.marketStore,
     this.pluginLauncher,
     this.recyclePageBuilder,
+    this.aboutPageBuilder,
     this.fieldStore,
     this.homeStore,
   });
@@ -48,6 +49,12 @@ class MainShell extends StatefulWidget {
 
   /// 回收站页面的构造器。同样由应用层提供 —— `MainShell` 没有仓储层。
   final WidgetBuilder? recyclePageBuilder;
+
+  /// 「关于」页的构造器。为 null 时（没有更新器，比如测试/预览）只提示未接入。
+  ///
+  /// 关于页同时承担"手动检查更新"的职责：自动检查被跳过、被关掉之后，
+  /// 用户需要一个能自己按一下的地方，否则就彻底没有反悔的路径。
+  final WidgetBuilder? aboutPageBuilder;
 
   /// 字段偏好（编辑页画哪些字段）
   final FieldStore? fieldStore;
@@ -480,6 +487,18 @@ class _MainShellState extends State<MainShell> {
           return;
         }
         navigator.push(MaterialPageRoute<void>(builder: builder));
+      case AppDestination.about:
+        final about = widget.aboutPageBuilder;
+        if (about == null) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('关于页未接入（没有更新器）'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+          return;
+        }
+        navigator.push(MaterialPageRoute<void>(builder: about));
       case AppDestination.pluginMarket:
         final market = widget.marketStore;
         if (market == null) {

@@ -96,14 +96,20 @@ void main() {
 
     tearDown(() => SlotRegistry.instance.clear());
 
-    Future<void> pumpShell(WidgetTester tester) async {
+    Future<void> pumpShell(WidgetTester tester, {WidgetBuilder? about}) async {
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
       await tester.pumpWidget(
-        MaterialApp(home: MainShell(store: store, homeStore: home)),
+        MaterialApp(
+          home: MainShell(
+            store: store,
+            homeStore: home,
+            aboutPageBuilder: about,
+          ),
+        ),
       );
       for (int i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 20));
@@ -150,6 +156,44 @@ void main() {
       expect(home.mode.isBuiltin, isTrue, reason: '选中后必须真的落状态');
       expect(find.byKey(const Key('v6-header-date')), findsOneWidget);
       expect(find.byIcon(Icons.add), findsOneWidget);
+    });
+
+    // 「关于」是更新的**唯一手动入口**：自动提示被跳过、被关掉之后，
+    // 用户需要一个能自己按一下的地方，否则就彻底没有反悔的路径。
+    testWidgets('关于：给了构造器就能打开', (tester) async {
+      await pumpShell(
+        tester,
+        about: (_) => const Scaffold(body: Text('关于页占位')),
+      );
+
+      await tester.tap(find.text('我的'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('关于'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('关于'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('关于页占位'), findsOneWidget);
+    });
+
+    testWidgets('关于：没有更新器时只提示，不崩', (tester) async {
+      await pumpShell(tester);
+
+      await tester.tap(find.text('我的'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('关于'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('关于'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('关于页未接入（没有更新器）'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }
