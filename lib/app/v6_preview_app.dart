@@ -154,6 +154,7 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         // 用闭包读 `_store`，避免热重载后拿到已失效的实例。
         onChanged: () => _store?.load(),
       ),
+      hooks: manifest.hooks,
     );
   }
 

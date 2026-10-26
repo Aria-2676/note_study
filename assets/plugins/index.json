@@ -4,18 +4,18 @@
     {
       "id": "demo_help",
       "name": "使用说明",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "contract": 1,
-      "description": "验证安装链路与读写权限的示例插件",
+      "description": "验证安装链路、读写权限与事件订阅的示例插件",
       "icon": "help",
       "permissions": [
         "task:read",
         "task:write"
       ],
       "package": {
-        "path": "assets/plugins/demo_help_v1.1.1.zip",
-        "sha256": "6df842ed55e86f6c3dcfe3377ef3bf9bf15fae92c38550dfdc74a27c34b57777",
-        "sizeBytes": 2575
+        "path": "assets/plugins/demo_help_v1.2.0.zip",
+        "sha256": "98548f7836ba39f8f3c0a6fab905cbffe7876528779c2af39ae591a7b8e7bdd4",
+        "sizeBytes": 3149
       }
     }
   ]

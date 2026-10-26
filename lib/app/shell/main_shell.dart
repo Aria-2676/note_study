@@ -240,6 +240,7 @@ class _MainShellState extends State<MainShell> {
       return PluginView(
         entryPath: spec.entryPath,
         bridge: spec.bridge,
+        hooks: spec.hooks,
         onLoaded: _onHomeLoaded,
         onError: (error) => _homeFailure('首页插件报错：$error'),
       );
@@ -296,6 +297,7 @@ class _MainShellState extends State<MainShell> {
             title: spec.title,
             entryPath: spec.entryPath,
             bridge: spec.bridge,
+            hooks: spec.hooks,
           ),
         ),
       );

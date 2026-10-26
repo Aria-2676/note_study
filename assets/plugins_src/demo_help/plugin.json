@@ -1,10 +1,11 @@
 {
   "id": "demo_help",
   "name": "使用说明",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "contract": 1,
   "entry": "index.html",
-  "description": "验证安装链路与读写权限的示例插件",
+  "description": "验证安装链路、读写权限与事件订阅的示例插件",
   "icon": "help",
-  "permissions": ["task:read", "task:write"]
+  "permissions": ["task:read", "task:write"],
+  "hooks": ["task.completed"]
 }

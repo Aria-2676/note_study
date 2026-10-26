@@ -1,3 +1,4 @@
+import '../extension/extension_hook.dart';
 import '../extension/extension_slot.dart';
 
 /// 插件包格式错误。**所有解析失败都抛它**，调用方只需处理这一种异常。
@@ -81,6 +82,7 @@ class PluginManifest {
     this.description,
     this.icon,
     this.slots = const <SlotId>{},
+    this.hooks = const <HookId>{},
     this.permissions = const <String>{},
   });
 
@@ -121,6 +123,7 @@ class PluginManifest {
       description: json['description'] is String ? json['description']! as String : null,
       icon: json['icon'] is String ? json['icon']! as String : null,
       slots: _parseSlots(json['slots']),
+      hooks: _parseHooks(json['hooks']),
       permissions: _parsePermissions(json['permissions']),
     );
   }
@@ -145,6 +148,12 @@ class PluginManifest {
 
   /// 该插件要参与的数据插槽
   final Set<SlotId> slots;
+
+  /// 该插件要订阅的事件钩子。
+  ///
+  /// **必须声明才会收到**：宿主只往声明了的钩子上推。这不是权限（拿不到数据），
+  /// 而是"别给不需要的插件推它处理不了的事件"—— 省得插件侧写一堆空分支。
+  final Set<HookId> hooks;
 
   /// 数据权限。**不声明就拿不到数据** —— 默认空集，最小权限。
   final Set<String> permissions;
@@ -184,6 +193,17 @@ class PluginManifest {
     if (raw is! List) return const <SlotId>{};
     final known = <String, SlotId>{for (final s in SlotId.values) s.id: s};
     return <SlotId>{
+      for (final item in raw)
+        if (item is String && known.containsKey(item)) known[item]!,
+    };
+  }
+
+  /// 同理：不认识的钩子忽略。插件声明了新钩子、宿主还不支持 ——
+  /// 插件少收一类事件而已，不该装不上。
+  static Set<HookId> _parseHooks(Object? raw) {
+    if (raw is! List) return const <HookId>{};
+    final known = <String, HookId>{for (final h in HookId.values) h.id: h};
+    return <HookId>{
       for (final item in raw)
         if (item is String && known.containsKey(item)) known[item]!,
     };

@@ -70,6 +70,16 @@ class HookBus {
     }
   }
 
+  /// 按实例精确移除。
+  ///
+  /// 为什么不能只用 [unregister]：同一个插件可能同时开着两个页面
+  /// （比如它既当首页、又从侧边栏打开了一份），按 id 移除会把还活着的那份也摘掉。
+  void removeListener(HookListener listener) {
+    for (final list in _listeners.values) {
+      list.remove(listener);
+    }
+  }
+
   /// 派发事件。**永不抛出**，并在 [timeout] 内必然返回。
   ///
   /// 调用方可直接 `await`，也可 `unawaited`；无论哪种都不会拖垮主流程。

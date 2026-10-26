@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../core/extension/extension_hook.dart';
+import '../../core/plugin/plugin_hook_channel.dart';
 import '../data/plugin_bridge.dart';
 
 /// 启动一个插件所需的全部材料。
@@ -11,11 +14,15 @@ class PluginLaunchSpec {
     required this.title,
     required this.entryPath,
     required this.bridge,
+    this.hooks = const <HookId>{},
   });
 
   final String title;
   final String entryPath;
   final PluginBridge bridge;
+
+  /// manifest 里声明的事件钩子。没声明的不会收到推送。
+  final Set<HookId> hooks;
 }
 
 /// 插件页的**内容部分**，不含 Scaffold/AppBar。
@@ -29,6 +36,7 @@ class PluginView extends StatefulWidget {
     super.key,
     required this.entryPath,
     required this.bridge,
+    this.hooks = const <HookId>{},
     this.onLoaded,
     this.onError,
   });
@@ -37,6 +45,9 @@ class PluginView extends StatefulWidget {
   final String entryPath;
 
   final PluginBridge bridge;
+
+  /// 这个插件订阅的事件（来自 manifest）。空集 = 不推任何事件。
+  final Set<HookId> hooks;
 
   /// 首帧加载完成（**每份页面只回调一次**）。首页熔断靠它取消超时计时器。
   final ValueChanged<String>? onLoaded;
@@ -49,21 +60,37 @@ class PluginView extends StatefulWidget {
 
 class _PluginViewState extends State<PluginView> {
   late final WebViewController _controller;
+  late final PluginHookChannel _channel;
   bool _reported = false;
 
   @override
   void initState() {
     super.initState();
+    _channel = PluginHookChannel(
+      pluginId: widget.bridge.pluginId,
+      hooks: widget.hooks,
+      send: _sendEvent,
+    );
+    if (widget.hooks.isNotEmpty) {
+      HookBus.instance.register(_channel);
+    }
+
     final controller = WebViewController();
     controller.setJavaScriptMode(JavaScriptMode.unrestricted);
     controller.setBackgroundColor(const Color(0x00000000));
     controller.addJavaScriptChannel('HostBridge', onMessageReceived: _onHostMessage);
     controller.setNavigationDelegate(
       NavigationDelegate(
-        onPageStarted: (_) => controller.runJavaScript(_bootstrap),
+        onPageStarted: (_) {
+          // 页面开始重载：先在本地排队，别往旧页面的 JS 上下文里发
+          _channel.markUnready();
+          controller.runJavaScript(_bootstrap);
+        },
         // 再补一次：有的机型 onPageStarted 时 JS 上下文还没建好
         onPageFinished: (url) {
           controller.runJavaScript(_bootstrap);
+          // 桥接脚本就绪 → 把排队的事件补发出去
+          _channel.markReady();
           if (_reported) return;
           _reported = true;
           widget.onLoaded?.call(url);
@@ -77,6 +104,19 @@ class _PluginViewState extends State<PluginView> {
     );
     _controller = controller;
     controller.loadFile(widget.entryPath);
+  }
+
+  @override
+  void dispose() {
+    // 按实例移除而不是按 pluginId：同一插件可能同时开着两个页面
+    HookBus.instance.removeListener(_channel);
+    super.dispose();
+  }
+
+  void _sendEvent(String event, Map<String, Object?> payload) {
+    unawaited(_controller.runJavaScript(
+      'window.__hostEvent && window.__hostEvent(${jsonEncode(event)}, ${jsonEncode(payload)});',
+    ));
   }
 
   Future<void> _onHostMessage(JavaScriptMessage message) async {
@@ -123,6 +163,7 @@ class _PluginViewState extends State<PluginView> {
       entry.reject({ code: error.code || 'unknown', message: error.message || '调用失败' });
     }
   };
+  var handlers = {};
   window.host = {
     call: function (method, params) {
       return new Promise(function (resolve, reject) {
@@ -130,6 +171,26 @@ class _PluginViewState extends State<PluginView> {
         pending[id] = { resolve: resolve, reject: reject };
         HostBridge.postMessage(JSON.stringify({ id: id, method: method, params: params || {} }));
       });
+    },
+    // 事件订阅。宿主只推 manifest 里声明过的钩子；
+    // 这里再挡一层：同一个事件可以挂多个处理函数，各自 try/catch ——
+    // 一个处理函数抛异常不该让后面的收不到。
+    on: function (name, fn) {
+      if (typeof fn !== 'function') return;
+      (handlers[name] = handlers[name] || []).push(fn);
+    },
+    off: function (name, fn) {
+      var list = handlers[name];
+      if (!list) return;
+      var at = list.indexOf(fn);
+      if (at >= 0) list.splice(at, 1);
+    }
+  };
+  window.__hostEvent = function (name, payload) {
+    var list = handlers[name];
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+      try { list[i](payload); } catch (e) { /* 单个订阅者出错不影响其他 */ }
     }
   };
 })();
@@ -143,11 +204,13 @@ class PluginPage extends StatelessWidget {
     required this.title,
     required this.entryPath,
     required this.bridge,
+    this.hooks = const <HookId>{},
   });
 
   final String title;
   final String entryPath;
   final PluginBridge bridge;
+  final Set<HookId> hooks;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +218,7 @@ class PluginPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(title, style: const TextStyle(fontSize: 16)),
       ),
-      body: PluginView(entryPath: entryPath, bridge: bridge),
+      body: PluginView(entryPath: entryPath, bridge: bridge, hooks: hooks),
     );
   }
 }
