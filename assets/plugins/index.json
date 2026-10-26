@@ -8,6 +8,10 @@
       "contract": 1,
       "description": "验证安装链路与读写权限的示例插件",
       "icon": "help",
+      "permissions": [
+        "task:read",
+        "task:write"
+      ],
       "package": {
         "path": "assets/plugins/demo_help_v1.1.1.zip",
         "sha256": "6df842ed55e86f6c3dcfe3377ef3bf9bf15fae92c38550dfdc74a27c34b57777",

@@ -84,6 +84,7 @@ void main() {
                     'contract': 1,
                     'description': '验证安装链路的示例插件',
                     'icon': 'help',
+                    'permissions': <String>['task:read', 'task:write'],
                     'package': <String, Object?>{
                       'path': 'assets/plugins/demo_help_v1.0.0.zip',
                       'sha256': sha,
@@ -216,12 +217,38 @@ void main() {
       expect(find.text('安装'), findsOneWidget);
     });
 
+    testWidgets('点安装先弹权限告知；取消就什么都不装', (tester) async {
+      final store = buildStore(sha: shaValue);
+      await tester.pumpWidget(MaterialApp(home: PluginMarketPage(store: store)));
+      await settle(tester);
+
+      await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('安装「使用说明」？'), findsOneWidget);
+      expect(find.text('读取你的任务（标题、日期、优先级、标签）'), findsOneWidget);
+      expect(find.text('新建和修改你的任务'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+
+      expect(store.installed, isEmpty, reason: '取消了就不该装');
+      expect(find.text('可安装 · 1'), findsOneWidget);
+      expect(
+        Directory(p.join(pluginRoot.path, 'demo_help')).existsSync(),
+        isFalse,
+        reason: '连下载都不该发生',
+      );
+    });
+
     testWidgets('点安装：进入已安装，文件真的落盘', (tester) async {
       final store = buildStore(sha: shaValue);
       await tester.pumpWidget(MaterialApp(home: PluginMarketPage(store: store)));
       await settle(tester);
 
       await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '安装'));
       await waitFor(tester, () => store.installed.isNotEmpty);
       await settle(tester);
 
@@ -240,6 +267,8 @@ void main() {
       await settle(tester);
 
       await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '安装'));
       await waitFor(tester, () => store.installed.isNotEmpty);
       await settle(tester);
 

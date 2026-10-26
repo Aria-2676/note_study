@@ -199,18 +199,41 @@
 - **校验**：索引里带 `sha256` 与 `sizeBytes`，装前必验，不符即删包重试下一源
 - **离线**：索引拉取失败 → 用本地缓存的索引；缓存也没有 → 只显示已装插件
 
-索引结构：
+索引结构（**与代码一致**，`assets/plugins/index.json`）：
 
 ```json
 {
-  "indexVersion": 3,
+  "schemaVersion": 1,
   "plugins": [
-    { "id": "pomodoro", "version": "1.0.0", "contract": 1,
-      "sizeBytes": 123456, "sha256": "…",
-      "urls": ["…/pomodoro-1.0.0.zip"], "notes": "首个版本" }
+    {
+      "id": "demo_help",
+      "name": "使用说明",
+      "version": "1.1.1",
+      "contract": 1,
+      "description": "一句话描述",
+      "icon": "help",
+      "permissions": ["task:read", "task:write"],
+      "package": {
+        "path": "assets/plugins/demo_help_v1.1.1.zip",
+        "sha256": "…64 位小写十六进制…",
+        "sizeBytes": 2575
+      }
+    }
   ]
 }
 ```
+
+**`permissions` 是索引里唯一的"冗余"字段**：正常情况下索引不含 manifest 内容
+（避免"索引说 1.0、包里是 2.0"），但权限必须在**下载之前**就知道 ——
+否则没法在安装前告诉用户"这个插件能改你的任务"。
+它由打包脚本 `tool/make_demo_plugin.py` 从 `plugin.json` 复制，
+不是手写的；真正生效的授权仍以包内 manifest 为准。
+
+**安装前必须告知**：点「安装」先弹一个确认框，按权限逐条列出人话
+（`读取你的任务…` / `新建和修改你的任务` / `删除你的任务`），
+没有权限也要弹（明确说"不需要任何数据权限"）。文案映射在
+`lib/core/plugin/permission_copy.dart`，新增权限必须同步加一句，
+否则界面会露出 `未知权限：xxx`。
 
 **信任根**：索引 JSON 本身。谁能改仓库谁就能投毒 → 首版靠"仓库只有你一个写入者"，
 如果将来要更严，加一层 `index.json.sig`（离线私钥签名，App 内置公钥验签）。
@@ -221,7 +244,7 @@
 
 | 场景 | 行为 |
 |---|---|
-| 安装 | 下载 → 验 sha256 → 解压到临时目录 → 校验 manifest → **冷启动后生效** |
+| 安装 | **先弹窗列出权限** → 下载 → 验 sha256 → 解压到临时目录 → 校验 manifest → **冷启动后生效** |
 | 更新 | 同安装；旧版本目录改名 `.bak-<stamp>` 保留，成功后删 |
 | 卸载 | 移除代码与入口；**弹窗问"是否保留数据"**，默认保留 |
 | 卸载且删数据 | `DROP TABLE plg_<id>_*` + 清 `plg.<id>.*` 设置键 |

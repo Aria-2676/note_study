@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/plugin/permission_copy.dart';
 import '../../core/plugin/plugin_index.dart';
 import '../../core/plugin/plugin_store.dart';
 import '../state/plugin_market_store.dart';
@@ -175,8 +176,98 @@ class _PluginMarketPageState extends State<PluginMarketPage> {
     return _PillButton(
       label: '安装',
       primary: true,
-      onTap: () => _install(store, entry),
+      // 先告知再装：卡片上常驻一行是浏览态，用户不会读；
+      // 点下去那一刻才是决定时刻，把"它能干什么"摆在这里才有用。
+      onTap: () => _confirmInstall(context, store, entry),
     );
+  }
+
+  /// 安装前告知权限。**没有权限也要弹** ——
+  /// 让"这个插件什么都不碰"成为一个明确的信息，而不是一片空白。
+  Future<void> _confirmInstall(
+    BuildContext context,
+    PluginMarketStore store,
+    PluginIndexEntry entry,
+  ) async {
+    final scheme = Theme.of(context).colorScheme;
+    final permissions = PermissionCopy.sorted(entry.permissions);
+    final hasDestructive = permissions.any(PermissionCopy.isDestructive);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('安装「${entry.name}」？', style: const TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'v${entry.version} · ${_formatSize(entry.package.sizeBytes)}',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            if (permissions.isEmpty)
+              Text(
+                '这个插件不需要任何数据权限。',
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+              )
+            else ...<Widget>[
+              const Text('安装后它可以：', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 8),
+              for (final permission in permissions)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: PermissionCopy.isDestructive(permission)
+                                ? scheme.error
+                                : scheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          PermissionCopy.label(permission),
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: PermissionCopy.isDestructive(permission)
+                                ? scheme.error
+                                : scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (hasDestructive) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  '删除不可逆；如果你开着回收站，被删的任务仍然会先进回收站。',
+                  style: TextStyle(fontSize: 11.5, height: 1.4, color: scheme.outline),
+                ),
+              ],
+            ],
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('安装')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await _install(store, entry);
   }
 
   Future<void> _install(PluginMarketStore store, PluginIndexEntry entry) async {

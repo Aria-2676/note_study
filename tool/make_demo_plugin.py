@@ -76,6 +76,10 @@ def main() -> None:
                 "contract": manifest["contract"],
                 "description": manifest.get("description", ""),
                 "icon": manifest.get("icon", ""),
+                # 权限必须写进索引：安装前要弹窗告知用户"它能干什么"，
+                # 而那时候包还没下载，读不到 plugin.json。
+                # 从 manifest 复制而不是手写，避免索引和包内声明对不上。
+                "permissions": manifest.get("permissions", []),
                 "package": package,
             }
         )

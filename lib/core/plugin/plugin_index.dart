@@ -4,6 +4,10 @@ import 'plugin_manifest.dart';
 ///
 /// 索引**不含** manifest 全文 —— 安装后才以包内 `plugin.json` 为准。
 /// 这样可以避免"索引说 1.0、包里是 2.0"这种不一致。
+///
+/// 唯一的例外是 [permissions]：它必须**在下载之前**就知道，否则没法在安装前
+/// 告诉用户"这个插件能改你的任务"。所以索引里带一份，由打包脚本从
+/// `plugin.json` 复制而来；真正生效的授权仍然以包内 manifest 为准。
 class PluginIndexEntry {
   const PluginIndexEntry({
     required this.id,
@@ -13,6 +17,7 @@ class PluginIndexEntry {
     required this.package,
     this.description,
     this.icon,
+    this.permissions = const <String>{},
   });
 
   factory PluginIndexEntry.fromJson(Map<String, Object?> json) {
@@ -46,8 +51,18 @@ class PluginIndexEntry {
       contract: contract,
       description: json['description'] is String ? json['description']! as String : null,
       icon: json['icon'] is String ? json['icon']! as String : null,
+      permissions: _parsePermissions(json['permissions']),
       package: PluginPackage.fromJson(Map<String, Object?>.from(pkg)),
     );
+  }
+
+  /// 不认识的权限直接丢掉（老宿主遇到新权限时，少显示一条好过装不上）。
+  static Set<String> _parsePermissions(Object? raw) {
+    if (raw is! List) return const <String>{};
+    return <String>{
+      for (final item in raw)
+        if (item is String && PluginManifest.knownPermissions.contains(item)) item,
+    };
   }
 
   final String id;
@@ -56,6 +71,10 @@ class PluginIndexEntry {
   final int contract;
   final String? description;
   final String? icon;
+
+  /// 安装前要展示给用户的权限（**展示用**；生效的是包内 manifest）
+  final Set<String> permissions;
+
   final PluginPackage package;
 
   /// 当前宿主能不能装这一项
