@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import '../../core/extension/extension_hook.dart';
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
 import '../models/editor_form.dart';
@@ -140,7 +143,16 @@ class TaskStore extends ChangeNotifier {
   }
 
   Future<void> toggle(Task task) async {
-    await _repo.setDone(task.id, !task.isDone);
+    final next = !task.isDone;
+    await _repo.setDone(task.id, next);
+    if (next) {
+      // **不 await**：钩子是通知，单个订阅方超时 500ms 也必须放行主流程，
+      // 而且用户勾完要立刻看到卡片变化，不能等插件。
+      unawaited(HookBus.instance.emit(
+        HookId.taskCompleted,
+        payload: task.toHookPayload(),
+      ));
+    }
     await load();
   }
 
@@ -246,6 +258,13 @@ class TaskStore extends ChangeNotifier {
 
     try {
       await _repo.delete(task.id, toRecycle: _recycleBinEnabled);
+      // 只有真进了回收站才发事件：物理删除是"没了"，插件没有可操作的对象。
+      if (_recycleBinEnabled) {
+        unawaited(HookBus.instance.emit(
+          HookId.taskRecycled,
+          payload: task.toHookPayload(),
+        ));
+      }
     } catch (_) {
       // 删库失败就把那一条放回原位，界面不能骗人
       final restored = List<Task>.of(_tasks)

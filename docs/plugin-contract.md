@@ -138,16 +138,23 @@
 
 ### 4.2 事件钩子（没人订阅也不能出错）
 
-| 钩子 | 参数 | 默认（无订阅时） |
+| 钩子 | payload | 发点（**已接通**） |
 |---|---|---|
-| `task.completed` | `{taskId, estimatedMinutes}` | 只改 `is_ok`；货币由订阅者发放 |
-| `task.recycled` | `{taskId}` | 只写回收站 |
-| `task.restored` | `{taskId}` | 只恢复 |
-| `pomodoro.sessionFinished` | `{mode, durationSeconds, actualSeconds, taskId?}` | 只计时与通知，**不落库** |
+| `task.completed` | `{taskId, title, dueDate, priority, estimatedMinutes, tags}` | `TaskStore.toggle`（勾选变完成）、`PluginBridge.task.setDone`（且只在**状态真的变了**时发） |
+| `task.recycled` | 同上 | `TaskStore.remove` / `PluginBridge.task.delete`，**只在真的进了回收站时** |
+| `task.restored` | `{title, dueDate}` | 回收站页的「恢复」 |
+| `pomodoro.sessionFinished` | `{mode, durationSeconds, actualSeconds, taskId?}` | 尚未接通（番茄钟插件还没做） |
 
 - 钩子是**通知**，不是拦截：插件拿不到"取消这次操作"的权力
 - 钩子超时（>500ms）或报错 → 记日志、继续主流程，**绝不让插件阻塞任务完成**
 - 这是"平台不会被插件拖垮"的底线
+- **payload 只给订阅方能算结果的字段**：估时、优先级、标签都在，描述不给
+  （那是用户写给自己的，插件没有理由看）
+- **重复操作不重复发**：插件页面刷新时可能重放 `setDone(true)`，
+  如果每次都发，货币插件就会重复发奖 —— 所以只在状态真的变化时发。
+
+> 目前钩子只在**主包内部**分发（`HookBus`）。把这些事件推给 WebView 里的插件
+> 还需要一条 host → plugin 的推送通道，尚未实现 —— 那是下一步。
 
 ---
 

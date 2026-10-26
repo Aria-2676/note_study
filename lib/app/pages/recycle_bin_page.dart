@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../core/extension/extension_hook.dart';
 import '../data/task_repository.dart';
 import '../models/recycled_task.dart';
+import '../models/task.dart' show TaskDate;
 
 /// 回收站。只在「删除后先进回收站」开关打开时才会有内容。
 ///
@@ -59,6 +63,15 @@ class _RecycleBinPageState extends State<RecycleBinPage> {
 
   Future<void> _restore(RecycledTask item) async {
     await widget.repository.restoreFromRecycle(item.id);
+    // 恢复后是**新 id**（老 id 让给自增序列了），payload 里给标题和时间就够 ——
+    // 订阅方要的是"哪条任务回来了"，不是精确的行。
+    unawaited(HookBus.instance.emit(
+      HookId.taskRestored,
+      payload: <String, Object?>{
+        'title': item.title,
+        'dueDate': TaskDate.dayKey(item.dueDate),
+      },
+    ));
     widget.onChanged?.call();
     await _reload();
     if (!mounted) return;

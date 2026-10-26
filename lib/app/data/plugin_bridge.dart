@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import '../../core/data/v6_schema.dart';
+import '../../core/extension/extension_hook.dart';
 import '../models/task.dart';
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
@@ -165,10 +168,20 @@ class PluginBridge {
     if (done is! bool) {
       throw const _BridgeError('bad_params', 'done 必须是 true / false');
     }
-    if (!await _tasks.exists(id)) {
+    final task = await _tasks.findById(id);
+    if (task == null) {
       throw _BridgeError('not_found', '任务 $id 不存在（可能已被删除）');
     }
+
     await _tasks.setDone(id, done);
+    // **重复标完成不再发事件**：插件页面刷新时可能重放一次 setDone(true)，
+    // 每发一次事件货币插件就多发一次奖励。钩子必须只在状态真的变了才发。
+    if (done && !task.isDone) {
+      unawaited(HookBus.instance.emit(
+        HookId.taskCompleted,
+        payload: task.toHookPayload(),
+      ));
+    }
     onChanged?.call();
     return _ok(<String, Object?>{'id': id, 'isDone': done});
   }
@@ -177,7 +190,8 @@ class PluginBridge {
     _require(PluginPermissions.taskDelete);
 
     final id = _idOf(params['id']);
-    if (!await _tasks.exists(id)) {
+    final task = await _tasks.findById(id);
+    if (task == null) {
       throw _BridgeError('not_found', '任务 $id 不存在（可能已被删除）');
     }
     // **删法跟用户设置走**，插件说了不算：用户开着回收站就进回收站。
@@ -187,6 +201,12 @@ class PluginBridge {
       fallback: false,
     );
     await _tasks.delete(id, toRecycle: toRecycle);
+    if (toRecycle) {
+      unawaited(HookBus.instance.emit(
+        HookId.taskRecycled,
+        payload: task.toHookPayload(),
+      ));
+    }
     onChanged?.call();
     return _ok(<String, Object?>{'id': id, 'deleted': true, 'toRecycle': toRecycle});
   }

@@ -76,6 +76,20 @@ class Task {
         'blue' => const Color(0xFF1E88E5),
         _ => const Color(0xFFBDBDBD),
       };
+
+  /// 事件钩子的负载。
+  ///
+  /// 只放**订阅方能算出结果**的字段：估时、优先级、标签都在里面，
+  /// 货币插件据此结算就不必再回查一次库（也就不会读到"已经变了"的版本）。
+  /// 不放描述：那是用户写给自己的，插件没有理由看到。
+  Map<String, Object?> toHookPayload() => <String, Object?>{
+        'taskId': id,
+        'title': title,
+        'dueDate': TaskDate.dayKey(dueDate),
+        'priority': priority,
+        'estimatedMinutes': estimatedMinutes,
+        'tags': <String>[for (final tag in tags) tag.name],
+      };
 }
 
 class Tag {

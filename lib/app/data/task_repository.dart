@@ -226,6 +226,23 @@ class TaskRepository {
     );
     return rows.isNotEmpty;
   }
+
+  /// 单条任务（带标签）。钩子发事件时要用它的完整信息，
+  /// 否则订阅方（货币插件）拿不到估时，算不出该给多少。
+  Future<Task?> findById(int id) async {
+    final rows = await _db.rawQuery('''
+      SELECT t.*, (
+        SELECT GROUP_CONCAT(${TaskTagCol.tagId})
+        FROM ${V6Table.taskTags} tt
+        WHERE tt.${TaskTagCol.taskId} = t.${TaskCol.id}
+      ) AS tag_ids
+      FROM ${V6Table.tasks} t
+      WHERE t.${TaskCol.id} = ?
+      LIMIT 1
+    ''', <Object?>[id]);
+    final list = await _hydrate(rows);
+    return list.isEmpty ? null : list.first;
+  }
   /// 删除任务。
   ///
   /// [toRecycle] 为 true 时整行拷进 `recycled_tasks`（可恢复），
