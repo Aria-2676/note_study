@@ -14,6 +14,7 @@ import 'package:v5_app/core/data/v6_database.dart';
 import 'package:v5_app/core/data/v6_plugin_tables.dart';
 import 'package:v5_app/core/extension/extension_hook.dart';
 import 'package:v5_app/core/plugin/event_journal.dart';
+import 'package:v5_app/core/plugin/plugin_storage.dart';
 
 void main() {
   setUpAll(() {
@@ -455,6 +456,113 @@ void main() {
 
       expect(response['ok'], isTrue);
       expect(List<Object?>.from(response['result']! as List), isEmpty);
+    });
+  });
+
+  // ================= 插件私有数据 =================
+
+  group('插件私有数据', () {
+    late PluginStorageSpec spec;
+
+    setUp(() async {
+      spec = PluginStorageSpec.fromJson(<String, Object?>{
+        'tables': <Object?>[
+          <String, Object?>{
+            'name': 'entries',
+            'columns': <Object?>[
+              <String, Object?>{'name': 'day', 'type': 'text'},
+              <String, Object?>{'name': 'body', 'type': 'text'},
+            ],
+          },
+        ],
+      });
+      final registry = PluginSchemaRegistry();
+      registry.registerStorage('demo_help', spec);
+      await registry.materialize(db);
+    });
+
+    PluginBridge withData() => PluginBridge(
+          pluginId: 'demo_help',
+          permissions: const <String>{'task:read'},
+          tasks: tasks,
+          settings: settings,
+          contract: 1,
+          data: PluginDataStore(db: db, pluginId: 'demo_help', spec: spec),
+        );
+
+    test('没声明 storage：db.* 回 no_storage，不是静默失败', () async {
+      for (final method in <String>[
+        'db.insert',
+        'db.select',
+        'db.update',
+        'db.delete',
+        'db.aggregate',
+      ]) {
+        final response = await bridge().dispatch(method, <String, Object?>{
+          'table': 'entries',
+          'values': <String, Object?>{'day': 'x'},
+          'metrics': <Object?>[],
+        });
+        expect(errorOf(response)['code'], 'no_storage', reason: '$method 应该明确拒绝');
+      }
+    });
+
+    test('写一条再查回来', () async {
+      final inserted = await withData().dispatch('db.insert', <String, Object?>{
+        'table': 'entries',
+        'values': <String, Object?>{'day': '2026-10-27', 'body': '今天'},
+      });
+      expect(inserted['ok'], isTrue);
+
+      final selected = await withData().dispatch('db.select', <String, Object?>{
+        'table': 'entries',
+      });
+      final rows = List<Object?>.from(selected['result']! as List);
+      expect(rows, hasLength(1));
+      expect(Map<String, Object?>.from(rows.first! as Map)['body'], '今天');
+    });
+
+    test('表名/参数不合法：bad_params（错误码要能区分"你写错了"和"宿主崩了"）', () async {
+      final badTable = await withData().dispatch('db.select', <String, Object?>{
+        'table': 'tasks',
+      });
+      expect(errorOf(badTable)['code'], 'bad_params');
+
+      final badValues = await withData().dispatch('db.insert', <String, Object?>{
+        'table': 'entries',
+        'values': 'not-a-map',
+      });
+      expect(errorOf(badValues)['code'], 'bad_params');
+
+      final noMetrics = await withData().dispatch('db.aggregate', <String, Object?>{
+        'table': 'entries',
+        'metrics': <Object?>[],
+      });
+      expect(errorOf(noMetrics)['code'], 'bad_params');
+    });
+
+    test('聚合能直接算出来（统计插件的基础）', () async {
+      for (final row in <Map<String, Object?>>[
+        <String, Object?>{'day': '2026-10-26', 'body': 'a'},
+        <String, Object?>{'day': '2026-10-26', 'body': 'b'},
+        <String, Object?>{'day': '2026-10-27', 'body': 'c'},
+      ]) {
+        await withData().dispatch('db.insert', <String, Object?>{'table': 'entries', 'values': row});
+      }
+
+      final response = await withData().dispatch('db.aggregate', <String, Object?>{
+        'table': 'entries',
+        'groupBy': <String>['day'],
+        'metrics': <Object?>[
+          <String, Object?>{'fn': 'count', 'column': '*', 'as': 'n'},
+        ],
+      });
+
+      final rows = List<Object?>.from(response['result']! as List);
+      expect(rows, hasLength(2));
+      final first = Map<String, Object?>.from(rows.first! as Map);
+      expect(first['day'], '2026-10-26');
+      expect(first['n'], 2);
     });
   });
 }

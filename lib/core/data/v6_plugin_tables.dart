@@ -7,6 +7,7 @@
 
 import 'package:sqflite/sqflite.dart';
 
+import '../plugin/plugin_storage.dart';
 import 'v6_schema.dart';
 
 /// 一张插件表的声明。插件安装时由宿主从 manifest 读出并注册。
@@ -16,6 +17,7 @@ class PluginTableSpec {
     required this.suffix,
     required this.columnsSql,
     this.version = 1,
+    this.extraSql = const <String>[],
   });
 
   /// 插件 id，小写字母/数字/连字符
@@ -29,6 +31,12 @@ class PluginTableSpec {
 
   /// 该表的 schema 版本，用于将来做插件自己的迁移
   final int version;
+
+  /// 建表之后要补的语句（唯一索引、普通索引）。
+  ///
+  /// 单独拆出来是因为 `CREATE TABLE` 里塞不下索引，而统计型插件
+  /// 几乎一定要按日期/状态查 —— 没索引就是全表扫。
+  final List<String> extraSql;
 
   String get tableName => 'plg_${pluginId}_$suffix';
 
@@ -72,6 +80,9 @@ class PluginSchemaRegistry {
     for (final specs in _byPlugin.values) {
       for (final spec in specs.values) {
         await db.execute(spec.createSql);
+        for (final sql in spec.extraSql) {
+          await db.execute(sql);
+        }
         await db.insert(
           V6Table.pluginMigrations,
           <String, Object?>{
@@ -126,4 +137,39 @@ class PluginSchemaRegistry {
   }
 
   void clear() => _byPlugin.clear();
+}
+
+/// 把 manifest 里的 `storage` 声明注册成真实的表。
+///
+/// 表名、索引名都在这里拼一次，**之后所有地方都从注册表取** ——
+/// 绝不允许别处拿插件给的字符串当表名。
+extension PluginStorageRegistration on PluginSchemaRegistry {
+  void registerStorage(String pluginId, PluginStorageSpec storage) {
+    for (final table in storage.tables) {
+      final name = 'plg_${pluginId}_${table.name}';
+      final columns = <String>[
+        // 主键由宿主统一提供，插件不用关心（也不许自己声明 id）
+        'id INTEGER PRIMARY KEY AUTOINCREMENT',
+        for (final column in table.columns) column.ddl,
+      ];
+
+      final extra = <String>[];
+      for (var i = 0; i < table.unique.length; i++) {
+        final cols = table.unique[i].map((c) => '"$c"').join(', ');
+        extra.add('CREATE UNIQUE INDEX IF NOT EXISTS ${name}_u$i ON $name ($cols)');
+      }
+      for (var i = 0; i < table.indexes.length; i++) {
+        final cols = table.indexes[i].map((c) => '"$c"').join(', ');
+        extra.add('CREATE INDEX IF NOT EXISTS ${name}_i$i ON $name ($cols)');
+      }
+
+      register(PluginTableSpec(
+        pluginId: pluginId,
+        suffix: table.name,
+        columnsSql: columns.join(', '),
+        version: storage.version,
+        extraSql: extra,
+      ));
+    }
+  }
 }

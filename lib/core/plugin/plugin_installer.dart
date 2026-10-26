@@ -133,6 +133,10 @@ class PluginInstaller {
         installedAt: DateTime.now(),
       );
       await _store.upsert(installed);
+      // 建表要在登记之后：表建失败了还能靠 reconcile 清掉登记，
+      // 反过来会留下"表在、插件不在"的孤儿表。
+      _schemas.registerStorage(manifest.id, manifest.storage);
+      await _schemas.materialize(_db);
       await _removeOtherVersions(manifest.id, keep: manifest.version);
       return installed;
     } on PluginFormatException catch (error) {
@@ -156,6 +160,26 @@ class PluginInstaller {
     await _schemas.dropPlugin(_db, pluginId);
     await _deleteQuietly(Directory(p.join(_rootDir.path, pluginId)));
     await _store.remove(pluginId);
+  }
+
+  /// 启动时按已装清单把插件表补齐。
+  ///
+  /// 为什么需要它：`PluginSchemaRegistry` 是**内存**注册表，
+  /// 每次冷启动都是空的。不补这一步，重启后插件的表就"不存在"了 ——
+  /// 表现是插件一打开就报"没有声明过这张表"。
+  ///
+  /// 读不出 manifest 的插件直接跳过（包坏了由 [reconcile] 处理），
+  /// 一个坏包不该挡住其他插件的表。
+  Future<void> ensureSchemas() async {
+    for (final item in await _store.all()) {
+      try {
+        final manifest = await manifestOf(item);
+        _schemas.registerStorage(item.pluginId, manifest.storage);
+      } catch (_) {
+        continue;
+      }
+    }
+    await _schemas.materialize(_db);
   }
 
   /// 启动时自愈：登记了但目录没了 → 删登记；目录在但没登记 → 删目录。

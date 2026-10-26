@@ -14,6 +14,7 @@ import '../core/plugin/plugin_index.dart';
 import '../core/plugin/plugin_installer.dart';
 import '../core/plugin/plugin_store.dart';
 import '../core/plugin/plugin_manifest.dart';
+import '../core/plugin/plugin_storage.dart';
 import 'data/plugin_bridge.dart';
 import 'pages/plugin_page.dart';
 import 'pages/recycle_bin_page.dart';
@@ -80,6 +81,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       );
       // 启动自愈：上次卸载/安装中断留下的残渣在这里清掉
       await installer.reconcile();
+      // 内存注册表每次冷启动都是空的，按已装清单把插件表补回来
+      await installer.ensureSchemas();
 
       // 回收站到期清理：没有后台服务，每次启动扫一遍就够了
       final settings = SettingsRepository(db);
@@ -161,6 +164,15 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         contract: PluginContract.current,
         hooks: manifest.hooks,
         journal: _journal,
+        // 插件自己的表。没声明 storage 的插件拿到 null，
+        // 调 db.* 会得到 no_storage —— 而不是静默什么都不做。
+        data: manifest.storage.isEmpty
+            ? null
+            : PluginDataStore(
+                db: db,
+                pluginId: plugin.pluginId,
+                spec: manifest.storage,
+              ),
         // 插件写完要通知主包重读：否则"插件里加了任务、退出插件首页还是旧的"。
         // 用闭包读 `_store`，避免热重载后拿到已失效的实例。
         onChanged: () => _store?.load(),

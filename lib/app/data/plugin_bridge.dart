@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/data/v6_schema.dart';
 import '../../core/extension/extension_hook.dart';
 import '../../core/plugin/event_journal.dart';
+import '../../core/plugin/plugin_storage.dart';
 import '../models/task.dart';
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
@@ -27,6 +28,7 @@ class PluginBridge {
     required this.contract,
     this.hooks = const <HookId>{},
     this.journal,
+    this.data,
     this.onChanged,
   })  : _tasks = tasks,
         _settings = settings;
@@ -40,6 +42,11 @@ class PluginBridge {
 
   /// 事件日志。没有它就只能实时推送，插件不在前台时事件会丢。
   final EventJournal? journal;
+
+  /// 插件私有数据的读写口。null = 这个插件没声明 storage。
+  ///
+  /// **表名/列名只能来自它自己的 manifest 声明**，见 `PluginDataStore`。
+  final PluginDataStore? data;
 
   /// 写成功之后通知宿主刷新（首页列表、日历标记都依赖它）。
   ///
@@ -66,6 +73,11 @@ class PluginBridge {
         'task.delete' => await _taskDelete(params),
         'event.pending' => await _eventPending(params),
         'event.ack' => await _eventAck(params),
+        'db.insert' => await _dbInsert(params),
+        'db.select' => await _dbSelect(params),
+        'db.update' => await _dbUpdate(params),
+        'db.delete' => await _dbDelete(params),
+        'db.aggregate' => await _dbAggregate(params),
         'tag.list' => await _tagList(),
         'store.get' => await _storeGet(params),
         'store.set' => await _storeSet(params),
@@ -73,6 +85,9 @@ class PluginBridge {
         _ => _error('unknown_method', '未知方法：$method'),
       };
     } on _BridgeError catch (error) {
+      return _error(error.code, error.message);
+    } on PluginDataException catch (error) {
+      // 数据层的错误码和 bridge 对齐，插件侧只需要看一种
       return _error(error.code, error.message);
     } catch (error) {
       return _error('internal', '$error');
@@ -264,6 +279,103 @@ class PluginBridge {
     }
     final acked = await journal?.ack(ids) ?? 0;
     return _ok(<String, Object?>{'acked': acked});
+  }
+
+  // ---- 插件私有数据（B 方案：声明的表） ----
+  //
+  // 没有额外的权限开关：能写哪张表由 manifest 的 `storage` 声明决定，
+  // **声明本身就是授权**。宿主只提供"声明过的表 + 声明过的列"的构造式查询，
+  // 永不执行插件传来的 SQL 字符串。
+
+  PluginDataStore _requireData() {
+    final store = data;
+    if (store == null) {
+      throw const _BridgeError('no_storage', '这个插件没有在 plugin.json 里声明 storage');
+    }
+    return store;
+  }
+
+  Map<String, Object?> _valuesParam(Object? raw) {
+    if (raw is! Map) throw const _BridgeError('bad_params', 'values 必须是对象');
+    return Map<String, Object?>.from(raw);
+  }
+
+  List<String>? _stringListParam(Object? raw, String name) {
+    if (raw == null) return null;
+    if (raw is! List) throw _BridgeError('bad_params', '$name 必须是字符串数组');
+    return <String>[
+      for (final item in raw)
+        if (item is String) item else throw _BridgeError('bad_params', '$name 必须是字符串数组'),
+    ];
+  }
+
+  List<Map<String, Object?>>? _objectListParam(Object? raw, String name) {
+    if (raw == null) return null;
+    if (raw is! List) throw _BridgeError('bad_params', '$name 必须是对象数组');
+    return <Map<String, Object?>>[
+      for (final item in raw)
+        if (item is Map)
+          Map<String, Object?>.from(item)
+        else
+          throw _BridgeError('bad_params', '$name 必须是对象数组'),
+    ];
+  }
+
+  Future<Map<String, Object?>> _dbInsert(Map<String, Object?> params) async {
+    final store = _requireData();
+    final table = _stringParam(params, 'table');
+    final id = await store.insert(table, _valuesParam(params['values']));
+    onChanged?.call();
+    return _ok(<String, Object?>{'id': id});
+  }
+
+  Future<Map<String, Object?>> _dbSelect(Map<String, Object?> params) async {
+    final store = _requireData();
+    final rows = await store.select(
+      _stringParam(params, 'table'),
+      columns: _stringListParam(params['columns'], 'columns'),
+      where: params['where'],
+      orderBy: _objectListParam(params['orderBy'], 'orderBy'),
+      limit: params['limit'] is int ? params['limit']! as int : null,
+      offset: params['offset'] is int ? params['offset']! as int : null,
+    );
+    return _ok(rows);
+  }
+
+  Future<Map<String, Object?>> _dbAggregate(Map<String, Object?> params) async {
+    final store = _requireData();
+    final metrics = _objectListParam(params['metrics'], 'metrics');
+    if (metrics == null || metrics.isEmpty) {
+      throw const _BridgeError('bad_params', 'metrics 必须是非空数组');
+    }
+    final rows = await store.aggregate(
+      _stringParam(params, 'table'),
+      groupBy: _stringListParam(params['groupBy'], 'groupBy'),
+      metrics: metrics,
+      where: params['where'],
+    );
+    return _ok(rows);
+  }
+
+  Future<Map<String, Object?>> _dbUpdate(Map<String, Object?> params) async {
+    final store = _requireData();
+    final updated = await store.update(
+      _stringParam(params, 'table'),
+      _valuesParam(params['values']),
+      params['where'],
+    );
+    if (updated > 0) onChanged?.call();
+    return _ok(<String, Object?>{'updated': updated});
+  }
+
+  Future<Map<String, Object?>> _dbDelete(Map<String, Object?> params) async {
+    final store = _requireData();
+    final deleted = await store.delete(
+      _stringParam(params, 'table'),
+      params['where'],
+    );
+    if (deleted > 0) onChanged?.call();
+    return _ok(<String, Object?>{'deleted': deleted});
   }
 
   // ---- 插件私有 KV ----

@@ -1,5 +1,6 @@
 import '../extension/extension_hook.dart';
 import '../extension/extension_slot.dart';
+import 'plugin_storage.dart';
 
 /// 插件包格式错误。**所有解析失败都抛它**，调用方只需处理这一种异常。
 final RegExp _sha256Pattern = RegExp(r'^[0-9a-f]{64}$');
@@ -84,6 +85,7 @@ class PluginManifest {
     this.slots = const <SlotId>{},
     this.hooks = const <HookId>{},
     this.permissions = const <String>{},
+    this.storage = const PluginStorageSpec(version: 1, tables: <PluginTableDecl>[]),
   });
 
   factory PluginManifest.parse(Map<String, Object?> json) {
@@ -125,6 +127,7 @@ class PluginManifest {
       slots: _parseSlots(json['slots']),
       hooks: _parseHooks(json['hooks']),
       permissions: _parsePermissions(json['permissions']),
+      storage: PluginStorageSpec.fromJson(json['storage']),
     );
   }
 
@@ -157,6 +160,12 @@ class PluginManifest {
 
   /// 数据权限。**不声明就拿不到数据** —— 默认空集，最小权限。
   final Set<String> permissions;
+
+  /// 插件自己的表声明。空 = 不存自己的数据（只读写主包任务的那种插件）。
+  ///
+  /// 表会建成 `plg_<id>_<name>`；插件**永远拿不到表名之外的自由** ——
+  /// 不能指向主包表，也不能执行任意 SQL（见 `PluginDataStore`）。
+  final PluginStorageSpec storage;
 
   /// 当前宿主认识的权限。声明了不认识的一律忽略（向前兼容）。
   ///

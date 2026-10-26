@@ -120,6 +120,65 @@
 3. 插件自己的数据只能落在 `plg_<id>_*` 表和私有 KV，绝不碰主包表
 4. 数据量大的一律分页（`limit`/`cursor`），不允许"全量拉取"
 
+### 3.5 插件私有存储（B 方案：声明的表）
+
+插件要存自己的内容（日记正文、笔记条目、统计数据），在 `plugin.json` 里声明表结构：
+
+```json
+"storage": {
+  "version": 1,
+  "tables": [
+    {
+      "name": "entries",
+      "columns": [
+        {"name": "day", "type": "text", "notNull": true},
+        {"name": "body", "type": "text"},
+        {"name": "minutes", "type": "integer"}
+      ],
+      "unique": [["day"]],
+      "indexes": [["minutes"]]
+    }
+  ]
+}
+```
+
+- 层名成 `plg_<id>_entries`；`id` 由宿主加，插件**不要声明**（会撞名）
+- 类型只有 `text` / `integer` / `real`；**没有 blob**，也没有裸 SQL 片段
+- 一个插件最多 8 张表、每表 24 列；表名/列名只允许小写字母数字下划线（≤32）
+- 建表在安装时和每次启动时各做一次（内存注册表冷启动是空的，靠 `ensureSchemas` 补）
+
+读取用**构造式查询**，永远不执行插件传来的 SQL：
+
+| 方法 | 参数 |
+|---|---|
+| `db.insert` | `table`, `values` → `{id}` |
+| `db.select` | `table`, `columns?`, `where?`, `orderBy?`, `limit?`(≤500, 默认 100), `offset?` |
+| `db.aggregate` | `table`, `groupBy?`, `metrics[{fn, column, as}]`, `where?` |
+| `db.update` | `table`, `values`, `where`（**必须带**）→ `{updated}` |
+| `db.delete` | `table`, `where`（**必须带**）→ `{deleted}` |
+
+`where` 是数组，每项 `{column, op, value}`；`op` 白名单：
+`=` `!=` `<` `<=` `>` `>=` `like` `in` `isNull` `notNull`。
+`metrics.fn` 白名单：`count` `sum` `avg` `min` `max`。
+
+```js
+// 按天统计专注时长
+const rows = await window.host.call('db.aggregate', {
+  table: 'entries',
+  groupBy: ['day'],
+  metrics: [{ fn: 'sum', column: 'minutes', as: 'total' }],
+});
+```
+
+**为什么不用"通用集合表 + JSON"**：统计要按维度聚合，JSON 只能全量拉回内存算，
+数据一多就废。让插件声明真实列，`GROUP BY` 和索引才用得起来。
+
+**为什么不能给任意 SQL**：本地库里是用户唯一的一份数据。一个 `DROP TABLE tasks`
+就够了。所以表名/列名只能来自 manifest 声明，值全部参数化，
+`update`/`delete` 不带条件直接拒绝。
+
+错误码：`no_storage`（没声明 storage 却调 db.*）、`bad_params`（表/列/操作符不合法）。
+
 ---
 
 ## 4. 插槽与钩子

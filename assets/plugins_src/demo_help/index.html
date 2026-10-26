@@ -68,7 +68,7 @@
   <h1>使用说明</h1>
   <p class="sub">这是安装链路的验证插件，不是正式功能</p>
 
-  <div class="tag">契约 1 · v1.3.0</div>
+  <div class="tag">契约 1 · v1.4.0</div>
 
   <div class="card">
     <div class="row">
@@ -109,6 +109,13 @@
       <p>
         <strong>它在听宿主的事件</strong>
         <span id="event" class="live">去首页勾完一条任务，这里会立刻出现</span>
+      </p>
+    </div>
+    <div class="row">
+      <div class="dot"></div>
+      <p>
+        <strong>它有自己的表</strong>
+        <span id="db" class="live">正在写…</span>
       </p>
     </div>
     <button id="addTask" class="btn">加一条「来自插件的任务」</button>
@@ -159,6 +166,27 @@
         })
         .catch(function (error) {
           document.getElementById('event').textContent = '补发失败：' + error.message;
+        });
+
+      // 私有表：每次打开写一行，再读回总数 ——
+      // 用来验证「装完就建表」和「冷启动后表还在」两件事。
+      window.host.call('db.insert', {
+        table: 'visits',
+        values: { at: new Date().toISOString(), via: 'open' },
+      })
+        .then(function () {
+          return window.host.call('db.aggregate', {
+            table: 'visits',
+            metrics: [{ fn: 'count', column: '*', as: 'n' }],
+          });
+        })
+        .then(function (rows) {
+          var n = rows && rows[0] ? rows[0].n : 0;
+          document.getElementById('db').textContent = 'plg_demo_help_visits 里已有 ' + n + ' 行';
+        })
+        .catch(function (error) {
+          document.getElementById('db').textContent =
+            '写库失败：' + error.code + ' · ' + error.message;
         });
 
       window.host.call('task.count', { date: today() })
