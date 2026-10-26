@@ -16,24 +16,33 @@ import 'app_update_exception.dart';
 /// 职责边界：本类只负责「拉取 + 交给决策器判定」，不负责下载安装包、
 /// 不做持久化、不弹 UI。那些是上层的事。
 class AppUpdateService {
-  /// 更新清单相对仓库根目录的路径。
-  static const String manifestPath = 'update.json';
-
-  /// GitHub Contents API 上的清单地址。
+  /// V5 渠道的清单文件名。
   ///
-  /// 这是**近实时**的一路：它读的是仓库当前内容，没有 jsDelivr 对分支引用
-  /// 的最长约 12 小时缓存，发布后立刻能被发现，专门用来兜住「CDN 还没刷新」
-  /// 的时间窗。代价：未认证调用限速 60 次/小时/IP，所以排在所有 CDN 之后
-  /// 兜底（自签小圈子分发 + 每小时一次自动检查，远用不完）。
-  static const String manifestApiUrl =
-      'https://api.github.com/repos/Aria-2676/note_study/contents/update.json';
+  /// **已经发出去的 V5 包把这个地址写死在代码里**，所以它永远不能改名 ——
+  /// 改了等于让所有 V5 用户再也收不到更新。
+  ///
+  /// V6 用的是另一份清单（见 [UpdateChannel]），两份互不影响：
+  /// 6.0.0 之后 V5 停在 `update.json`，V6 只认 `update_v6.json`。
+  static const String v5ManifestPath = 'update.json';
+
+  /// GitHub Contents API 上的仓库内容地址前缀。
+  static const String contentsApiBase =
+      'https://api.github.com/repos/Aria-2676/note_study/contents';
 
   AppUpdateService({
+    this.manifestPath = v5ManifestPath,
     List<Uri> Function()? candidateProvider,
     Uri? contentsApiUrl,
     this.timeout = const Duration(seconds: 15),
-  }) : _candidateProvider = candidateProvider ?? defaultCandidates,
-       _contentsApiUrl = contentsApiUrl ?? Uri.parse(manifestApiUrl);
+  }) : _candidateProvider =
+           candidateProvider ?? (() => candidatesFor(manifestPath)),
+       _contentsApiUrl = contentsApiUrl ?? contentsApiUri(manifestPath);
+
+  /// 这份 service 读哪份清单。
+  ///
+  /// 默认是 V5 的那份（保持既有调用点的行为不变）；V6 由
+  /// [UpdateChannel.v6] 显式指定 `update_v6.json`。
+  final String manifestPath;
 
   final List<Uri> Function() _candidateProvider;
 
@@ -44,13 +53,17 @@ class AppUpdateService {
   final Duration timeout;
 
   /// 默认候选地址：主 CDN 在前，镜像在后，自动去重。
-  static List<Uri> defaultCandidates() {
-    return CdnBases.resolve(
-      CdnBases.manifest,
-      CdnBases.manifestFallbacks,
-      manifestPath,
-    );
+  static List<Uri> candidatesFor(String path) {
+    return CdnBases.resolve(CdnBases.manifest, CdnBases.manifestFallbacks, path);
   }
+
+  /// Contents API 地址。**必须跟着清单名走** ——
+  /// 否则 V6 在 CDN 全部失败时会去读 V5 的清单，把 5.x 的更新当成自己的。
+  static Uri contentsApiUri(String path) =>
+      Uri.parse('$contentsApiBase/$path');
+
+  /// 兼容旧调用点（默认渠道）。
+  static List<Uri> defaultCandidates() => candidatesFor(v5ManifestPath);
 
   /// 按候选顺序依次尝试拉取更新清单。
   ///

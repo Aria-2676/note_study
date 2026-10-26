@@ -432,3 +432,24 @@ if (oldVersion < 2) ALTER TABLE ... ADD COLUMN tag_ids TEXT;
 
 `update.json` 暂时不动。顺序必须是"先传 APK，再改清单"，反过来会让所有
 V5 用户收到更新提示、点下去是死链。
+
+## 更新渠道一分为二：V5 冻结在 6.0.0，V6 自己一份清单（2026-10-27）
+
+6.0.0 对 V5 只是一次**可选的引流**，不是强制的迁移。所以要把"一次邀请"
+和"长期共用"分开：
+
+- V5 → `update.json`，发完 6.0.0 后冻结：`latest.version` 不再涨、
+  `minSupported` 保持 5.0.0（提了就等于强制更新，「跳过此版本」会失效）
+- V6 → `update_v6.json` + `v6` 前缀的本地状态
+- 清单地址在 V5 代码里写死，改不了 → **只能让 V6 换名字**，反过来不成立
+
+本地状态必须隔离，最硬的理由是资源包构建号：V5 应用过 build 5，V6 读到会
+以为自己也应用过，静默跳过 V6 的热更，且永远不会自愈。
+"关闭提醒""跳过版本"一起隔离 —— 换了个应用形态，值得重新问用户一次。
+
+`AppUpdateService` 的清单名与 Contents API 地址都改成按渠道生成，
+避免 CDN 全挂时 V6 去读 V5 的清单，把 5.x 的更新当成自己的。
+
+两条防呆断言（`test/core/updater/update_manifest_guard_test.dart`）：
+`update.json` 的 `minSupported` 主版本 ≤ 5、`latest.version` ≤ 6.0.0。
+这类改动在 review 里极不显眼，只能让测试挡。

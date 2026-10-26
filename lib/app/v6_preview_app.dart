@@ -18,6 +18,7 @@ import '../core/plugin/plugin_store.dart';
 import '../core/plugin/plugin_manifest.dart';
 import '../core/plugin/plugin_storage.dart';
 import '../core/updater/providers/app_update_provider.dart';
+import '../core/updater/update_channel.dart';
 import '../core/updater/widgets/app_update_dialog.dart';
 import 'data/plugin_bridge.dart';
 import 'pages/plugin_page.dart';
@@ -88,8 +89,16 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
 
   /// 版本检查**不阻断启动**：初始化失败或网络不通时安静跳过，
   /// 回到前台还会按间隔重试（见 [AppUpdatePromptHost]）。
+  ///
+  /// 走 **v6 渠道**（`update_v6.json` + `v6` 前缀的本地状态），不和 V5 共用：
+  /// 共用清单的话，V6 每发一个小版本都会推送给还停在 5.x 的用户 ——
+  /// 而 6.0.0 只是一次性引流，不该变成持续打扰。
   void _startUpdater() {
-    final provider = AppUpdateProvider();
+    const channel = UpdateChannel.v6;
+    final provider = AppUpdateProvider(
+      service: channel.createService(),
+      settings: channel.settings,
+    );
     _update = provider;
     unawaited(provider.initialize().then((_) => provider.checkIfDue()));
   }

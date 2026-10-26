@@ -5,17 +5,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 版本检查是「用户可关掉」的功能，因此这几个状态必须落盘：
 /// 跳过过哪个版本、是否关掉了提醒、上次检查时间、本地已应用的资源包构建号。
 class AppUpdateSettings {
-  const AppUpdateSettings();
+  const AppUpdateSettings({this.scope = ''});
 
-  static const String _kIgnoredVersion = 'app_update_ignored_version';
-  static const String _kNotificationsEnabled = 'app_update_notifications_enabled';
-  static const String _kWifiOnlyAutoDownload = 'app_update_wifi_only_auto';
-  static const String _kLastCheckAt = 'app_update_last_check_at';
-  static const String _kAssetBuild = 'app_update_asset_build';
-  static const String _kBgVersion = 'app_update_env_version';
-  static const String _kBgPlatform = 'app_update_env_platform';
-  static const String _kBgAbi = 'app_update_env_abi';
-  static const String _kLastNotifiedVersion = 'app_update_last_notified_version';
+  /// 键前缀，用来把不同渠道的更新状态**隔开**。
+  ///
+  /// 为什么必须隔开：V5 与 V6 是同包名，共用一份 SharedPreferences。
+  /// 其中最硬的一条是资源包构建号 —— V5 应用过 `build 5`，V6 读到会以为
+  /// 自己也应用过，于是静默跳过 V6 的资源更新，而且**永远不会自愈**。
+  ///
+  /// 空字符串 = V5 原有的键名，一个字符都不变（已发布的包不能改）。
+  final String scope;
+
+  String _key(String name) =>
+      scope.isEmpty ? 'app_update_$name' : 'app_update_${scope}_$name';
+
+  String get _kIgnoredVersion => _key('ignored_version');
+  String get _kNotificationsEnabled => _key('notifications_enabled');
+  String get _kWifiOnlyAutoDownload => _key('wifi_only_auto');
+  String get _kLastCheckAt => _key('last_check_at');
+  String get _kAssetBuild => _key('asset_build');
+  String get _kBgVersion => _key('env_version');
+  String get _kBgPlatform => _key('env_platform');
+  String get _kBgAbi => _key('env_abi');
+  String get _kLastNotifiedVersion => _key('last_notified_version');
 
   /// 自动检查的最小间隔；手动「检查更新」不受此限制。
   ///
