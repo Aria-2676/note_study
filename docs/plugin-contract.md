@@ -77,11 +77,42 @@
 | `system` | `notify(...)` / `vibrate()` / `schedule(...)` | `system:notify` |
 
 **权限声明**：manifest 里 `permissions: ["task:read"]`，**不声明就拿不到数据**（默认空集）。
-宿主不认识的一律忽略（向前兼容）。第一版实现的是 `task:read` / `tag:read`。
+宿主不认识的一律忽略（向前兼容）。
+
+读、写、删是**三条独立的权限**，不给"写就顺便能删"的方便：
+
+| 权限 | 给什么 | 为什么单独拆 |
+|---|---|---|
+| `task:read` | `task.count` / `task.list` / `tag.list` | — |
+| `task:write` | `task.create` / `task.update` / `task.setDone` | 改错能改回来 |
+| `task:delete` | `task.delete` | 不可逆；不能和"改标题"共用一个开关 |
 
 **已落地的方法**（`lib/app/data/plugin_bridge.dart`）：
-`system.info` / `task.count` / `task.list` / `tag.list` / `store.get|set|remove`。
-写操作（改任务、加积分）暂未开放——它们要配套的幂等与冲突处理。
+
+| 方法 | 参数 | 返回 |
+|---|---|---|
+| `system.info` | — | `{pluginId, contract, permissions}` |
+| `task.count` | `date` 或 `from`+`to` | `{from, to, total, done}` |
+| `task.list` | `from`+`to`+`limit`(≤200) | 裁剪过的任务数组（不含 description） |
+| `task.create` | `title`（必填）、`date`、`priority`、`estimatedMinutes`、`description`、`tagIds` | `{id}` |
+| `task.update` | `id` + 任意可改字段（**只改传了的**） | `{id, updated}` |
+| `task.setDone` | `id`、`done`(bool) | `{id, isDone}` |
+| `task.delete` | `id` | `{id, deleted, toRecycle}` |
+| `tag.list` | — | `[{id, name}]` |
+| `store.get/set/remove` | `key`(+`value`) | 插件私有 KV，自动加 `plg.<id>.` 前缀 |
+
+写接口的三条约定：
+
+1. **入参一律当不可信输入**：类型不对直接 `bad_params`，不做宽松转换。
+   `title` ≤200 字、`description` ≤2000 字、`estimatedMinutes` 1~1440 或 null、
+   `priority` 只收五个值、`date` 必须是 `yyyy-MM-dd` 且能原样还原、`tagIds` 必须真实存在。
+2. **`task.update` 是部分更新**：没传的字段不动；显式传 `null` 才是清空。
+   这和主包编辑页"整表覆盖"是两套语义，混用会把用户没碰的字段清掉。
+3. **删除跟随用户设置**：开着回收站就进回收站，插件说了不算 ——
+   否则等于给了插件一个绕过保护的口子。
+
+写成功后会回调宿主刷新（`PluginBridge.onChanged`），
+否则会出现"插件里加了一条，退出插件首页还是旧的"。
 
 **硬规则：**
 1. 每个方法都是异步、幂等语义明确、失败返回错误码而不是抛异常

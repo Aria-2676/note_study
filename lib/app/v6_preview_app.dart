@@ -150,6 +150,9 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         tasks: TaskRepository(db),
         settings: SettingsRepository(db),
         contract: PluginContract.current,
+        // 插件写完要通知主包重读：否则"插件里加了任务、退出插件首页还是旧的"。
+        // 用闭包读 `_store`，避免热重载后拿到已失效的实例。
+        onChanged: () => _store?.load(),
       ),
     );
   }

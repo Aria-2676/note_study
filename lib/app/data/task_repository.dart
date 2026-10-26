@@ -165,6 +165,67 @@ class TaskRepository {
     );
   }
 
+  /// 部分更新。**给插件写接口用**：插件只交它想改的那几项，
+  /// 没提到的列一律不动（和 [update] 的"全量覆盖"是两件事）。
+  ///
+  /// [fields] 的 key 必须来自 [TaskCol] 常量，值已经过校验 —— 这里不猜类型，
+  /// 拼 SQL 用的是这些 key，所以上层绝不能直接塞外部字符串进来。
+  /// [tagIds] 为 null 表示"不动标签"，空列表表示"清空标签"。
+  ///
+  /// 返回 false 表示没有这条任务（插件拿了个过期的 id）。
+  Future<bool> patch(
+    int id,
+    Map<String, Object?> fields, {
+    List<int>? tagIds,
+  }) async {
+    if (fields.isEmpty && tagIds == null) return false;
+    return _db.transaction<bool>((txn) async {
+      final exists = await txn.query(
+        V6Table.tasks,
+        columns: <String>[TaskCol.id],
+        where: '${TaskCol.id} = ?',
+        whereArgs: <Object?>[id],
+        limit: 1,
+      );
+      if (exists.isEmpty) return false;
+
+      if (fields.isNotEmpty) {
+        await txn.update(
+          V6Table.tasks,
+          fields,
+          where: '${TaskCol.id} = ?',
+          whereArgs: <Object?>[id],
+        );
+      }
+      if (tagIds != null) {
+        await txn.delete(
+          V6Table.taskTags,
+          where: '${TaskTagCol.taskId} = ?',
+          whereArgs: <Object?>[id],
+        );
+        for (final tagId in tagIds) {
+          await txn.insert(
+            V6Table.taskTags,
+            <String, Object?>{TaskTagCol.taskId: id, TaskTagCol.tagId: tagId},
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      }
+      return true;
+    });
+  }
+
+  /// 某条任务是否存在（插件的 update 前先判一下，好回 not_found 而不是静默失败）
+  Future<bool> exists(int id) async {
+    final rows = await _db.query(
+      V6Table.tasks,
+      columns: <String>[TaskCol.id],
+      where: '${TaskCol.id} = ?',
+      whereArgs: <Object?>[id],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
   /// 删除任务。
   ///
   /// [toRecycle] 为 true 时整行拷进 `recycled_tasks`（可恢复），

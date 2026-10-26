@@ -144,4 +144,215 @@ void main() {
     final missingKey = await bridge().dispatch('store.get', const <String, Object?>{});
     expect(errorOf(missingKey)['code'], 'bad_params');
   });
+
+  // ================= 写权限 =================
+
+  group('写权限', () {
+    var changed = 0;
+
+    setUp(() => changed = 0);
+
+    PluginBridge writer({
+      Set<String> permissions = const <String>{'task:read', 'tag:read', 'task:write'},
+    }) =>
+        PluginBridge(
+          pluginId: 'demo_help',
+          permissions: permissions,
+          tasks: tasks,
+          settings: settings,
+          contract: 1,
+          onChanged: () => changed++,
+        );
+
+    final day = DateTime(2026, 10, 22);
+
+    test('没声明 task:write：建/改/标记完成全部被拒，且不写库', () async {
+      final readOnly = writer(permissions: const <String>{'task:read'});
+
+      for (final call in <List<Object?>>[
+        <Object?>['task.create', <String, Object?>{'title': '偷写'}],
+        <Object?>['task.update', <String, Object?>{'id': 1, 'title': '偷改'}],
+        <Object?>['task.setDone', <String, Object?>{'id': 1, 'done': true}],
+      ]) {
+        final response = await readOnly.dispatch(call[0]! as String, call[1]! as Map<String, Object?>);
+        expect(response['ok'], isFalse, reason: '${call[0]} 不该成功');
+        expect(errorOf(response)['code'], 'permission_denied');
+      }
+
+      expect(await tasks.countTasks(), 0);
+      expect(changed, 0, reason: '没写成就不该通知刷新');
+    });
+
+    test('task.delete 单独一条权限：只有 task:write 也删不了', () async {
+      final id = await tasks.insert(title: '不该被删', day: day);
+      final response = await writer().dispatch('task.delete', <String, Object?>{'id': id});
+
+      expect(errorOf(response)['code'], 'permission_denied');
+      expect(await tasks.countTasks(), 1);
+    });
+
+    test('task.create 落库并返回 id，且通知宿主刷新', () async {
+      final response = await writer().dispatch('task.create', <String, Object?>{
+        'title': '  插件建的  ',
+        'date': '2026-10-22',
+        'priority': 'orange',
+        'estimatedMinutes': 45,
+        'description': '来自插件',
+      });
+
+      expect(response['ok'], isTrue);
+      final id = Map<String, Object?>.from(response['result']! as Map)['id'];
+      expect(id, isA<int>());
+      expect(changed, 1);
+
+      final created = (await tasks.tasksOn(day)).single;
+      expect(created.title, '插件建的', reason: '首尾空白要 trim');
+      expect(created.priority, 'orange');
+      expect(created.estimatedMinutes, 45);
+      expect(created.description, '来自插件');
+    });
+
+    test('task.create 不传 date 时算今天', () async {
+      await writer().dispatch('task.create', <String, Object?>{'title': '今天'});
+      final today = DateTime.now();
+      expect(await tasks.countTasks(), 1);
+      expect(
+        (await tasks.tasksOn(today)).single.title,
+        '今天',
+      );
+    });
+
+    test('create 的入参一律校验，坏输入不落库', () async {
+      final cases = <Map<String, Object?>>[
+        <String, Object?>{'title': ''},
+        <String, Object?>{'title': '   '},
+        <String, Object?>{'title': 'x' * 201},
+        <String, Object?>{'title': 'ok', 'priority': 'purple'},
+        <String, Object?>{'title': 'ok', 'date': '2026-13-01'},
+        <String, Object?>{'title': 'ok', 'date': '2026/10/22'},
+        <String, Object?>{'title': 'ok', 'estimatedMinutes': -5},
+        <String, Object?>{'title': 'ok', 'estimatedMinutes': 99999},
+        <String, Object?>{'title': 'ok', 'tagIds': <Object?>[999]},
+        <String, Object?>{'title': 'ok', 'tagIds': 'not-a-list'},
+      ];
+
+      for (final params in cases) {
+        final response = await writer().dispatch('task.create', params);
+        expect(response['ok'], isFalse, reason: '应该拒绝：$params');
+        expect(errorOf(response)['code'], 'bad_params');
+      }
+      expect(await tasks.countTasks(), 0);
+    });
+
+    test('task.update 只改传入的字段，其余不动', () async {
+      final id = await tasks.insert(
+        title: '原标题',
+        day: day,
+        description: '原描述',
+        priority: 'blue',
+        estimatedMinutes: 30,
+      );
+
+      final response = await writer().dispatch('task.update', <String, Object?>{
+        'id': id,
+        'title': '新标题',
+      });
+      expect(response['ok'], isTrue);
+
+      final task = (await tasks.tasksOn(day)).single;
+      expect(task.title, '新标题');
+      expect(task.description, '原描述', reason: '没传就不该被清空');
+      expect(task.priority, 'blue');
+      expect(task.estimatedMinutes, 30);
+    });
+
+    test('task.update 可以把估时/描述显式清成 null', () async {
+      final id = await tasks.insert(title: 'x', day: day, description: '有', estimatedMinutes: 30);
+
+      await writer().dispatch('task.update', <String, Object?>{
+        'id': id,
+        'estimatedMinutes': null,
+        'description': null,
+      });
+
+      final task = (await tasks.tasksOn(day)).single;
+      expect(task.estimatedMinutes, isNull);
+      expect(task.description, isNull);
+    });
+
+    test('task.update 换标签是整体替换', () async {
+      await tasks.insertTag(const Tag(id: 0, name: '工作'));
+      await tasks.insertTag(const Tag(id: 0, name: '学习'));
+      final all = await tasks.allTags();
+      final work = all.firstWhere((t) => t.name == '工作').id;
+      final study = all.firstWhere((t) => t.name == '学习').id;
+
+      final id = await tasks.insert(title: 'x', day: day, tagIds: <int>[work]);
+      await writer().dispatch('task.update', <String, Object?>{
+        'id': id,
+        'tagIds': <int>[study],
+      });
+
+      final task = (await tasks.tasksOn(day)).single;
+      expect(task.tags.map((t) => t.name), <String>['学习']);
+    });
+
+    test('task.update 不存在的 id 回 not_found，不静默成功', () async {
+      final response = await writer().dispatch('task.update', <String, Object?>{
+        'id': 9999,
+        'title': '幽灵',
+      });
+      expect(errorOf(response)['code'], 'not_found');
+    });
+
+    test('task.update 什么字段都没传：回 bad_params', () async {
+      final id = await tasks.insert(title: 'x', day: day);
+      final response = await writer().dispatch('task.update', <String, Object?>{'id': id});
+      expect(errorOf(response)['code'], 'bad_params');
+    });
+
+    test('task.setDone 改完成态并通知刷新', () async {
+      final id = await tasks.insert(title: 'x', day: day);
+      final response = await writer().dispatch('task.setDone', <String, Object?>{
+        'id': id,
+        'done': true,
+      });
+
+      expect(response['ok'], isTrue);
+      final task = (await tasks.tasksOn(day)).single;
+      expect(task.isDone, isTrue);
+      expect(task.completedAt, isNotNull);
+      expect(changed, 1);
+
+      final bad = await writer().dispatch('task.setDone', <String, Object?>{
+        'id': id,
+        'done': 'yes',
+      });
+      expect(errorOf(bad)['code'], 'bad_params');
+    });
+
+    test('task.delete 跟随用户设置：开回收站就进回收站', () async {
+      await settings.setBool(SettingsKeys.recycleBinEnabled, true);
+      final id = await tasks.insert(title: '要删的', day: day);
+
+      final response = await writer(
+        permissions: const <String>{'task:delete'},
+      ).dispatch('task.delete', <String, Object?>{'id': id});
+
+      expect(response['ok'], isTrue);
+      expect((response['result']! as Map)['toRecycle'], isTrue);
+      expect(await tasks.countTasks(), 0);
+      expect(await tasks.recycledCount(), 1, reason: '应该躺在回收站里，能恢复');
+    });
+
+    test('task.delete 关着回收站就是物理删除', () async {
+      final id = await tasks.insert(title: '要删的', day: day);
+
+      await writer(permissions: const <String>{'task:delete'})
+          .dispatch('task.delete', <String, Object?>{'id': id});
+
+      expect(await tasks.countTasks(), 0);
+      expect(await tasks.recycledCount(), 0);
+    });
+  });
 }

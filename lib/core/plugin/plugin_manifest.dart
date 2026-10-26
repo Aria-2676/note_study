@@ -150,8 +150,13 @@ class PluginManifest {
   final Set<String> permissions;
 
   /// 当前宿主认识的权限。声明了不认识的一律忽略（向前兼容）。
+  ///
+  /// 读、写、删三条分开：老插件只声明 `task:read` 就永远拿不到写能力，
+  /// 新插件想写必须显式加上 `task:write`，删还要再加 `task:delete`。
   static const Set<String> knownPermissions = <String>{
     'task:read',
+    'task:write',
+    'task:delete',
     'tag:read',
   };
 
