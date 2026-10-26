@@ -139,7 +139,7 @@ void main() {
     expect(find.widgetWithText(TextField, '本周进展'), findsOneWidget);
   });
 
-  testWidgets('默认值只是预填：没动过的时长，保存后库里仍是 null', (tester) async {
+  testWidgets('默认值在新建时落库：设了默认 60，新任务就是 60', (tester) async {
     await fields.setDefault(FieldCatalog.minutes.id, '60');
     await openEditor(tester);
 
@@ -153,8 +153,22 @@ void main() {
 
     final created = (await repo.tasksOn(day)).single;
     expect(created.title, '买牛奶');
-    expect(created.estimatedMinutes, isNull,
-        reason: '默认值回写会把"未设置"这个信息永久丢掉');
+    expect(created.estimatedMinutes, 60,
+        reason: '只预填不落库，卡片上不显示时长，用户会认为"默认设置没生效"');
+  });
+
+  testWidgets('默认值不回填已有任务：编辑时没动过，库里仍是 null', (tester) async {
+    await repo.insert(title: '旧任务', day: day);
+    await store.load(day);
+    await fields.setDefault(FieldCatalog.minutes.id, '60');
+
+    await openEditor(tester, task: store.tasks.single);
+    await tester.tap(find.text('保存'));
+    await settle(tester);
+
+    final saved = (await repo.tasksOn(day)).single;
+    expect(saved.estimatedMinutes, isNull,
+        reason: '改默认值不该顺手改写历史数据');
   });
 
   testWidgets('用户真的选了时长，才写进库', (tester) async {
@@ -181,6 +195,49 @@ void main() {
     await settle(tester);
 
     expect((await repo.tasksOn(day)).single.priority, 'orange');
+  });
+
+  testWidgets('有改动时点 X：先问「放弃修改？」', (tester) async {
+    await openEditor(tester);
+
+    await tester.enterText(find.byType(TextField).first, '买牛奶');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.close));
+    await settle(tester);
+
+    expect(find.text('放弃修改？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
+    await settle(tester);
+    expect(find.text('新建任务'), findsOneWidget, reason: '选继续编辑就不该退出');
+
+    await tester.tap(find.byIcon(Icons.close));
+    await settle(tester);
+    await tester.tap(find.text('放弃'));
+    await settle(tester);
+
+    expect(await repo.tasksOn(day), isEmpty, reason: '放弃不等于保存');
+  });
+
+  testWidgets('设置里把形态切成全屏，新建时就是整页', (tester) async {
+    await store.setEditorForm(EditorForm.full);
+    await openEditor(tester);
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byType(DraggableScrollableSheet), findsNothing);
+  });
+
+  testWidgets('往下拖不会把弹层拖没（否则等于无声放弃修改）', (tester) async {
+    await openEditor(tester);
+    await tester.enterText(find.byType(TextField).first, '改了一半');
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(ListView), const Offset(0, 420));
+    await tester.pumpAndSettle();
+
+    // 真机上这里曾经直接 pop 掉整个弹层（DraggableScrollableSheet 默认
+    // shouldCloseOnMinExtent = true），用户改到一半一拉就没了，连确认都不问
+    expect(find.text('新建任务'), findsOneWidget);
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
   });
 
   testWidgets('关掉字段不影响已有数据：再打开，值还在', (tester) async {

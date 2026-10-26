@@ -132,6 +132,10 @@ class _MainShellState extends State<MainShell> {
     _store.load(_selected);
     widget.marketStore?.refresh();
     widget.homeStore?.addListener(_onHomeModeChanged);
+    // **也要听市场的加载完成**：已装列表是异步读库的，initState 里还是空的。
+    // 只听 homeStore 的话，冷启动时 _syncHome 找不到插件就直接返回，
+    // 表现是"设了插件首页，第一次生效，重启就回内置了"。
+    widget.marketStore?.addListener(_onHomeModeChanged);
     _syncHome();
   }
 
@@ -149,6 +153,7 @@ class _MainShellState extends State<MainShell> {
 
     final id = home.mode.pluginId;
     if (id == null || _homeDisabledForSession) {
+      debugPrint('[home] 内置（id=$id disabled=$_homeDisabledForSession）');
       _syncedHomeId = null;
       if (_homeSpec != null && mounted) setState(() => _homeSpec = null);
       return;
@@ -170,6 +175,7 @@ class _MainShellState extends State<MainShell> {
     }
     if (plugin == null) {
       // 装了又卸了：直接回内置，不用报错
+      debugPrint('[home] 插件 $id 未出现在已装列表（${market.installed.length} 个）');
       _syncedHomeId = null;
       if (_homeSpec != null && mounted) setState(() => _homeSpec = null);
       return;
@@ -178,6 +184,7 @@ class _MainShellState extends State<MainShell> {
     try {
       final spec = await launcher(plugin);
       if (!mounted) return;
+      debugPrint('[home] 载入插件首页 $id');
       _syncedHomeId = id;
       setState(() => _homeSpec = spec);
       _startHomeWatchdog(id);
@@ -214,6 +221,10 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _onHomeLoaded(String url) {
+    // 已经判定失败就别再洗白：加载失败时 WebView 仍然会回调 onPageFinished
+    // （错误页也算"加载完成"），不挡住的话失败计数会被自己清零，
+    // "连续两次失败自动降级"就永远不会发生。
+    if (_homeDisabledForSession) return;
     _homeWatchdog?.cancel();
     // 首页真的画出来了，才算这次会话成功 —— 失败计数在这里清零
     widget.homeStore?.markRendered();
@@ -225,16 +236,21 @@ class _MainShellState extends State<MainShell> {
   /// 插件首页。null = 用内置首页。
   Widget? _pluginHome() {
     final spec = _homeSpec;
-    if (spec == null) {
-      _markBuiltinRendered();
-      return null;
+    if (spec != null) {
+      return PluginView(
+        entryPath: spec.entryPath,
+        bridge: spec.bridge,
+        onLoaded: _onHomeLoaded,
+        onError: (error) => _homeFailure('首页插件报错：$error'),
+      );
     }
-    return PluginView(
-      entryPath: spec.entryPath,
-      bridge: spec.bridge,
-      onLoaded: _onHomeLoaded,
-      onError: (error) => _homeFailure('首页插件报错：$error'),
-    );
+
+    // **只有"本来就要用内置首页"才算渲染成功。**
+    // 用户选的是插件首页时，内置首页只是加载期间/失败后的临时替补 ——
+    // 把它算成功会立刻把失败计数清零，那样"连续两次失败就降级"永远触发不了。
+    final wantedBuiltin = widget.homeStore?.mode.isBuiltin ?? true;
+    if (wantedBuiltin && !_homeDisabledForSession) _markBuiltinRendered();
+    return null;
   }
 
   bool _builtinMarked = false;
@@ -253,6 +269,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     widget.homeStore?.removeListener(_onHomeModeChanged);
+    widget.marketStore?.removeListener(_onHomeModeChanged);
     _homeWatchdog?.cancel();
     _deletes.dispose();
     super.dispose();

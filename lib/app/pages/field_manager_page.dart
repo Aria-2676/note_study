@@ -200,7 +200,10 @@ class _FieldTile extends StatelessWidget {
               RadioListTile<String>(
                 dense: true,
                 value: option.value,
-                groupValue: store.defaultOf(field),
+                // 当前生效的默认值。null（=不设）要落到「不设」那一档上，
+                // 否则打开弹层时一个都没选中，用户不知道现在的默认是什么。
+                groupValue: store.defaultOf(field) ??
+                    (field.options.any((o) => o.isNone) ? '' : null),
                 title: Text(option.label, style: const TextStyle(fontSize: 14)),
                 onChanged: (value) => Navigator.of(ctx).pop(value),
               ),

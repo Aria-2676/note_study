@@ -42,6 +42,12 @@ Future<TaskEditOutcome?> showTaskEditor(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.32),
+    // 两个都关掉，原因是**改动不能静默丢**：
+    // 拖拽关闭和点遮罩关闭都是 `Navigator.pop`，绕过 PopScope，
+    // 用户改了半页句子一拉就没了，连"放弃修改？"都问不到。
+    // 关闭只留左上角 X（走 _cancel，有改动会先确认）。
+    isDismissible: false,
+    enableDrag: false,
     builder: (_) => _EditorSheet(
       store: store,
       fields: fields,
@@ -161,11 +167,16 @@ class _EditorSheetState extends State<_EditorSheet> {
       child: DraggableScrollableSheet(
         controller: _controller,
         initialChildSize: _collapsed,
-        minChildSize: 0.35,
+        // 最小就是 62%：再往下拖不会把面板拖没 —— 那等于没有任何提示地放弃修改。
+        minChildSize: _collapsed,
         maxChildSize: 1,
         expand: false,
         snap: true,
         snapSizes: const <double>[_collapsed, 1],
+        // **默认 true**：拖到最小高度时直接 pop 掉整个路由。
+        // 表现就是"往下拉一把，编辑面板没了"，而且绕过了"放弃修改？"确认。
+        // 关掉它，最小高度就只是停住，关闭只能走 X。
+        shouldCloseOnMinExtent: false,
         builder: (context, scrollController) {
           return Material(
             color: scheme.surface,
@@ -195,9 +206,10 @@ class _EditorSheetState extends State<_EditorSheet> {
 /// 编辑页主体。**新建和编辑用同一份**，差别只有"有没有原值"。
 ///
 /// 字段从 [FieldStore] 来，不是硬编码：用户在字段管理里关掉哪一项，
-/// 这里就少画一行，顺序也跟着走。默认值只在**读的时候**顶上来，
-/// 用户没动过的字段保存时仍然写 null —— 否则默认值会被悄悄固化进数据，
-/// 以后改默认值对老任务全部失效。
+/// 这里就少画一行，顺序也跟着走。
+///
+/// 默认值的规则要分清两种模式：**新建时按默认值落库**（用户设默认就是想要这个结果），
+/// **编辑已有任务时不回填**（否则会改写历史数据）。见 [save]。
 class TaskEditorContent extends StatefulWidget {
   const TaskEditorContent({
     super.key,
@@ -308,10 +320,16 @@ class TaskEditorContentState extends State<TaskEditorContent> {
 
     try {
       final existing = widget.task;
-      // 没动过就保留原值：新建时为 null（不是默认值）
-      final minutes = _touched.contains(FieldCatalog.minutes.id)
-          ? _minutes
-          : existing?.estimatedMinutes;
+      // 默认值在两种模式下的处理**不一样**，这里必须分开：
+      //
+      // - 新建：没动过就按默认值落库。用户去设"默认 60 分钟"，意思就是
+      //   "以后建的任务都是 60"，只预填不落库 = 设置看起来没生效
+      //   （卡片上不显示时长，货币插件也拿不到值）。
+      // - 编辑：没动过就保持原值，**绝不拿默认值回填**。
+      //   否则改一次默认值、再打开一次老任务，历史数据就被悄悄改写了。
+      final minutes = existing != null && !_touched.contains(FieldCatalog.minutes.id)
+          ? existing.estimatedMinutes
+          : _minutes;
 
       if (existing == null) {
         await widget.store.add(
