@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 
 import '../core/data/v6_database.dart';
 import '../core/extension/extension_hook.dart';
@@ -15,6 +17,8 @@ import '../core/plugin/plugin_installer.dart';
 import '../core/plugin/plugin_store.dart';
 import '../core/plugin/plugin_manifest.dart';
 import '../core/plugin/plugin_storage.dart';
+import '../core/updater/providers/app_update_provider.dart';
+import '../core/updater/widgets/app_update_dialog.dart';
 import 'data/plugin_bridge.dart';
 import 'pages/plugin_page.dart';
 import 'pages/recycle_bin_page.dart';
@@ -27,19 +31,34 @@ import 'state/home_mode_store.dart';
 import 'state/plugin_market_store.dart';
 import 'state/task_store.dart';
 
-/// v6 主包预览壳。接 v6 数据层（`v6_tasks.db`），用独立入口启动，不动现有 `main.dart`：
+/// v6 主包外壳。接 v6 数据层（`v6_tasks.db`），可用独立入口启动：
 /// ```bash
 /// flutter run -t lib/main_v6_preview.dart
 /// ```
 ///
 /// [store] 用于测试注入（内存库）；不传则自己打开真实的 sqflite 库。
 class V6PreviewApp extends StatefulWidget {
-  const V6PreviewApp({super.key, this.store, this.autoSeed = true});
+  const V6PreviewApp({
+    super.key,
+    this.store,
+    this.autoSeed = true,
+    this.checkUpdate = false,
+  });
 
   final TaskStore? store;
 
-  /// 首次启动（任务表为空）时写入演示数据
+  /// 首次启动（任务表为空）时写入演示数据。**正式版必须传 false** ——
+  /// 否则用户装完看到的是一堆"写完 v6 主包的第一屏"。
   final bool autoSeed;
+
+  /// 是否在启动后检查更新。
+  ///
+  /// 默认关：这个壳既当预览入口又当正式入口，而**检查更新会发网络请求**，
+  /// 测试里绝不能默默连外网。正式入口显式传 true。
+  ///
+  /// 不做这件事的后果很实际：新包发出去之后**再也收不到更新** ——
+  /// 它没有更新器，等于绝版。
+  final bool checkUpdate;
 
   @override
   State<V6PreviewApp> createState() => _V6PreviewAppState();
@@ -53,6 +72,7 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
   FieldStore? _fields;
   HomeModeStore? _home;
   EventJournal? _journal;
+  AppUpdateProvider? _update;
   Object? _error;
 
   @override
@@ -63,6 +83,21 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
     } else {
       _openDatabase();
     }
+    if (widget.checkUpdate) _startUpdater();
+  }
+
+  /// 版本检查**不阻断启动**：初始化失败或网络不通时安静跳过，
+  /// 回到前台还会按间隔重试（见 [AppUpdatePromptHost]）。
+  void _startUpdater() {
+    final provider = AppUpdateProvider();
+    _update = provider;
+    unawaited(provider.initialize().then((_) => provider.checkIfDue()));
+  }
+
+  @override
+  void dispose() {
+    _update?.dispose();
+    super.dispose();
   }
 
   Future<void> _openDatabase() async {
@@ -206,10 +241,24 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         useMaterial3: true,
       );
 
+  /// 有更新器时，把界面包进 Provider + 更新提示宿主。
+  ///
+  /// [AppUpdatePromptHost] 只用 `context.read<AppUpdateProvider>()`，不需要整套
+  /// Provider 树；用 `.value` 递一个现成实例即可（也就不会替我 dispose，
+  /// 生命周期仍归这个 State）。
+  Widget _withUpdater(Widget child) {
+    final provider = _update;
+    if (provider == null) return child;
+    return ChangeNotifierProvider<AppUpdateProvider>.value(
+      value: provider,
+      child: AppUpdatePromptHost(child: child),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '任务管家 v6 预览',
+      title: '任务管家',
       debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
@@ -222,7 +271,7 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       ],
       supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
       locale: const Locale('zh', 'CN'),
-      home: _buildHome(),
+      home: _withUpdater(_buildHome()),
     );
   }
 
