@@ -7,11 +7,15 @@ import '../models/calendar_strip_style.dart';
 import '../models/task.dart';
 import '../pages/v6_home_page.dart';
 import '../../core/plugin/plugin_store.dart';
+import '../pages/field_manager_page.dart';
+import '../pages/home_mode_page.dart';
 import '../pages/plugin_market_page.dart';
 import '../pages/plugin_page.dart';
 import '../pages/tag_manager_page.dart';
 import '../pages/task_editor_page.dart';
 import 'destinations.dart';
+import '../state/field_store.dart';
+import '../state/home_mode_store.dart';
 import '../state/pending_delete_guard.dart';
 import '../state/plugin_market_store.dart';
 import '../state/task_store.dart';
@@ -29,6 +33,8 @@ class MainShell extends StatefulWidget {
     this.marketStore,
     this.pluginLauncher,
     this.recyclePageBuilder,
+    this.fieldStore,
+    this.homeStore,
   });
 
   final TaskStore store;
@@ -42,6 +48,12 @@ class MainShell extends StatefulWidget {
   /// 回收站页面的构造器。同样由应用层提供 —— `MainShell` 没有仓储层。
   final WidgetBuilder? recyclePageBuilder;
 
+  /// 字段偏好（编辑页画哪些字段）
+  final FieldStore? fieldStore;
+
+  /// 首页形态 + 熔断。为 null 时永远用内置首页。
+  final HomeModeStore? homeStore;
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -53,6 +65,16 @@ class _MainShellState extends State<MainShell> {
   int _tab = 0;
   int _resetSignal = 0;
   CalendarStripStyle _calendarStyle = CalendarStripStyle.scroll;
+
+  // ---- 可换首页 ----
+  //
+  // 三条保险都在这里：2 秒首帧超时、失败计数（在 HomeModeStore 里）、
+  // 以及"本次启动不再重试"的开关 —— 没有最后这条，失败后每来一次通知
+  // 就会重新加载一次，用户看到的是首页不停闪。
+  PluginLaunchSpec? _homeSpec;
+  String? _syncedHomeId;
+  bool _homeDisabledForSession = false;
+  Timer? _homeWatchdog;
 
   /// 用户在弹窗里勾了"以后不再提醒"，但**还没落库**。
   ///
@@ -109,6 +131,131 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     _store.load(_selected);
     widget.marketStore?.refresh();
+    widget.homeStore?.addListener(_onHomeModeChanged);
+    _syncHome();
+  }
+
+  // ---- 可换首页 ----
+
+  void _onHomeModeChanged() => _syncHome();
+
+  /// 把「首页是谁」变成「要嵌哪个 Spec」。
+  ///
+  /// 幂等：同一个插件不会因为一次 notifyListeners 就重新加载 WebView。
+  /// 卸载、切换模式、失败降级都会走到这里。
+  Future<void> _syncHome() async {
+    final home = widget.homeStore;
+    if (home == null) return;
+
+    final id = home.mode.pluginId;
+    if (id == null || _homeDisabledForSession) {
+      _syncedHomeId = null;
+      if (_homeSpec != null && mounted) setState(() => _homeSpec = null);
+      return;
+    }
+
+    // 已经在跑同一个了，不要重建（WebView 重建 = 白屏 + 丢状态）
+    if (id == _syncedHomeId && _homeSpec != null) return;
+
+    final launcher = widget.pluginLauncher;
+    final market = widget.marketStore;
+    if (launcher == null || market == null) return;
+
+    InstalledPlugin? plugin;
+    for (final item in market.installed) {
+      if (item.pluginId == id) {
+        plugin = item;
+        break;
+      }
+    }
+    if (plugin == null) {
+      // 装了又卸了：直接回内置，不用报错
+      _syncedHomeId = null;
+      if (_homeSpec != null && mounted) setState(() => _homeSpec = null);
+      return;
+    }
+
+    try {
+      final spec = await launcher(plugin);
+      if (!mounted) return;
+      _syncedHomeId = id;
+      setState(() => _homeSpec = spec);
+      _startHomeWatchdog(id);
+    } catch (error, stack) {
+      debugPrint('[home] 插件首页启动失败：$error\n$stack');
+      await _homeFailure('「${_pluginName(id)}」打不开，已回内置首页');
+    }
+  }
+
+  void _startHomeWatchdog(String id) {
+    _homeWatchdog?.cancel();
+    _homeWatchdog = Timer(const Duration(seconds: 2), () {
+      if (!mounted || _homeSpec == null) return;
+      _homeFailure('「${_pluginName(id)}」加载超时，已回内置首页');
+    });
+  }
+
+  /// 首页插件挂了。**先让内置首页接上**，再谈计数。
+  Future<void> _homeFailure(String message) async {
+    _homeWatchdog?.cancel();
+    // 先锁住本次会话：reportFailure 会 notifyListeners，
+    // 不先锁就会立刻重新加载，形成失败重试的死循环
+    _homeDisabledForSession = true;
+
+    if (mounted) setState(() => _homeSpec = null);
+    await widget.homeStore?.reportFailure();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
+  }
+
+  void _onHomeLoaded(String url) {
+    _homeWatchdog?.cancel();
+    // 首页真的画出来了，才算这次会话成功 —— 失败计数在这里清零
+    widget.homeStore?.markRendered();
+  }
+
+  String _pluginName(String id) =>
+      widget.marketStore?.index.findById(id)?.name ?? id;
+
+  /// 插件首页。null = 用内置首页。
+  Widget? _pluginHome() {
+    final spec = _homeSpec;
+    if (spec == null) {
+      _markBuiltinRendered();
+      return null;
+    }
+    return PluginView(
+      entryPath: spec.entryPath,
+      bridge: spec.bridge,
+      onLoaded: _onHomeLoaded,
+      onError: (error) => _homeFailure('首页插件报错：$error'),
+    );
+  }
+
+  bool _builtinMarked = false;
+
+  /// 内置首页也算"渲染成功" —— 否则上次是插件首页崩了、这次降级到内置，
+  /// 标记还停在"未完成"，下次启动又会多记一次失败。
+  void _markBuiltinRendered() {
+    if (_builtinMarked) return;
+    _builtinMarked = true;
+    // build 期间不能 notifyListeners，挪到帧后
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.homeStore?.markRendered();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.homeStore?.removeListener(_onHomeModeChanged);
+    _homeWatchdog?.cancel();
+    _deletes.dispose();
+    super.dispose();
   }
 
   /// 打开已装插件。入口路径、权限都从包内 `plugin.json` 读，
@@ -200,18 +347,16 @@ class _MainShellState extends State<MainShell> {
       );
   }
 
-  /// 打开全屏编辑页。删除动作仍由壳层执行（确认框、回收站开关都在这里），
+  /// 打开编辑。形态（弹层 / 全屏）由设置决定，这里不关心。
+  /// 删除动作仍由壳层执行（确认框、回收站开关都在这里），
   /// 编辑页只负责"点一下删除，然后告诉我删没删掉"。
   Future<void> _openEditor(Task task) async {
-    final navigator = Navigator.of(context);
-    final outcome = await navigator.push<TaskEditOutcome>(
-      MaterialPageRoute<TaskEditOutcome>(
-        builder: (_) => TaskEditorPage(
-          store: _store,
-          task: task,
-          onDelete: () => _deleteFromEditor(task),
-        ),
-      ),
+    final outcome = await showTaskEditor(
+      context,
+      store: _store,
+      fields: widget.fieldStore,
+      task: task,
+      onDelete: () => _deleteFromEditor(task),
     );
     if (!mounted || outcome == null) return;
 
@@ -273,6 +418,34 @@ class _MainShellState extends State<MainShell> {
         navigator.push(
           MaterialPageRoute<void>(builder: (_) => TagManagerPage(store: _store)),
         );
+      case AppDestination.fieldManager:
+        final fields = widget.fieldStore;
+        if (fields == null) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('字段管理未接入'), duration: Duration(seconds: 1)),
+          );
+          return;
+        }
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => FieldManagerPage(store: fields)),
+        );
+      case AppDestination.homeMode:
+        final home = widget.homeStore;
+        if (home == null) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('首页模式未接入'), duration: Duration(seconds: 1)),
+          );
+          return;
+        }
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => HomeModePage(
+              store: home,
+              plugins: widget.marketStore?.installed ?? const <InstalledPlugin>[],
+              nameOf: _pluginName,
+            ),
+          ),
+        );
       case AppDestination.recycleBin:
         final builder = widget.recyclePageBuilder;
         if (builder == null) {
@@ -313,16 +486,16 @@ class _MainShellState extends State<MainShell> {
     _store.load(d);
   }
 
-  /// 新建任务：直接进全屏页（和编辑页同一套字段）。
+  /// 新建任务：和编辑用同一个页面（字段一次填完）。
   ///
   /// 以前是一个只有标题的弹窗，用户建完想加日期/优先级/标签还得再进去改一次 ——
-  /// 那等于所有任务都要操作两遍。现在一次填完，只想填标题也能填完就保存。
+  /// 那等于所有任务都要操作两遍。现在默认从底部升起，不离场也能填全。
   Future<void> _addTask() async {
-    final navigator = Navigator.of(context);
-    final outcome = await navigator.push<TaskEditOutcome>(
-      MaterialPageRoute<TaskEditOutcome>(
-        builder: (_) => TaskEditorPage(store: _store, initialDay: _selected),
-      ),
+    final outcome = await showTaskEditor(
+      context,
+      store: _store,
+      fields: widget.fieldStore,
+      initialDay: _selected,
     );
     if (!mounted || outcome == null) return;
     ScaffoldMessenger.of(context)
@@ -392,12 +565,6 @@ class _MainShellState extends State<MainShell> {
   }
 
   @override
-  void dispose() {
-    _deletes.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _listenable,
@@ -461,7 +628,10 @@ class _MainShellState extends State<MainShell> {
     return IndexedStack(
       index: _tab,
       children: <Widget>[
-        V6HomePage(
+        // 首页可以被插件整页替换，但**外壳还是这一层**：
+        // 顶栏、底栏、添加按钮都在外面，插件崩了用户总能切回「我的」。
+        _pluginHome() ??
+            V6HomePage(
           selected: _selected,
           tasks: _store.visible,
           tags: _store.tags,
@@ -480,6 +650,8 @@ class _MainShellState extends State<MainShell> {
         ProfileStubPage(
           calendarStyle: _calendarStyle,
           onCalendarStyleChanged: (s) => setState(() => _calendarStyle = s),
+          editorForm: _store.editorForm,
+          onEditorFormChanged: _store.setEditorForm,
           confirmBeforeDelete: _store.confirmBeforeDelete,
           onConfirmBeforeDeleteChanged: _store.setConfirmBeforeDelete,
           recycleBinEnabled: _store.recycleBinEnabled,

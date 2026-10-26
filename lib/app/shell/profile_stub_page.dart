@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/calendar_strip_style.dart';
+import '../models/editor_form.dart';
 import 'destinations.dart';
 
 /// 「我的」页。两块内容：
@@ -11,6 +12,8 @@ class ProfileStubPage extends StatelessWidget {
     super.key,
     required this.calendarStyle,
     required this.onCalendarStyleChanged,
+    required this.editorForm,
+    required this.onEditorFormChanged,
     required this.confirmBeforeDelete,
     required this.onConfirmBeforeDeleteChanged,
     required this.recycleBinEnabled,
@@ -22,6 +25,10 @@ class ProfileStubPage extends StatelessWidget {
 
   final CalendarStripStyle calendarStyle;
   final ValueChanged<CalendarStripStyle> onCalendarStyleChanged;
+
+  /// 编辑页形态：底部弹层 / 全屏
+  final EditorForm editorForm;
+  final ValueChanged<EditorForm> onEditorFormChanged;
 
   /// 删除前是否弹确认框（对应"以后不再提醒"那个勾选）
   final bool confirmBeforeDelete;
@@ -77,6 +84,21 @@ class ProfileStubPage extends StatelessWidget {
               showSelectedIcon: false,
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
               onSelectionChanged: (selection) => onCalendarStyleChanged(selection.first),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            const Expanded(child: Text('编辑页形态', style: TextStyle(fontSize: 14))),
+            SegmentedButton<EditorForm>(
+              segments: EditorForm.values
+                  .map((f) => ButtonSegment<EditorForm>(value: f, label: Text(f.label)))
+                  .toList(),
+              selected: <EditorForm>{editorForm},
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              onSelectionChanged: (selection) => onEditorFormChanged(selection.first),
             ),
           ],
         ),

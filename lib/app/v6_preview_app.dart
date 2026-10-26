@@ -19,6 +19,8 @@ import 'data/demo_seed.dart';
 import 'data/settings_repository.dart';
 import 'data/task_repository.dart';
 import 'shell/main_shell.dart';
+import 'state/field_store.dart';
+import 'state/home_mode_store.dart';
 import 'state/plugin_market_store.dart';
 import 'state/task_store.dart';
 
@@ -45,6 +47,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
 
   TaskStore? _store;
   PluginMarketStore? _market;
+  FieldStore? _fields;
+  HomeModeStore? _home;
   Object? _error;
 
   @override
@@ -82,9 +86,18 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       );
       await repo.purgeRecycleOlderThan(Duration(days: retentionDays));
 
+      // 字段偏好与首页形态：都必须在**第一帧之前**读好，
+      // 否则首页会先画内置、再跳成插件，用户看到的是闪一下
+      final fields = FieldStore(settings);
+      await fields.load();
+      final home = HomeModeStore(settings);
+      await home.load();
+
       if (!mounted) return;
       setState(() {
         _store = TaskStore(repo, settings);
+        _fields = fields;
+        _home = home;
         _market = PluginMarketStore(
           installer: installer,
           indexLoader: _loadIndex,
@@ -207,6 +220,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       marketStore: _market,
       pluginLauncher: _launchPlugin,
       recyclePageBuilder: _recyclePageBuilder(store),
+      fieldStore: _fields,
+      homeStore: _home,
     );
   }
 }

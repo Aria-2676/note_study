@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
+import '../models/editor_form.dart';
 import '../models/task.dart';
 
 /// 首页的数据状态。**只持有"当前这一天"的任务**，不做全量缓存。
@@ -23,6 +24,7 @@ class TaskStore extends ChangeNotifier {
   bool _confirmBeforeDelete = true;
   bool _recycleBinEnabled = false;
   int _retentionDays = SettingsKeys.defaultRetentionDays;
+  EditorForm _editorForm = EditorForm.sheet;
   String? _tagFilter;
 
   DateTime get day => _day;
@@ -57,6 +59,16 @@ class TaskStore extends ChangeNotifier {
     _recycleBinEnabled = value;
     notifyListeners();
     await _settings.setBool(SettingsKeys.recycleBinEnabled, value);
+  }
+
+  /// 编辑页形态。默认底部弹层：新建任务时不离场，还能看见底下的列表。
+  EditorForm get editorForm => _editorForm;
+
+  Future<void> setEditorForm(EditorForm form) async {
+    if (_editorForm == form) return;
+    _editorForm = form;
+    notifyListeners();
+    await _settings.set(SettingsKeys.editorForm, form.id);
   }
 
   /// 回收站保留天数。到期由启动时的清理任务物理删除。
@@ -114,6 +126,9 @@ class TaskStore extends ChangeNotifier {
       _retentionDays = await _settings.getInt(
         SettingsKeys.recycleRetentionDays,
         fallback: SettingsKeys.defaultRetentionDays,
+      );
+      _editorForm = EditorForm.parse(
+        await _settings.get(SettingsKeys.editorForm),
       );
     }
 

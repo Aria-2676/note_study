@@ -16,6 +16,8 @@ enum AppDestination {
   todayTasks('today', '今日任务', Icons.today_outlined),
   recycleBin('recycle', '任务列表 · 回收站', Icons.inbox_outlined),
   tagManager('tags', '标签管理', Icons.sell_outlined),
+  fieldManager('fields', '字段管理', Icons.tune),
+  homeMode('home', '首页模式', Icons.dashboard_outlined),
   backup('backup', '数据备份', Icons.backup_outlined),
   pluginMarket('market', '插件市场', Icons.extension_outlined),
   settings('settings', '设置', Icons.settings_outlined),
@@ -29,7 +31,11 @@ enum AppDestination {
   final IconData icon;
 
   Set<DestinationSurface> get surfaces => switch (this) {
-        todayTasks || recycleBin || tagManager => const <DestinationSurface>{
+        todayTasks ||
+        recycleBin ||
+        tagManager ||
+        fieldManager =>
+          const <DestinationSurface>{
             DestinationSurface.drawer,
           },
         _ => const <DestinationSurface>{
@@ -39,7 +45,13 @@ enum AppDestination {
       };
 
   bool get ready => switch (this) {
-        todayTasks || pluginMarket || recycleBin || tagManager => true,
+        todayTasks ||
+        pluginMarket ||
+        recycleBin ||
+        tagManager ||
+        fieldManager ||
+        homeMode =>
+          true,
         _ => false,
       };
 

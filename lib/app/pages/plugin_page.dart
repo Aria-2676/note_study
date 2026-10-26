@@ -18,31 +18,38 @@ class PluginLaunchSpec {
   final PluginBridge bridge;
 }
 
-/// 页面级插件：WebView 加载包内入口 HTML，并通过 `HostBridge` 通道读宿主数据。
+/// 插件页的**内容部分**，不含 Scaffold/AppBar。
 ///
-/// 桥接脚本在 `onPageStarted` 注入、`onPageFinished` 再补一次（脚本自身幂等）。
-/// 插件侧应当等 `window.host` 出现再调用 —— 见 demo 插件里的 `whenHostReady`。
-class PluginPage extends StatefulWidget {
-  const PluginPage({
+/// 拆出来的原因：插件既可以当一个"打开就进"的页面（[PluginPage]），
+/// 也可以**直接当首页**（嵌进主包外壳的内容区）。两种情况只有外壳不同，
+/// WebView、桥接、加载回调必须完全一样 —— 否则"当首页时某个接口不好使"
+/// 这类问题会只在一种形态下复现。
+class PluginView extends StatefulWidget {
+  const PluginView({
     super.key,
-    required this.title,
     required this.entryPath,
     required this.bridge,
+    this.onLoaded,
+    this.onError,
   });
-
-  final String title;
 
   /// 包内入口 HTML 的绝对路径
   final String entryPath;
 
   final PluginBridge bridge;
 
+  /// 首帧加载完成（**每份页面只回调一次**）。首页熔断靠它取消超时计时器。
+  final ValueChanged<String>? onLoaded;
+
+  final ValueChanged<String>? onError;
+
   @override
-  State<PluginPage> createState() => _PluginPageState();
+  State<PluginView> createState() => _PluginViewState();
 }
 
-class _PluginPageState extends State<PluginPage> {
+class _PluginViewState extends State<PluginView> {
   late final WebViewController _controller;
+  bool _reported = false;
 
   @override
   void initState() {
@@ -55,7 +62,17 @@ class _PluginPageState extends State<PluginPage> {
       NavigationDelegate(
         onPageStarted: (_) => controller.runJavaScript(_bootstrap),
         // 再补一次：有的机型 onPageStarted 时 JS 上下文还没建好
-        onPageFinished: (_) => controller.runJavaScript(_bootstrap),
+        onPageFinished: (url) {
+          controller.runJavaScript(_bootstrap);
+          if (_reported) return;
+          _reported = true;
+          widget.onLoaded?.call(url);
+        },
+        onWebResourceError: (error) {
+          // 只报主文档的错：图片/字体挂了不该把首页判成失败
+          if (!error.isForMainFrame.orTrue) return;
+          widget.onError?.call(error.description);
+        },
       ),
     );
     _controller = controller;
@@ -87,14 +104,7 @@ class _PluginPageState extends State<PluginPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
-      ),
-      body: WebViewWidget(controller: _controller),
-    );
-  }
+  Widget build(BuildContext context) => WebViewWidget(controller: _controller);
 
   /// 注入到插件页面的桥接脚本。**幂等**：重复执行只会 return。
   static const String _bootstrap = r'''
@@ -124,4 +134,34 @@ class _PluginPageState extends State<PluginPage> {
   };
 })();
 ''';
+}
+
+/// 独立打开的插件页（带标题栏）。
+class PluginPage extends StatelessWidget {
+  const PluginPage({
+    super.key,
+    required this.title,
+    required this.entryPath,
+    required this.bridge,
+  });
+
+  final String title;
+  final String entryPath;
+  final PluginBridge bridge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title, style: const TextStyle(fontSize: 16)),
+      ),
+      body: PluginView(entryPath: entryPath, bridge: bridge),
+    );
+  }
+}
+
+extension on bool? {
+  /// `isForMainFrame` 在某些平台上是 null（老版本 API），当作 true 处理：
+  /// 宁可多报一次错，也不要因为拿不到标志位而把真正的加载失败吞掉。
+  bool get orTrue => this ?? true;
 }

@@ -17,6 +17,24 @@ class SettingsKeys {
 
   /// 回收站保留天数的默认值
   static const int defaultRetentionDays = 7;
+
+  /// 编辑页形态：`sheet`（底部弹层，默认）或 `full`（全屏）
+  static const String editorForm = 'ui.editor_form';
+
+  /// 字段偏好（顺序 / 关闭的字段 / 默认值覆盖），JSON 字符串
+  static const String fieldPrefs = 'ui.field_prefs';
+
+  /// 首页形态：`builtin` 或 `plugin:<id>`
+  static const String homeMode = 'ui.home_mode';
+
+  /// 上一次会话是否正常渲染过首页。
+  ///
+  /// 启动时写 `0`，首页真的呈现出来才写 `1`。下次启动读到 `0` = 上次没走完，
+  /// 说明首页插件有可能把应用拖死了 —— 这是熔断唯一的判断依据。
+  static const String sessionClean = 'sys.session_clean';
+
+  /// 某个插件当首页失败的次数
+  static String homeFailures(String pluginId) => 'sys.home_failures.$pluginId';
 }
 
 /// `settings` 表的读写。主包所有"用户开关"都走这里，
