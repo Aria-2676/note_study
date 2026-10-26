@@ -490,9 +490,25 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  /// 把逾期任务全部挪到当前选中的那天。
+  ///
+  /// 用"移到这天"而不是"移到今天"：用户可能正在看明天的安排，
+  /// 看到逾期后想顺手排到明天 —— 按钮跟着当前选中日走才符合直觉。
+  Future<void> _moveOverdueToSelectedDay() async {
+    final moved = await _store.moveAllOverdueTo(_selected);
+    if (!mounted || moved == 0) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('已把 $moved 条逾期任务移到${_selected.month}月${_selected.day}日'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
   /// 沿用 v5 的习惯：双击顶栏日期回到今天（不放实体按钮，避免破坏观感）
-  void _jumpToToday() {
-    final today = DateTime.now();
+  void _jumpToToday() {    final today = DateTime.now();
     setState(() {
       _selected = today;
       _resetSignal++;
@@ -631,6 +647,34 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  /// 首页内容区：插件整页优先，否则用内置的任务视图。
+  ///
+  /// **插件换的只是这一块**：顶栏、底栏、`+` 按钮、侧边栏都不动。
+  Widget _homeView() {
+    return _pluginHome() ?? _builtinHome();
+  }
+
+  Widget _builtinHome() {
+    return V6HomePage(
+      selected: _selected,
+      tasks: _store.visible,
+      overdue: _store.overdue,
+      onMoveOverdueToSelectedDay: _moveOverdueToSelectedDay,
+      tags: _store.tags,
+      tagFilter: _store.tagFilter,
+      onSelectTag: _store.setTagFilter,
+      calendarStyle: _calendarStyle,
+      resetSignal: _resetSignal,
+      marks: _calendarMarks,
+      extraLineFor: _extraLineFor,
+      onSelectDate: _selectDate,
+      onToggle: _store.toggle,
+      onBeforeDelete: _confirmDelete,
+      onDeleted: _handleDismissed,
+      onEdit: _openEditor,
+    );
+  }
+
   Widget? get _badge {
     final slot = SlotRegistry.instance.resolve(SlotId.currencyBadge);
     if (slot is! CurrencyBadgeValue) return null;
@@ -649,23 +693,7 @@ class _MainShellState extends State<MainShell> {
       children: <Widget>[
         // 首页可以被插件整页替换，但**外壳还是这一层**：
         // 顶栏、底栏、添加按钮都在外面，插件崩了用户总能切回「我的」。
-        _pluginHome() ??
-            V6HomePage(
-          selected: _selected,
-          tasks: _store.visible,
-          tags: _store.tags,
-          tagFilter: _store.tagFilter,
-          onSelectTag: _store.setTagFilter,
-          calendarStyle: _calendarStyle,
-          resetSignal: _resetSignal,
-          marks: _calendarMarks,
-          extraLineFor: _extraLineFor,
-          onSelectDate: _selectDate,
-          onToggle: _store.toggle,
-          onBeforeDelete: _confirmDelete,
-          onDeleted: _handleDismissed,
-          onEdit: _openEditor,
-        ),
+        _homeView(),
         ProfileStubPage(
           calendarStyle: _calendarStyle,
           onCalendarStyleChanged: (s) => setState(() => _calendarStyle = s),

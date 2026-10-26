@@ -19,6 +19,8 @@ class V6HomePage extends StatelessWidget {
     required this.onToggle,
     required this.onBeforeDelete,
     required this.onDeleted,
+    this.overdue = const <Task>[],
+    this.onMoveOverdueToSelectedDay,
     this.onEdit,
     this.tagFilter,
     this.onSelectTag,
@@ -30,6 +32,16 @@ class V6HomePage extends StatelessWidget {
 
   final DateTime selected;
   final List<Task> tasks;
+
+  /// 比 [selected] 更早、还没做完的任务。
+  ///
+  /// 放在同一天里显示，是因为**逾期任务不能靠用户回翻日期去找** ——
+  /// 谁也不会每天往前翻三天看有没有漏的。
+  final List<Task> overdue;
+
+  /// 「全部移到今天」（其实是移到当前选中的那天）。为 null 时不显示该按钮。
+  final VoidCallback? onMoveOverdueToSelectedDay;
+
   final List<Tag> tags;
   final ValueChanged<DateTime> onSelectDate;
   final ValueChanged<Task> onToggle;
@@ -88,33 +100,94 @@ class V6HomePage extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: tasks.isEmpty
+          child: (tasks.isEmpty && overdue.isEmpty)
               ? const _EmptyState()
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-                  itemCount: tasks.length,
-                  itemBuilder: (context, i) {
-                    final task = tasks[i];
-                    return Dismissible(
-                      key: ValueKey<int>(task.id),
-                      direction: DismissDirection.endToStart,
-                      background: const _RecycleBackground(),
-                      // 确认放在 confirmDismiss：返回 false 时卡片会回弹，
-                      // 而不是"已经飞走了再告诉你删不掉"
-                      confirmDismiss: (_) => onBeforeDelete(task),
-                      onDismissed: (_) => onDeleted(task),
-                      child: TaskCard(
-                        task: task,
-                        onToggle: () => onToggle(task),
-                        onOpen: onEdit == null ? null : () => onEdit!(task),
-                        extraLine: extraLineFor?.call(task),
+                  children: <Widget>[
+                    if (overdue.isNotEmpty) ..._buildOverdue(context),
+                    if (overdue.isNotEmpty && tasks.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(2, 6, 2, 8),
+                        child: Text(
+                          '当天',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                    );
-                  },
+                    for (final task in tasks) _taskTile(task),
+                  ],
                 ),
         ),
       ],
     );
+  }
+
+  Widget _taskTile(Task task, {int? overdueDays}) {
+    return Dismissible(
+      key: ValueKey<int>(task.id),
+      direction: DismissDirection.endToStart,
+      background: const _RecycleBackground(),
+      // 确认放在 confirmDismiss：返回 false 时卡片会回弹，
+      // 而不是"已经飞走了再告诉你删不掉"
+      confirmDismiss: (_) => onBeforeDelete(task),
+      onDismissed: (_) => onDeleted(task),
+      child: TaskCard(
+        task: task,
+        overdueDays: overdueDays,
+        onToggle: () => onToggle(task),
+        onOpen: onEdit == null ? null : () => onEdit!(task),
+        extraLine: extraLineFor?.call(task),
+      ),
+    );
+  }
+
+  /// 逾期区。最多摆 3 条 —— 再多就会把当天的任务挤到屏幕外，
+  /// 那等于用"提醒你还有 20 条没做完"把今天要做的事盖住。
+  List<Widget> _buildOverdue(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const visible = 3;
+    final shown = overdue.take(visible).toList();
+    final rest = overdue.length - shown.length;
+
+    return <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
+        child: Row(
+          children: <Widget>[
+            Text(
+              '逾期 ${overdue.length} 条',
+              style: TextStyle(fontSize: 12, color: scheme.error),
+            ),
+            const Spacer(),
+            if (onMoveOverdueToSelectedDay != null)
+              TextButton(
+                onPressed: onMoveOverdueToSelectedDay,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('全部移到这天', style: TextStyle(fontSize: 12)),
+              ),
+          ],
+        ),
+      ),
+      for (final task in shown)
+        _taskTile(
+          task,
+          overdueDays: selected.difference(task.dueDate).inDays,
+        ),
+      if (rest > 0)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+          child: Text(
+            '另有 $rest 条更早的逾期任务，先完成上面这几条就好',
+            style: TextStyle(fontSize: 11, color: scheme.outline),
+          ),
+        ),
+    ];
   }
 }
 

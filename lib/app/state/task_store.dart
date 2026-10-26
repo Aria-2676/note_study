@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/data/v6_schema.dart';
 import '../../core/extension/extension_hook.dart';
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
@@ -20,6 +21,7 @@ class TaskStore extends ChangeNotifier {
 
   DateTime _day = DateTime.now();
   List<Task> _tasks = const <Task>[];
+  List<Task> _overdue = const <Task>[];
   List<Tag> _tags = const <Tag>[];
   bool _loading = true;
   bool _ready = false;
@@ -66,7 +68,6 @@ class TaskStore extends ChangeNotifier {
 
   /// 编辑页形态。默认底部弹层：新建任务时不离场，还能看见底下的列表。
   EditorForm get editorForm => _editorForm;
-
   Future<void> setEditorForm(EditorForm form) async {
     if (_editorForm == form) return;
     _editorForm = form;
@@ -103,6 +104,35 @@ class TaskStore extends ChangeNotifier {
       ? _tasks
       : _tasks.where((t) => t.tags.any((tag) => tag.name == _tagFilter)).toList();
 
+  /// 逾期：比当前日期更早、还没做完的任务。**跟标签筛选一样过滤**，
+  /// 否则筛了「工作」还会冒出「学习」的逾期任务。
+  List<Task> get overdue => _tagFilter == null
+      ? _overdue
+      : _overdue
+          .where((t) => t.tags.any((tag) => tag.name == _tagFilter))
+          .toList();
+
+  /// 未经过滤的逾期总数（首页标题用它，避免"筛了标签后数字忽大忽小"的困惑——
+  /// 什么时候显示都跟列表一致，所以仍然用过滤后的长度）
+  int get overdueCount => overdue.length;
+
+  /// 把一条任务挪到某天。「逾期」区块的"移到今天"用它。
+  Future<void> moveToDay(Task task, DateTime day) async {
+    await _repo.patch(task.id, <String, Object?>{TaskCol.cplTime: TaskDate.dayKey(day)});
+    await load();
+  }
+
+  /// 把当前逾期任务全部挪到 [day]，返回挪了几条。
+  Future<int> moveAllOverdueTo(DateTime day) async {
+    final targets = List<Task>.of(_overdue);
+    if (targets.isEmpty) return 0;
+    for (final task in targets) {
+      await _repo.patch(task.id, <String, Object?>{TaskCol.cplTime: TaskDate.dayKey(day)});
+    }
+    await load();
+    return targets.length;
+  }
+
   void setTagFilter(String? name) {
     if (_tagFilter == name) return;
     _tagFilter = name;
@@ -136,6 +166,7 @@ class TaskStore extends ChangeNotifier {
     }
 
     _tasks = await _repo.tasksOn(_day);
+    _overdue = await _repo.overdueBefore(_day);
     _tags = await _repo.allTags();
     _loading = false;
     _ready = true;

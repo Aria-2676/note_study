@@ -10,6 +10,7 @@ class TaskCard extends StatelessWidget {
     required this.onToggle,
     this.onOpen,
     this.extraLine,
+    this.overdueDays,
   });
 
   final Task task;
@@ -20,6 +21,12 @@ class TaskCard extends StatelessWidget {
 
   /// 插槽 `slot.taskCardExtra` 的展示位。没有插件时恒为 null，卡片不会多出一行。
   final String? extraLine;
+
+  /// 逾期几天。null = 不标（当天任务）。
+  ///
+  /// 逾期任务和当天任务混在一起时，**必须能一眼分开** ——
+  /// 否则用户会以为这条是今天新建的，然后奇怪"我什么时候加的"。
+  final int? overdueDays;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +93,9 @@ class TaskCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (task.tags.isNotEmpty || task.estimatedMinutes != null) ...<Widget>[
+                  if (task.tags.isNotEmpty ||
+                      task.estimatedMinutes != null ||
+                      overdueDays != null) ...<Widget>[
                     const SizedBox(height: 6),
                     // **不截断标签**：以前是 `take(2)`，第三个标签直接消失且没有任何提示，
                     // 用户会以为"标签没保存上"。改成 Wrap 自然换行 —— 多几个标签就把卡片撑高，
@@ -96,6 +105,8 @@ class TaskCard extends StatelessWidget {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: <Widget>[
+                        if (overdueDays != null)
+                          _OverdueChip(days: overdueDays!),
                         for (final tag in task.tags)
                           _TagChip(label: tag.name, color: tag.displayColor),
                         if (task.estimatedMinutes != null)
@@ -127,8 +138,29 @@ class TaskCard extends StatelessWidget {
   }
 }
 
-class _TagChip extends StatelessWidget {
-  const _TagChip({required this.label, required this.color});
+class _OverdueChip extends StatelessWidget {
+  const _OverdueChip({required this.days});
+
+  final int days;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.error.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        days <= 1 ? '逾期 1 天' : '逾期 $days 天',
+        style: TextStyle(fontSize: 11, color: scheme.error),
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {  const _TagChip({required this.label, required this.color});
 
   final String label;
   final Color color;

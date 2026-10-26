@@ -68,8 +68,27 @@ class TaskRepository {
     return _hydrate(rows);
   }
 
-  Future<List<Tag>> allTags() async {
-    final rows = await _db.query(V6Table.tags, orderBy: TagCol.id);
+  /// 早于 [before] 且**未完成**的任务（逾期）。
+  ///
+  /// 逾期任务不该消失：用户不会记得回翻日期，漏掉的会一直漏。
+  /// 只取未完成的 —— 昨天做完的不算逾期，那是历史。
+  /// 排序按日期**倒序**：昨天的比上个月的更相关。
+  Future<List<Task>> overdueBefore(DateTime before, {int limit = 100}) async {
+    final rows = await _db.rawQuery('''
+      SELECT t.*, (
+        SELECT GROUP_CONCAT(${TaskTagCol.tagId})
+        FROM ${V6Table.taskTags} tt
+        WHERE tt.${TaskTagCol.taskId} = t.${TaskCol.id}
+      ) AS tag_ids
+      FROM ${V6Table.tasks} t
+      WHERE t.${TaskCol.cplTime} < ? AND t.${TaskCol.isOk} = 0
+      ORDER BY t.${TaskCol.cplTime} DESC, $_priorityRank
+      LIMIT ?
+    ''', <Object?>[TaskDate.dayKey(before), limit]);
+    return _hydrate(rows);
+  }
+
+  Future<List<Tag>> allTags() async {    final rows = await _db.query(V6Table.tags, orderBy: TagCol.id);
     return rows
         .map((r) => Tag(
               id: r[TagCol.id]! as int,
