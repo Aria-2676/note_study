@@ -13,6 +13,7 @@ import '../pages/plugin_market_page.dart';
 import '../pages/plugin_page.dart';
 import '../pages/tag_manager_page.dart';
 import '../pages/task_editor_page.dart';
+import '../widgets/mode_switcher.dart';
 import 'destinations.dart';
 import '../state/field_store.dart';
 import '../state/home_mode_store.dart';
@@ -121,10 +122,15 @@ class _MainShellState extends State<MainShell> {
     return slot is TaskCardExtraValue ? slot.text : null;
   }
 
-  /// 侧边栏要同时反映任务与已装插件的变化
-  late final Listenable _listenable = widget.marketStore == null
-      ? _store
-      : Listenable.merge(<Listenable>[_store, widget.marketStore!]);
+  /// 侧边栏要同时反映任务与已装插件的变化。
+  ///
+  /// 也听 [HomeModeStore]：顶栏标题写着"现在是哪个模式"，切换后必须立刻跟着变 ——
+  /// 否则用户切了模式，标题还挂着插件名，看着像没切成功。
+  late final Listenable _listenable = Listenable.merge(<Listenable>[
+    _store,
+    if (widget.marketStore != null) widget.marketStore!,
+    if (widget.homeStore != null) widget.homeStore!,
+  ]);
 
   @override
   void initState() {
@@ -614,15 +620,7 @@ class _MainShellState extends State<MainShell> {
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
             ),
-            title: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onDoubleTap: _jumpToToday,
-              child: Text(
-                _dateLabel,
-                key: const Key('v6-header-date'),
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
+            title: _headerTitle(),
             // 右侧是货币徽章插槽：没有生效货币时**什么都不显示**（见 docs/main-package.md §4.5）
             actions: <Widget>[?_badge],
           ),
@@ -640,7 +638,9 @@ class _MainShellState extends State<MainShell> {
           bottomNavigationBar: _BottomBar(
             index: _tab,
             onSelect: (i) => setState(() => _tab = i),
-            onAdd: _addTask,
+            // 插件模式下不给 `+`：主包不知道插件里「新建」是什么（写日记？记一笔？），
+            // 留一个 `+` 去建任务，用户会以为"新加的东西没存上"。
+            onAdd: _modeAllowsAdd ? _addTask : null,
           ),
         );
       },
@@ -652,6 +652,81 @@ class _MainShellState extends State<MainShell> {
   /// **插件换的只是这一块**：顶栏、底栏、`+` 按钮、侧边栏都不动。
   Widget _homeView() {
     return _pluginHome() ?? _builtinHome();
+  }
+
+  // ---- 模式切换（顶栏） ----
+
+  /// 顶栏标题：内置模式显示日期，插件模式显示插件名。
+  ///
+  /// 后面挂一个小箭头 —— 模式要**随手可切**。进设置改单选离得太远，
+  /// 用户会宁可不用多模式。
+  ///
+  /// 双击回今天只保留在内置模式：插件模式下日历条根本不可见，
+  /// 回"今天"没有任何可看的东西，留着只会让人以为切坏了。
+  Widget _headerTitle() {
+    final home = widget.homeStore;
+    final isBuiltin = home == null || home.mode.isBuiltin;
+    const style = TextStyle(fontSize: 15, fontWeight: FontWeight.w600);
+
+    if (isBuiltin) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: _jumpToToday,
+            child: Text(_dateLabel, key: const Key('v6-header-date'), style: style),
+          ),
+          // 没有 homeStore（测试里）就不给切换入口：点了也没地方落状态
+          if (home != null) _modeCaret(),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          _pluginName(home.mode.pluginId!),
+          key: const Key('v6-header-mode'),
+          style: style,
+        ),
+        _modeCaret(),
+      ],
+    );
+  }
+
+  Widget _modeCaret() {
+    return InkResponse(
+      onTap: _openModeSwitcher,
+      radius: 18,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 0, 6),
+        child: Icon(
+          Icons.unfold_more,
+          size: 17,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  void _openModeSwitcher() {
+    final home = widget.homeStore;
+    if (home == null) return;
+    showModeSwitcher(
+      context,
+      store: home,
+      plugins: widget.marketStore?.installed ?? const <InstalledPlugin>[],
+      nameOf: _pluginName,
+      onOpenManager: () => _openDestination(AppDestination.homeMode),
+    );
+  }
+
+  /// 当前模式是否允许用 `+` 建任务。插件模式下不允许（见 [build] 里的注释）。
+  bool get _modeAllowsAdd {
+    final home = widget.homeStore;
+    return home == null || home.mode.isBuiltin;
   }
 
   Widget _builtinHome() {
@@ -750,11 +825,14 @@ class _CurrencyBadge extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.index, required this.onSelect, required this.onAdd});
+  const _BottomBar({required this.index, required this.onSelect, this.onAdd});
 
   final int index;
   final ValueChanged<int> onSelect;
-  final VoidCallback onAdd;
+
+  /// 为 null 时**不画**中间那个添加按钮（插件模式）。
+  /// 隐藏而不是禁用：灰掉的按钮看着像"哪里没配置对"，还会一直被点。
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -782,27 +860,28 @@ class _BottomBar extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned(
-              top: -12,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Material(
-                  color: scheme.primary,
-                  shape: const CircleBorder(),
-                  elevation: 2,
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onAdd,
-                    child: SizedBox(
-                      width: 46,
-                      height: 46,
-                      child: Icon(Icons.add, color: scheme.onPrimary, size: 24),
+            if (onAdd != null)
+              Positioned(
+                top: -12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Material(
+                    color: scheme.primary,
+                    shape: const CircleBorder(),
+                    elevation: 2,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: onAdd,
+                      child: SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: Icon(Icons.add, color: scheme.onPrimary, size: 24),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

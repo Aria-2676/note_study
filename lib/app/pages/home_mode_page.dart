@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../../core/home/home_mode.dart';
 import '../../core/plugin/plugin_store.dart';
 import '../state/home_mode_store.dart';
+import '../widgets/mode_switcher.dart';
 
 /// 首页模式：内置任务模式，或者某个已装插件提供的整页。
 ///
 /// **外壳不换**：底栏、侧边栏、添加按钮永远由主包画，插件只填内容区。
 /// 页面上要把这句话说清楚 —— 否则用户会以为"换首页"等于换掉整个应用。
+///
+/// 可选清单和顶栏的快捷切换器**共用 [buildModeOptions]**：
+/// 两处各写一份的结果是"这里能选、那里选不了"，而且迟早出现名字对不上。
 class HomeModePage extends StatelessWidget {
   const HomeModePage({
     super.key,
@@ -32,6 +35,9 @@ class HomeModePage extends StatelessWidget {
         listenable: store,
         builder: (context, _) {
           final current = store.mode;
+          final options =
+              buildModeOptions(plugins: plugins, nameOf: nameOf);
+
           return ListView(
             padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
             children: <Widget>[
@@ -51,24 +57,12 @@ class HomeModePage extends StatelessWidget {
                 )
               else if (!current.isBuiltin && store.failures > 0)
                 _warning(context, '这个首页上次加载失败 ${store.failures} 次，再失败一次就会自动切回内置。'),
-              RadioListTile<String?>(
-                value: null,
-                groupValue: current.pluginId,
-                title: const Text('内置任务模式', style: TextStyle(fontSize: 14)),
-                subtitle: Text(
-                  '日期顶栏 + 今日任务 + 日历条',
-                  style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+              for (final option in options)
+                ModeTile(
+                  option: option,
+                  selected: current == option.mode,
+                  onTap: () => store.setMode(option.mode),
                 ),
-                onChanged: (_) => store.setMode(const HomeMode.builtin()),
-              ),
-              Divider(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Text(
-                  '插件提供的首页',
-                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                ),
-              ),
               if (plugins.isEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -76,17 +70,6 @@ class HomeModePage extends StatelessWidget {
                     '还没装插件。去插件市场装一个之后，这里会列出它能当首页的页面。',
                     style: TextStyle(fontSize: 12, color: scheme.outline),
                   ),
-                ),
-              for (final plugin in plugins)
-                RadioListTile<String?>(
-                  value: plugin.pluginId,
-                  groupValue: current.pluginId,
-                  title: Text(nameOf(plugin.pluginId), style: const TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    '插件整页 · ${plugin.pluginId}',
-                    style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
-                  ),
-                  onChanged: (_) => store.setMode(HomeMode.plugin(plugin.pluginId)),
                 ),
             ],
           );

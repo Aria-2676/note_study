@@ -380,3 +380,28 @@ if (oldVersion < 2) ALTER TABLE ... ADD COLUMN tag_ids TEXT;
 所以三个都关：`shouldCloseOnMinExtent: false`、`isDismissible: false`、`enableDrag: false`，
 尺寸只留 62% / 100% 两档，关闭只剩左上角 X（有改动会先确认）。
 取舍是牺牲"下拉关闭"的手感，换"改动不会无声消失"。
+
+## 模式是"随手切"的，不是设置页里的单选项（2026-10-27）
+
+原来切首页要：侧边栏 → 首页模式 → 点单选。三步，而且"设置"这个词让人以为
+是改一次就不动的东西 —— 多模式就死在这一步。
+
+改成顶栏标题右侧一个小箭头，点开底部弹层直接选。设置页保留，负责解释与
+失败告警（那些不适合塞进一个快捷弹层）。两处共用 `buildModeOptions()`。
+
+**插件模式下不画 `+` 按钮。** 主包不知道插件里"新建"是什么意思（写日记？
+记一笔？），留一个 `+` 去建任务，用户会以为"新加的东西没存上"。隐藏而不是
+灰掉：灰掉的按钮看着像没配置对，还会一直被点。
+
+## V5 → V6 原地升级：能，缺的是迁移而不是更新器（2026-10-27）
+
+评估结论记在 `docs/self-update-v5-to-v6.md`。要点：
+
+- V5 已有完整自更新（清单 → 多源下载 → sha256 → FileProvider → 系统安装器），
+  且 `REQUEST_INSTALL_PACKAGES`、FileProvider、release 签名都在
+- 包名相同 → 覆盖安装；versionCode 必须是 `6.0.0+较大值`（现在是 `+0`）
+- **真正的洞是数据**：v5 写 `v5_tasks.db`，v6 读 `v6_tasks.db`。不迁移 = 升级后空列表
+- 结构差异很小：tasks / recycled_tasks / tags / task_tags 四张表基本 1:1，
+  只丢 `reward_points` / `is_deducted`（v6 已移出到插件）
+- settings **不迁移**：v5 是 camelCase、v6 是 `ui.*`，语义也不同，用 v6 默认值更干净
+- **第二个洞**：v6 外壳里没有任何 updater，直接发出去就是"绝版包"
