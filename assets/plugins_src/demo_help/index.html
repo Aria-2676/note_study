@@ -68,7 +68,7 @@
   <h1>使用说明</h1>
   <p class="sub">这是安装链路的验证插件，不是正式功能</p>
 
-  <div class="tag">契约 1 · v1.2.0</div>
+  <div class="tag">契约 1 · v1.3.0</div>
 
   <div class="card">
     <div class="row">
@@ -143,6 +143,23 @@
           '刚刚完成：' + payload.title +
           (payload.estimatedMinutes ? '（估时 ' + payload.estimatedMinutes + ' 分钟）' : '');
       });
+
+      // 先补发一轮：插件没挂载时发生的事件都在这儿等着。
+      // ack 之后才不会重复投递（宿主没收到 ack 就会再发一次）。
+      window.host.call('event.pending', {})
+        .then(function (list) {
+          if (!list || !list.length) return;
+          var latest = list[list.length - 1];
+          var title = (latest.payload && latest.payload.title) || latest.event;
+          document.getElementById('event').textContent =
+            '补发 ' + list.length + ' 条事件，最近一条：' + title;
+          return window.host.call('event.ack', {
+            ids: list.map(function (item) { return item.id; }),
+          });
+        })
+        .catch(function (error) {
+          document.getElementById('event').textContent = '补发失败：' + error.message;
+        });
 
       window.host.call('task.count', { date: today() })
         .then(function (result) {

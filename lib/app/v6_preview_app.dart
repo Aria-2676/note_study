@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/data/v6_database.dart';
+import '../core/extension/extension_hook.dart';
+import '../core/plugin/event_journal.dart';
 import '../core/plugin/plugin_index.dart';
 import '../core/plugin/plugin_installer.dart';
 import '../core/plugin/plugin_store.dart';
@@ -49,6 +51,7 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
   PluginMarketStore? _market;
   FieldStore? _fields;
   HomeModeStore? _home;
+  EventJournal? _journal;
   Object? _error;
 
   @override
@@ -93,11 +96,17 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
       final home = HomeModeStore(settings);
       await home.load();
 
+      // 事件日志：插件没挂载时收到的事件先落库，等它下次上来补发。
+      // **全局只注册一次**，不是每次打开插件都注册 —— 否则同一条事件会写多份。
+      final journal = EventJournal(db);
+      HookBus.instance.register(journal);
+
       if (!mounted) return;
       setState(() {
         _store = TaskStore(repo, settings);
         _fields = fields;
         _home = home;
+        _journal = journal;
         _market = PluginMarketStore(
           installer: installer,
           indexLoader: _loadIndex,
@@ -150,6 +159,8 @@ class _V6PreviewAppState extends State<V6PreviewApp> {
         tasks: TaskRepository(db),
         settings: SettingsRepository(db),
         contract: PluginContract.current,
+        hooks: manifest.hooks,
+        journal: _journal,
         // 插件写完要通知主包重读：否则"插件里加了任务、退出插件首页还是旧的"。
         // 用闭包读 `_store`，避免热重载后拿到已失效的实例。
         onChanged: () => _store?.load(),

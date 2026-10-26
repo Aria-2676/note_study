@@ -65,8 +65,9 @@ class V6Database {
       },
     ).then((db) async {
       await registry.materialize(db);
-      // 幂等补建：这个表是 schema 定稿之后才加的，老库上不会有
+      // 幂等补建：这两张表都是 schema 定稿之后才加的，老库上不会有
       await db.execute(v6InstalledPluginsDdl);
+      await db.execute(v6PluginEventsDdl);
       return db;
     });
   }

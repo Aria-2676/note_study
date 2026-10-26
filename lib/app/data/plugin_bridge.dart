@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../core/data/v6_schema.dart';
 import '../../core/extension/extension_hook.dart';
+import '../../core/plugin/event_journal.dart';
 import '../models/task.dart';
 import '../data/settings_repository.dart';
 import '../data/task_repository.dart';
@@ -24,6 +25,8 @@ class PluginBridge {
     required TaskRepository tasks,
     required SettingsRepository settings,
     required this.contract,
+    this.hooks = const <HookId>{},
+    this.journal,
     this.onChanged,
   })  : _tasks = tasks,
         _settings = settings;
@@ -31,6 +34,12 @@ class PluginBridge {
   final String pluginId;
   final Set<String> permissions;
   final int contract;
+
+  /// 这个插件声明的事件钩子。空集 = 不收事件（`event.pending` 返回空）。
+  final Set<HookId> hooks;
+
+  /// 事件日志。没有它就只能实时推送，插件不在前台时事件会丢。
+  final EventJournal? journal;
 
   /// 写成功之后通知宿主刷新（首页列表、日历标记都依赖它）。
   ///
@@ -55,6 +64,8 @@ class PluginBridge {
         'task.update' => await _taskUpdate(params),
         'task.setDone' => await _taskSetDone(params),
         'task.delete' => await _taskDelete(params),
+        'event.pending' => await _eventPending(params),
+        'event.ack' => await _eventAck(params),
         'tag.list' => await _tagList(),
         'store.get' => await _storeGet(params),
         'store.set' => await _storeSet(params),
@@ -217,6 +228,42 @@ class PluginBridge {
     return _ok(<Object?>[
       for (final tag in tags) <String, Object?>{'id': tag.id, 'name': tag.name},
     ]);
+  }
+
+  // ---- 事件补发 ----
+  //
+  // 实时推送（`host.on`）只在插件页面活着的时候有效。用户勾任务的时候
+  // 插件大概率没挂载 —— 那些事件在这里等它。
+
+  Future<Map<String, Object?>> _eventPending(Map<String, Object?> params) async {
+    // 事件 payload 里带着任务标题、日期、估时，等于一份任务数据，
+    // 所以要求同一份 `task:read`。没这个权限的插件只声明 hooks 也拿不到内容。
+    _require(PluginPermissions.taskRead);
+    final journal = this.journal;
+    if (journal == null || hooks.isEmpty) return _ok(const <Object?>[]);
+
+    final since = params['since'] is int ? params['since']! as int : null;
+    final limit = (params['limit'] is int ? params['limit']! as int : 50).clamp(1, 200);
+    final events = await journal.pending(hooks, limit: limit, since: since);
+    return _ok(<Object?>[for (final event in events) event.toJson()]);
+  }
+
+  Future<Map<String, Object?>> _eventAck(Map<String, Object?> params) async {
+    _require(PluginPermissions.taskRead);
+    final raw = params['ids'];
+    if (raw is! List || raw.isEmpty) {
+      throw const _BridgeError('bad_params', 'ids 必须是非空数组');
+    }
+    final ids = <int>[];
+    for (final item in raw) {
+      final id = item is int ? item : int.tryParse('$item');
+      if (id == null || id <= 0) {
+        throw const _BridgeError('bad_params', 'ids 里只能放正整数');
+      }
+      ids.add(id);
+    }
+    final acked = await journal?.ack(ids) ?? 0;
+    return _ok(<String, Object?>{'acked': acked});
   }
 
   // ---- 插件私有 KV ----

@@ -25,6 +25,10 @@ class V6Table {
   /// 所以不加 `plg_` 前缀 —— 那个前缀是留给插件私有表的。
   static const String installedPlugins = 'installed_plugins';
 
+  /// 事件日志（基础设施表）。插件没挂载时收到的事件先落这里，
+  /// 下次挂载时补发、确认后删除。**不是插件的表**，所以同样不加 `plg_` 前缀。
+  static const String pluginEvents = 'plugin_events';
+
   /// v5 遗留、v6 已移出的表名。保留常量是为了让"已移出"这件事可被测试断言。
   ///
   /// - 商城/刮刮乐 → 各自插件的 `plg_shop_*` / `plg_scratch_*`
@@ -147,6 +151,28 @@ const String v6InstalledPluginsDdl = '''
     ${InstalledPluginCol.installDir} TEXT NOT NULL,
     ${InstalledPluginCol.installedAt} TEXT NOT NULL,
     ${InstalledPluginCol.enabled} INTEGER NOT NULL DEFAULT 1
+  )
+  ''';
+
+class PluginEventCol {
+  const PluginEventCol._();
+
+  static const String id = 'id';
+  static const String hook = 'hook';
+  static const String payload = 'payload';
+  static const String createdAt = 'created_at';
+}
+
+/// 事件日志表。和 [v6InstalledPluginsDdl] 一样，打开库时幂等补建。
+///
+/// 只存**还没被插件确认**的事件。插件 ack 之后就删 —— 这张表不该变成历史归档，
+/// 它只是个投递队列。
+const String v6PluginEventsDdl = '''
+  CREATE TABLE IF NOT EXISTS ${V6Table.pluginEvents} (
+    ${PluginEventCol.id} INTEGER PRIMARY KEY AUTOINCREMENT,
+    ${PluginEventCol.hook} TEXT NOT NULL,
+    ${PluginEventCol.payload} TEXT NOT NULL,
+    ${PluginEventCol.createdAt} TEXT NOT NULL
   )
   ''';
 

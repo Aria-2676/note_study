@@ -12,6 +12,8 @@ import 'package:v5_app/app/data/task_repository.dart';
 import 'package:v5_app/app/models/task.dart';
 import 'package:v5_app/core/data/v6_database.dart';
 import 'package:v5_app/core/data/v6_plugin_tables.dart';
+import 'package:v5_app/core/extension/extension_hook.dart';
+import 'package:v5_app/core/plugin/event_journal.dart';
 
 void main() {
   setUpAll(() {
@@ -37,6 +39,8 @@ void main() {
   PluginBridge bridge({
     Set<String> permissions = const <String>{'task:read', 'tag:read'},
     String pluginId = 'demo_help',
+    Set<HookId> hooks = const <HookId>{},
+    EventJournal? journal,
   }) =>
       PluginBridge(
         pluginId: pluginId,
@@ -44,6 +48,8 @@ void main() {
         tasks: tasks,
         settings: settings,
         contract: 1,
+        hooks: hooks,
+        journal: journal,
       );
 
   Map<String, Object?> errorOf(Map<String, Object?> response) =>
@@ -353,6 +359,102 @@ void main() {
 
       expect(await tasks.countTasks(), 0);
       expect(await tasks.recycledCount(), 0);
+    });
+  });
+
+  // ================= 事件补发 =================
+
+  group('事件补发', () {
+    late EventJournal journal;
+
+    setUp(() => journal = EventJournal(db));
+
+    Future<void> seed() async {
+      await journal.record(HookEvent(
+        hook: HookId.taskCompleted,
+        payload: <String, Object?>{'taskId': 1, 'title': '完成了一条'},
+      ));
+      await journal.record(HookEvent(
+        hook: HookId.taskRecycled,
+        payload: <String, Object?>{'taskId': 2, 'title': '删掉了一条'},
+      ));
+    }
+
+    test('没有 task:read：拿不到事件（payload 就是任务数据）', () async {
+      await seed();
+      final response = await bridge(
+        permissions: const <String>{'task:write'},
+        hooks: <HookId>{HookId.taskCompleted},
+        journal: journal,
+      ).dispatch('event.pending', const <String, Object?>{});
+
+      expect(errorOf(response)['code'], 'permission_denied');
+    });
+
+    test('没声明 hooks：返回空数组，不是报错', () async {
+      await seed();
+      final response = await bridge(journal: journal)
+          .dispatch('event.pending', const <String, Object?>{});
+
+      expect(response['ok'], isTrue);
+      expect(List<Object?>.from(response['result']! as List), isEmpty);
+    });
+
+    test('只返回声明过的钩子，并带上 id 供 ack', () async {
+      await seed();
+      final response = await bridge(
+        hooks: <HookId>{HookId.taskCompleted},
+        journal: journal,
+      ).dispatch('event.pending', const <String, Object?>{});
+
+      final list = List<Object?>.from(response['result']! as List);
+      expect(list, hasLength(1));
+      final event = Map<String, Object?>.from(list.first! as Map);
+      expect(event['event'], 'task.completed');
+      expect(event['id'], isA<int>());
+      expect(
+        Map<String, Object?>.from(event['payload']! as Map)['title'],
+        '完成了一条',
+      );
+    });
+
+    test('ack 之后不再返回', () async {
+      await seed();
+      final b = bridge(hooks: <HookId>{HookId.taskCompleted}, journal: journal);
+
+      final first = await b.dispatch('event.pending', const <String, Object?>{});
+      final ids = <int>[
+        for (final item in List<Object?>.from(first['result']! as List))
+          (item! as Map)['id']! as int,
+      ];
+
+      final ack = await b.dispatch('event.ack', <String, Object?>{'ids': ids});
+      expect((ack['result']! as Map)['acked'], 1);
+
+      final again = await b.dispatch('event.pending', const <String, Object?>{});
+      expect(List<Object?>.from(again['result']! as List), isEmpty);
+    });
+
+    test('ack 参数不合法：回 bad_params，不静默清空', () async {
+      final b = bridge(hooks: <HookId>{HookId.taskCompleted}, journal: journal);
+
+      for (final params in <Map<String, Object?>>[
+        <String, Object?>{},
+        <String, Object?>{'ids': <Object?>[]},
+        <String, Object?>{'ids': 'not-a-list'},
+        <String, Object?>{'ids': <Object?>[-1]},
+      ]) {
+        final response = await b.dispatch('event.ack', params);
+        expect(errorOf(response)['code'], 'bad_params', reason: '应该拒绝：$params');
+      }
+    });
+
+    test('没接 journal（宿主降级）：pending 返回空而不是崩', () async {
+      final response = await bridge(hooks: <HookId>{HookId.taskCompleted})
+          .dispatch('event.pending', const <String, Object?>{});
+
+      expect(response['ok'], isTrue);
+      expect(List<Object?>.from(response['result']! as List), isEmpty);
     });
   });
 }

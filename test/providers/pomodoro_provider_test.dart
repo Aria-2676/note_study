@@ -6,6 +6,15 @@ import 'package:v5_app/core/services/database/database_service.dart';
 import 'package:v5_app/modules/pomodoro/models/pomodoro_model.dart';
 import 'package:v5_app/providers/pomodoro_provider.dart';
 
+/// "今天"的零点。
+///
+/// 这些用例要的是"今天的记录"，但写成 `now().subtract(5 分钟)` 在凌晨 0~5 点
+/// 会跨到昨天 —— 统计自然是 0。半夜跑一次测试就能看到三条红。
+DateTime todayMidnight() {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
+}
+
 void main() {
   // DatabaseService.instance 落到 ffi SQLite，独立临时目录隔离。
   sqfliteFfiInit();
@@ -308,7 +317,7 @@ void main() {
 
     test('deleteRecord 删除指定记录', () async {
       final id = await DatabaseService.instance.insertPomodoroRecord(
-        recordAt(DateTime.now().subtract(const Duration(minutes: 5))),
+        recordAt(todayMidnight()),
       );
 
       await provider.deleteRecord(id);
@@ -318,7 +327,7 @@ void main() {
 
     test('clearAllRecords 清空记录与统计', () async {
       await DatabaseService.instance.insertPomodoroRecord(
-        recordAt(DateTime.now().subtract(const Duration(minutes: 5))),
+        recordAt(todayMidnight()),
       );
       await provider.refreshStatistics();
       expect(provider.completedPomodoros, 1);
@@ -336,7 +345,7 @@ void main() {
           mode: PomodoroMode.work,
           durationSeconds: 60,
           actualSeconds: 120,
-          startTime: DateTime.now().subtract(const Duration(minutes: 5)),
+          startTime: todayMidnight(),
           endTime: DateTime.now(),
           relatedTaskId: 7,
           relatedTaskTitle: '写代码',

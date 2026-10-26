@@ -174,6 +174,28 @@ window.host.on('task.completed', function (payload) {
 实现在 `lib/core/plugin/plugin_hook_channel.dart`，宿主侧 `PluginView` 负责
 注册/注销（注销按实例而不是按 pluginId —— 同一插件可能同时开着两个页面）。
 
+**补发：插件没挂载时事件不许丢。**
+
+做"常驻隐藏 WebView"是不划算的：每个几十 MB、要处理前后台、被系统杀掉还补不回来。
+所以改成落库 + 补发：
+
+| 方法 | 权限 | 说明 |
+|---|---|---|
+| `event.pending({since?, limit?})` | `task:read` | 返回 `[{id, event, payload}]`，按发生顺序，只含 manifest 声明过的钩子 |
+| `event.ack({ids})` | `task:read` | 处理完才确认；**没 ack 会再次投递**，所以插件必须按 `id` 幂等 |
+
+- 事件写在 `plugin_events` 表（宿主的基础设施表，不是插件的 `plg_` 私有表）
+- `event.pending` 也要 `task:read`：payload 里带着任务标题/日期/估时，
+  等于一份任务数据 —— 只声明 hooks 而不给读权限，拿不到内容
+- 表里只放"还没确认"的事件，ack 即删；另有 200 条上限兜底（超了删最老的）
+
+```js
+window.host.call('event.pending').then(function (list) {
+  list.forEach(handle);                       // 按 id 去重，别重复发奖
+  return window.host.call('event.ack', { ids: list.map(e => e.id) });
+});
+```
+
 ---
 
 ### 4.3 服务级替换（风险最高，白名单极少）
