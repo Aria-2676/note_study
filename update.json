@@ -1,73 +1,78 @@
 {
-    "_comment":  [
-                     "App 更新清单：人工维护，提交到仓库后经 CDN 分发，客户端启动/回前台时拉取。",
-                     "发新整包：改 latest.version，并在 downloads.<平台> 里填构建产物的 url + sha256 + sizeBytes。",
-                     "开资源热更：新增 assets 块，build 用单调递增的整数（每次重打包 +1）。",
-                     "强制更新：把 minSupported 提到「必须换包」的下限；留空/删掉表示不强制。",
-                     "level 可省略，缺省时客户端按版本号差值自动推断（主版本变化才会弹窗）。",
-                     "注意：downloads 里的地址必须是 https/http，其它协议会被客户端直接丢弃。",
-                     "ABI 细分：分 ABI 发包时用 'android-<abi>' 键（如 android-arm64-v8a），",
-                     "  客户端优先匹配该类键、匹配不到再回落泛化的 'android'（见 AppRelease.resolveTarget）。",
-                     "  若要兼顾尚未升级的老客户端，必须**同时**保留一个泛化 'android' 键指向 fat 包，",
-                     "  否则老客户端查不到产物、更新会静默消失（不报错）。",
-                     "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。",
-                     "⚠️ 为什么 APK 不走 jsDelivr：jsDelivr（含 gcore/testingcf 各镜像）对单文件有",
-                     "  20MB 硬上限，超出返回 403 'File size exceeded the configured limit of 20 MB.'。",
-                     "  本 App 的 APK 最小 21MB（split）~ 62MB（fat），**必然超限**，故改用 GitHub Releases。",
-                     "  实测证据：gcore 取 releases/app-arm64-v8a-release.apk → 403。",
-                     "  GitHub Releases 单文件上限 2GB，下载地址会 302 到 objects.githubusercontent.com，",
-                     "  客户端 HttpClient 默认 followRedirects=true 会自动跟随（已核对 dart:io 文档），无需改代码。",
-                     "  代价：objects.githubusercontent.com 在国内可能较慢或间歇失败——自签小圈子分发可接受。",
-                     "  游戏包（game_center/packages/*.zip）均在 1MB 级，不受此限制，仍走 jsDelivr。"
-                 ],
-    "schemaVersion":  1,
-    "updatedAt":  "2026-10-16T16:35:00Z",
-    "minSupported":  "5.0.0",
-    "latest":  {
-                   "version":  "5.5.26",
-                   "notes":  [
-                                 "修复部分网络环境下检测不到新版本、更新包下载失败的问题。",
-                                 "新增后台定时检查：发现新版本时在通知栏提醒，同一版本只提醒一次。",
-                                 "更新包下载增加多条备用线路，自动切换，下载更快更稳。",
-                                 "今后任何整包更新都会及时弹窗提示，不再只在大版本更新时提醒。"
-                             ],
-                   "downloads":  {
-                                     "android-arm64-v8a":  {
-                                                               "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk",
-                                                               "mirrors":  [
-                                                                               "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk",
-                                                                               "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-arm64-v8a-release.apk"
-                                                                           ],
-                                                               "sha256":  "f29112ce97310516899ddfe9fce497b9346236e98945ae17e3b44dbfb5e2121f",
-                                                               "sizeBytes":  23830599
-                                                           },
-                                     "android-armeabi-v7a":  {
-                                                                 "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk",
-                                                                 "mirrors":  [
-                                                                                 "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk",
-                                                                                 "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-armeabi-v7a-release.apk"
-                                                                             ],
-                                                                 "sha256":  "4aa0882bce1a8362b8f6aea5a709d5d695ddb22d7efc8069b9c561c1a8adc220",
-                                                                 "sizeBytes":  21632531
-                                                             },
-                                     "android-x86_64":  {
-                                                            "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk",
-                                                            "mirrors":  [
-                                                                            "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk",
-                                                                            "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-x86_64-release.apk"
-                                                                        ],
-                                                            "sha256":  "216832f44ca9ad75b6b223108f4bd730475e899c46b468686d6113e73a883421",
-                                                            "sizeBytes":  25379907
-                                                        },
-                                     "android":  {
-                                                     "url":  "https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk",
-                                                     "mirrors":  [
-                                                                     "https://ghfast.top/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk",
-                                                                     "https://gh-proxy.com/https://github.com/Aria-2676/note_study/releases/download/v5.5.26/app-release.apk"
-                                                                 ],
-                                                     "sha256":  "388ad0a727eac76d0e40baeffb328dfd48ace1d3b902c46af38579139c17ab2f",
-                                                     "sizeBytes":  64751273
-                                                 }
-                                 }
-               }
+  "_comment": [
+    "App 更新清单：人工维护，提交到仓库后经 CDN 分发，客户端启动/回前台时拉取。",
+    "发新整包：改 latest.version，并在 downloads.<平台> 里填构建产物的 url + sha256 + sizeBytes。",
+    "开资源热更：新增 assets 块，build 用单调递增的整数（每次重打包 +1）。",
+    "强制更新：把 minSupported 提到「必须换包」的下限；留空/删掉表示不强制。",
+    "level 可省略，缺省时客户端按版本号差值自动推断（主版本变化才会弹窗）。",
+    "注意：downloads 里的地址必须是 https/http，其它协议会被客户端直接丢弃。",
+    "ABI 细分：分 ABI 发包时用 'android-<abi>' 键（如 android-arm64-v8a），",
+    "  客户端优先匹配该类键、匹配不到再回落泛化的 'android'（见 AppRelease.resolveTarget）。",
+    "  若要兼顾尚未升级的老客户端，必须**同时**保留一个泛化 'android' 键指向 fat 包，",
+    "  否则老客户端查不到产物、更新会静默消失（不报错）。",
+    "  ABI 取值固定为 arm64-v8a / armeabi-v7a / x86_64，与 --split-per-abi 的产物后缀一致。",
+    "⚠️ 为什么 APK 不走 jsDelivr：jsDelivr（含 gcore/testingcf 各镜像）对单文件有",
+    "  20MB 硬上限，超出返回 403 'File size exceeded the configured limit of 20 MB.'。",
+    "  本 App 的 APK 最小 21MB（split）~ 62MB（fat），**必然超限**，故改用 GitHub Releases。",
+    "  实测证据：gcore 取 releases/app-arm64-v8a-release.apk → 403。",
+    "  GitHub Releases 单文件上限 2GB，下载地址会 302 到 objects.githubusercontent.com，",
+    "  客户端 HttpClient 默认 followRedirects=true 会自动跟随（已核对 dart:io 文档），无需改代码。",
+    "  代价：objects.githubusercontent.com 在国内可能较慢或间歇失败——自签小圈子分发可接受。",
+    "  游戏包（game_center/packages/*.zip）均在 1MB 级，不受此限制，仍走 jsDelivr。"
+  ],
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-30T12:05:21Z",
+  "minSupported": "",
+  "latest": {
+    "version": "6.0.0",
+    "notes": [
+      "全新的 6.x：字段可配置、编辑页、首页可换成插件整页",
+      "装完后原来的「任务管家」还在，桌面上是两个 App —— 想回旧版随时可以",
+      "新图标；新增设置面板与备份还原（可按插件勾选、可分享、可存到「下载」）",
+      "插件市场已上线（内置「使用说明」「能量」）",
+      "注意：V5 的任务与积分不会带过来，两边数据互不影响"
+    ],
+    "downloads": {
+      "android-arm64-v8a": {
+        "url": "https://gitee.com/yaozhenqian/taskmaster-release/releases/download/v6.0.0/app-arm64-v8a-release.apk",
+        "mirrors": [
+          "https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-arm64-v8a-release.apk",
+          "https://ghfast.top/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-arm64-v8a-release.apk",
+          "https://gh-proxy.com/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-arm64-v8a-release.apk"
+        ],
+        "sha256": "07d51a1ec674c56133cb071931f9fae57f2595d3e3674cebc6c16e286801d6eb",
+        "sizeBytes": 22450209
+      },
+      "android-armeabi-v7a": {
+        "url": "https://gitee.com/yaozhenqian/taskmaster-release/releases/download/v6.0.0/app-armeabi-v7a-release.apk",
+        "mirrors": [
+          "https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-armeabi-v7a-release.apk",
+          "https://ghfast.top/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-armeabi-v7a-release.apk",
+          "https://gh-proxy.com/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-armeabi-v7a-release.apk"
+        ],
+        "sha256": "a5bfdb940c32d500b254b56f403254133654817539c2b637c4977b46fb9f9752",
+        "sizeBytes": 20252141
+      },
+      "android-x86_64": {
+        "url": "https://gitee.com/yaozhenqian/taskmaster-release/releases/download/v6.0.0/app-x86_64-release.apk",
+        "mirrors": [
+          "https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-x86_64-release.apk",
+          "https://ghfast.top/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-x86_64-release.apk",
+          "https://gh-proxy.com/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-x86_64-release.apk"
+        ],
+        "sha256": "96bb8ae251d6fca9a9e7341eaa3226251310af85bbae269163ade9c8f6d06201",
+        "sizeBytes": 23999513
+      },
+      "android": {
+        "url": "https://gitee.com/yaozhenqian/taskmaster-release/releases/download/v6.0.0/app-release.apk",
+        "mirrors": [
+          "https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-release.apk",
+          "https://ghfast.top/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-release.apk",
+          "https://gh-proxy.com/https://github.com/Aria-2676/taskmaster-v6/releases/download/v6.0.0/app-release.apk"
+        ],
+        "sha256": "a2988acae8a2f7991e0cd9b80e0099bc82565d603674964629fd82ea3f161ca3",
+        "sizeBytes": 61798023
+      }
+    }
+  }
 }
