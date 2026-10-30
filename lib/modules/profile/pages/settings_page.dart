@@ -65,7 +65,7 @@ class _SettingsPageState extends State<SettingsPage> with SettingsDialogsMixin {
             title: '版本更新',
             subtitle: '检查新版本、更新提醒开关',
             color: Colors.indigo,
-            onTap: () => _navigateTo(const AppUpdatePage()),
+            onTap: () => _navigateTo(const AppUpdatePage(showLegacyV6Entry: true)),
           ),
           const SizedBox(height: 12),
           _buildCategoryCard(

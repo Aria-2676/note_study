@@ -48,6 +48,10 @@ param(
     # 老客户端不识别该字段会直接忽略，无兼容问题。
     [string[]]$MirrorPrefixes = @('https://ghfast.top', 'https://gh-proxy.com'),
 
+    # 备用直链基址（Gitee Release）：按 `<AltBase>/<tag>/<文件名>` 拼镜像地址，
+    # 并**排在 MirrorPrefixes 之前** —— 国内第一顺位走它，GitHub 和公共代理退成备选。
+    [string]$AltBase = '',
+
     [switch]$SkipPurge,
     [switch]$SkipManifestCommit,
 
@@ -370,6 +374,9 @@ foreach ($key in $abiKeys.Keys) {
     $info = $apkInfo[$key]
     $url = "https://github.com/$OwnerRepo/releases/download/$tag/$key"
     $mirrorUrls = @()
+    if (-not [string]::IsNullOrWhiteSpace($AltBase)) {
+        $mirrorUrls += ($AltBase.TrimEnd('/') + "/$tag/$key")
+    }
     foreach ($prefix in $MirrorPrefixes) { $mirrorUrls += "$prefix/$url" }
     $downloads[$abiKeys[$key]] = [ordered]@{
         url       = $url

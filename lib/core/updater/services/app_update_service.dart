@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -65,42 +66,67 @@ class AppUpdateService {
   /// 兼容旧调用点（默认渠道）。
   static List<Uri> defaultCandidates() => candidatesFor(v5ManifestPath);
 
-  /// 按候选顺序依次尝试拉取更新清单。
+  /// 并发拉所有源，**挑 `updatedAt` 最新的那份**。
   ///
-  /// 顺序：jsDelivr 各节点（gcore → testingcf → cdn）→ raw 源站 →
-  /// GitHub Contents API（近实时，限速兜底）。单个候选失败只记日志并继续，
-  /// 这样某个节点抽风不会让功能整体不可用；全部失败才抛 [AppUpdateException]。
+  /// 为什么不能"第一个成功就用"：CDN 会缓存分支解析出来的那个提交（实测
+  /// jsDelivr 的 gcore 节点会持续发旧文件，purge 也刷不掉），而"响应最快的
+  /// 那个"完全可能是"最旧的那个"。5.5.26 就是这么写的 —— 清单改成 6.0.0 之后
+  /// 客户端仍然提示"已是最新 5.5.26"，因为 gcore 先返回了旧缓存。
+  ///
+  /// 所以：并发全取，等一小会儿收齐，按清单里的 `updatedAt` 挑最新；
+  /// 读不出时间的视为最旧。单个源失败只记日志，不影响结论。
   Future<AppUpdateManifest> fetchManifest() async {
+    final sources = <(Uri, bool)>[
+      for (final uri in _candidateProvider()) (uri, false),
+      (_contentsApiUrl, true),
+    ];
+
+    final arrived = <AppUpdateManifest>[];
+    final firstOk = Completer<void>();
+    final allDone = Completer<void>();
+    var left = sources.length;
     Object? lastError;
-    for (final uri in _candidateProvider()) {
-      try {
-        final body = await _httpGetString(uri, viaContentsApi: false);
-        return AppUpdateManifest.fromJson(jsonDecode(body));
-      } catch (error, stack) {
-        lastError = error;
-        AppLogger.warn('AppUpdateService', '获取更新清单失败: $uri', error, stack);
-      }
+
+    for (final (uri, viaApi) in sources) {
+      unawaited(() async {
+        try {
+          final body = await _httpGetString(uri, viaContentsApi: viaApi);
+          arrived.add(AppUpdateManifest.fromJson(jsonDecode(body)));
+          if (!firstOk.isCompleted) firstOk.complete();
+        } catch (error, stack) {
+          lastError = error;
+          AppLogger.warn(
+            'AppUpdateService',
+            '获取更新清单失败: $uri',
+            error,
+            stack,
+          );
+        } finally {
+          left--;
+          if (left == 0 && !allDone.isCompleted) allDone.complete();
+        }
+      }());
     }
 
-    // 最后一路：GitHub Contents API（JSON 信封里装 base64 内容）。
-    try {
-      final body = await _httpGetString(
-        _contentsApiUrl,
-        viaContentsApi: true,
-      );
-      return AppUpdateManifest.fromJson(jsonDecode(body));
-    } catch (error, stack) {
-      lastError = error;
-      AppLogger.warn(
-        'AppUpdateService',
-        '获取更新清单失败（Contents API）: $_contentsApiUrl',
-        error,
-        stack,
-      );
+    // 等到"至少一个成功"或"全部结束"，再多等一小会儿收齐其它源 ——
+    // 否则拿到的只是"响应最快的"，不等于"最新的"。
+    await Future.any(<Future<void>>[firstOk.future, allDone.future]);
+    await Future.any(<Future<void>>[
+      allDone.future,
+      Future<void>.delayed(const Duration(milliseconds: 600)),
+    ]);
+
+    if (arrived.isEmpty) {
+      throw AppUpdateException('无法获取更新清单（$lastError）');
     }
 
-    throw AppUpdateException('无法获取更新清单（$lastError）');
+    arrived.sort((a, b) => _freshness(b).compareTo(_freshness(a)));
+    return arrived.first;
   }
+
+  /// 清单的"新鲜度"。读不出 `updatedAt` 的按 epoch 算，永远排在后面。
+  static DateTime _freshness(AppUpdateManifest manifest) =>
+      manifest.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   /// 拉取失败时返回 null。
   ///
