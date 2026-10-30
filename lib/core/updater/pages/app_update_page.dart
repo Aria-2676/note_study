@@ -314,12 +314,18 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
 
   Future<void> _download() async {
     final messenger = ScaffoldMessenger.of(context);
+
+    // **先问机型再决定下哪个包**：arm64 是 22MB，通用整包 62MB，差 3 倍。
+    // loadAbi 失败会返回 null，那就回落到整包 —— 宁可多花流量，不能装不上。
+    final abi = await AppUpdateProvider.loadAbi();
+    if (!mounted) return;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('下载任务管家 ${LegacyV6Link.version}？',
             style: const TextStyle(fontSize: 16)),
-        content: Text(LegacyV6Link.confirmBody,
+        content: Text(LegacyV6Link.confirmBodyFor(abi),
             style: const TextStyle(fontSize: 13, height: 1.5)),
         actions: <Widget>[
           TextButton(
@@ -342,7 +348,7 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
 
     try {
       final result = await const AppUpdateLauncher().apply(
-        LegacyV6Link.target,
+        LegacyV6Link.targetFor(abi),
         onProgress: (value) {
           if (mounted) setState(() => _progress = value);
         },
@@ -385,7 +391,8 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
             const SizedBox(height: 8),
             Text(
               '全新的一代：字段可配置、编辑页、首页可换成插件整页，还有备份与还原。'
-              '它和当前这个版本是两个 App，可以同时装。',
+              '它和当前这个版本是两个 App，可以同时装；'
+              '打开它会自己提示更新到最新的 6.x。',
               style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
             ),
             if (_busy) ...[
