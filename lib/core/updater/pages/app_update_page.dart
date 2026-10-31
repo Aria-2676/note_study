@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/legacy_v6_link.dart';
 import '../models/app_update_decision.dart';
+import '../models/app_update_manifest.dart';
 import '../providers/app_update_provider.dart';
 import '../services/app_update_launcher.dart';
+import '../services/legacy_v6_service.dart';
 
 /// 设置页里的「版本更新」入口。
 ///
@@ -312,6 +316,29 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
   bool _busy = false;
   double _progress = 0;
 
+  /// 6.x 那边的最新清单。读不到就是 null，界面回落到写死的已知版本。
+  AppUpdateManifest? _latest;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadLatest());
+  }
+
+  /// 顺带看一眼对方最新是哪一版。
+  ///
+  /// **不阻塞界面**：先按已知版本把卡片画出来，读到了再刷新版本号。
+  /// 读不到也不报错 —— 下载入口必须一直在（用户点进来就是为了拿安装包）。
+  Future<void> _loadLatest() async {
+    final manifest = await LegacyV6Service.fetch();
+    if (!mounted || manifest?.release == null) return;
+    setState(() => _latest = manifest);
+  }
+
+  /// 卡片上显示的版本：对方的清单优先，读不到用写死的那份。
+  String get _displayVersion =>
+      _latest?.release?.version ?? LegacyV6Link.version;
+
   Future<void> _download() async {
     final messenger = ScaffoldMessenger.of(context);
 
@@ -320,13 +347,27 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
     final abi = await AppUpdateProvider.loadAbi();
     if (!mounted) return;
 
+    // 目标优先取对方清单里那个包（永远是最新 + 带各自的 sha256），
+    // 清单没读到时才用写死的兜底。
+    final target = LegacyV6Service.targetFor(
+          _latest,
+          platform: 'android',
+          abi: abi,
+        ) ??
+        LegacyV6Link.targetFor(abi);
+    final version = _latest?.release?.version ?? LegacyV6Link.version;
+    final sizeMb = (target.sizeBytes / 1024 / 1024).toStringAsFixed(0);
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('下载任务管家 ${LegacyV6Link.version}？',
+        title: Text('下载任务管家 $version？',
             style: const TextStyle(fontSize: 16)),
-        content: Text(LegacyV6Link.confirmBodyFor(abi),
-            style: const TextStyle(fontSize: 13, height: 1.5)),
+        content: Text(
+          '约 $sizeMb MB。它和当前的「任务管家」是两个 App，不会覆盖；'
+          '装完桌面上会多一个图标，V5 的任务和积分不会带过去。',
+          style: const TextStyle(fontSize: 13, height: 1.5),
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -348,7 +389,7 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
 
     try {
       final result = await const AppUpdateLauncher().apply(
-        LegacyV6Link.targetFor(abi),
+        target,
         onProgress: (value) {
           if (mounted) setState(() => _progress = value);
         },
@@ -383,7 +424,7 @@ class _LegacyV6CardState extends State<_LegacyV6Card> {
                     size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('任务管家 ${LegacyV6Link.version}（新版）',
+                  child: Text('任务管家 $_displayVersion（新版）',
                       style: theme.textTheme.titleSmall),
                 ),
               ],
